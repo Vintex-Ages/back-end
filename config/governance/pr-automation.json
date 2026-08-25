@@ -1,0 +1,43 @@
+{
+  "organization": "Vintex-Ages",
+  "sourceProjectNumber": 4,
+  "aggregateProjectNumber": 2,
+  "requestedReviewers": [
+    "LucasVinhatti1",
+    "Matheus-Zanchetta",
+    "v-Kaefer",
+    "NicholasAstor"
+  ],
+  "eligibleApprovers": [
+    "LucasVinhatti1",
+    "Matheus-Zanchetta",
+    "v-Kaefer",
+    "NicholasAstor",
+    "AdrielleDewes",
+    "LeoSimonn",
+    "dudu-wolf",
+    "Jpbeltrand",
+    "MauroSachs"
+  ],
+  "requiredApprovals": 2,
+  "issueRequiredOn": ["develop"],
+  "issueExemptHeadPatterns": [],
+  "projectFields": [
+    "Sprint / Release",
+    "Operational Priority",
+    "Size",
+    "Estimate",
+    "Start date",
+    "Target date",
+    "MoSCoW",
+    "Layer",
+    "Work Type",
+    "Epic",
+    "Story ID",
+    "RN refs"
+  ],
+  "promotionDefaults": {
+    "Layer": "Backend",
+    "Work Type": "Repository"
+  }
+}
