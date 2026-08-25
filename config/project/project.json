@@ -1,0 +1,21 @@
+{
+  "organization": "Vintex-Ages",
+  "repository": "Vintex-Ages/back-end",
+  "sourceProjectNumber": 4,
+  "aggregateProjectNumber": 2,
+  "fields": [
+    "Status",
+    "Sprint / Release",
+    "MoSCoW",
+    "Operational Priority",
+    "Layer",
+    "Work Type",
+    "Epic",
+    "Story ID",
+    "RN refs",
+    "Size",
+    "Estimate",
+    "Start date",
+    "Target date"
+  ]
+}

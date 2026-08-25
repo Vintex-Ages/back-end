@@ -1,0 +1,28 @@
+name: PR Lifecycle
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review, converted_to_draft, closed]
+    branches: [develop]
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    if: vars.GPA_APP_CLIENT_ID != '' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.GPA_APP_CLIENT_ID }}
+          private-key: ${{ secrets.GPA_APP_PRIVATE_KEY }}
+          owner: Vintex-Ages
+      - run: node .github/scripts/pr-lifecycle.mjs
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PROJECT_ORG: Vintex-Ages
+          SOURCE_PROJECT_NUMBER: 4
+          AGGREGATE_PROJECT_NUMBER: 2

@@ -1,5 +1,7 @@
 # Vintex - Backend
 
+Consulte o [guia de contribuição](CONTRIBUTING.md) antes de abrir uma issue ou Pull Request.
+
 Backend da aplicação Vintex, desenvolvido com **Python** e **FastAPI**, seguindo o padrão **MVC**.
 
 ## Arquitetura
