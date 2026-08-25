@@ -1,0 +1,37 @@
+name: Project Sync
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/5 * * * *"
+  issues:
+    types:
+      [opened, reopened, closed, labeled, unlabeled, milestoned, demilestoned]
+  pull_request:
+    types: [opened, reopened, ready_for_review, converted_to_draft, closed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: project-sync-back-end
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    if: vars.GPA_APP_CLIENT_ID != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.GPA_APP_CLIENT_ID }}
+          private-key: ${{ secrets.GPA_APP_PRIVATE_KEY }}
+          owner: Vintex-Ages
+      - run: node .github/scripts/project-sync.mjs
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PROJECT_ORG: Vintex-Ages
+          SOURCE_PROJECT_NUMBER: 4
+          AGGREGATE_PROJECT_NUMBER: 2
