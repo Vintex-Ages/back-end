@@ -26,10 +26,14 @@ Use palavras minúsculas separadas por hífen. Todo trabalho deve possuir uma is
 - PRs de trabalho apontam para `develop`.
 - Somente `develop` promove para `main`.
 - Somente `main` promove para `deploy`.
-- Preencha o template inteiro e use `Closes #<issue>`.
+- Preencha o template inteiro e use `Closes #<issue>` para criar o vínculo na seção Development.
+- A primeira issue vinculada deve ser a issue indicada na branch. Outras issues podem ser incluídas, desde que não tenham milestones conflitantes.
 - Selecione exatamente um tipo de mudança.
 - Declare como IA foi utilizada ou informe explicitamente que não houve uso.
-- Faça commits pequenos e solicite review.
+- Assignees e labels são unidos a partir das issues; a milestone e os campos dos Projects vêm da issue primária.
+- O PR entra no Project do backend e no Project geral. Draft fica em `In progress`, PR pronto em `In review` e merge em `Done`.
+- O GitHub solicita review aos quatro integrantes de AGES III. O merge exige duas aprovações vigentes, que podem vir de AGES III ou AGES IV.
+- Faça commits pequenos; novo commit invalida aprovações anteriores.
 
 ## Backend
 
