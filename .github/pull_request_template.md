@@ -33,7 +33,4 @@ Closes #<!-- número da issue -->
 ## Checklist
 
 - [ ] Criei a branch a partir de `develop`
-- [ ] Rodei `ruff check .`
-- [ ] Rodei `black --check .`
-- [ ] Rodei `pytest tests/ -v`
 - [ ] Atualizei testes e documentação quando necessário
