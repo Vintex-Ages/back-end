@@ -1,0 +1,25 @@
+{
+  "organization": "Vintex-Ages",
+  "sourceProjectNumber": 4,
+  "aggregateProjectNumber": 2,
+  "issueRequiredOn": ["develop"],
+  "issueExemptHeadPatterns": [],
+  "projectFields": [
+    "Sprint / Release",
+    "Operational Priority",
+    "Size",
+    "Estimate",
+    "Start date",
+    "Target date",
+    "MoSCoW",
+    "Layer",
+    "Work Type",
+    "Epic",
+    "Story ID",
+    "RN refs"
+  ],
+  "promotionDefaults": {
+    "Layer": "Backend",
+    "Work Type": "Repository"
+  }
+}

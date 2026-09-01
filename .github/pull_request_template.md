@@ -29,3 +29,8 @@ Closes #<!-- número da issue -->
 ## Screenshots / Evidências (opcional)
 
 <!-- Prints do Swagger, logs, ou qualquer evidência visual -->
+
+## Checklist
+
+- [ ] Criei a branch a partir de `develop`
+- [ ] Atualizei testes e documentação quando necessário
