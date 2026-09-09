@@ -1,0 +1,37 @@
+# Controle de versão / metadados
+.git
+.gitignore
+.gitattributes
+.github
+
+# Ambientes e segredos (nunca entram na imagem)
+.env
+.env.*
+!.env.example
+.venv
+venv
+
+# Caches e artefatos de build
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Bancos locais
+*.db
+*.sqlite
+*.sqlite3
+
+# Documentação e contexto de agentes (não são necessários em runtime)
+*.md
+.ai/
+.agents/
+.claude/
+docker-compose.yml
