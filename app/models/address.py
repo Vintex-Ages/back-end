@@ -6,6 +6,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base_model import BaseModel
 
 if TYPE_CHECKING:
+    from app.models.store import Store
     from app.models.user import User
 
 
@@ -25,3 +26,4 @@ class Address(BaseModel):
     zip_code: Mapped[str] = mapped_column(String(10), nullable=False)
 
     users: Mapped[List["User"]] = relationship(back_populates="address")
+    stores: Mapped[List["Store"]] = relationship(back_populates="address")
