@@ -118,9 +118,7 @@ async def _app_error_handler(_: Request, exc: AppError) -> JSONResponse:
     return exc.to_response()
 
 
-async def _validation_handler(
-    _: Request, exc: RequestValidationError
-) -> JSONResponse:
+async def _validation_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
     fields: dict[str, str] = {}
     for err in exc.errors():
         location = [str(part) for part in err["loc"] if part not in ("body", "query")]
@@ -139,9 +137,7 @@ async def _http_exception_handler(
 ) -> JSONResponse:
     code = _HTTP_STATUS_CODE.get(exc.status_code, "HTTP_ERROR")
     message = exc.detail if isinstance(exc.detail, str) else code
-    return JSONResponse(
-        status_code=exc.status_code, content=error_body(code, message)
-    )
+    return JSONResponse(status_code=exc.status_code, content=error_body(code, message))
 
 
 async def _unhandled_handler(_: Request, exc: Exception) -> JSONResponse:

@@ -70,6 +70,7 @@ def test_conjunto_vazio(session: Session) -> None:
 
 # --- a dependency page_params ---
 
+
 def _params_app() -> FastAPI:
     app = FastAPI()
     register_exception_handlers(app)
