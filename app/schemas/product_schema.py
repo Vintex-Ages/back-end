@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
@@ -37,6 +38,15 @@ def product_filters(
     condition: str | None = None,
     color: str | None = None,
 ) -> ProductFilters:
+    if price_min is not None and price_min < 0:
+        raise HTTPException(status_code=422, detail="price_min deve ser não negativo")
+    if price_max is not None and price_max < 0:
+        raise HTTPException(status_code=422, detail="price_max deve ser não negativo")
+    if price_min is not None and price_max is not None and price_min > price_max:
+        raise HTTPException(
+            status_code=422,
+            detail="price_min deve ser menor ou igual a price_max",
+        )
     return ProductFilters(
         category=category,
         price_min=price_min,
