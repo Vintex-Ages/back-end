@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.controllers.product_controller import ProductController
 from app.core.pagination import PageParams, page_params
 from app.database import get_db
-from app.schemas.product_schema import FeedResponse, ProductFilters
+from app.schemas.product_schema import FeedResponse, ProductFilters, product_filters
 
 router = APIRouter(prefix="/products", tags=["Products"])
 
@@ -18,7 +18,7 @@ def get_controller(db: Session = Depends(get_db)) -> ProductController:
 @router.get("", response_model=FeedResponse)
 def list_products(
     params: PageParams = Depends(page_params),
-    filters: ProductFilters = Depends(),
+    filters: ProductFilters = Depends(product_filters),
     sort: Literal["recent"] = Query(
         "recent", description="Ordenação do feed; atualmente apenas recentes."
     ),

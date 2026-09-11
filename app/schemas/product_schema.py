@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from fastapi import Query
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
@@ -26,6 +27,26 @@ class ProductFilters(BaseModel):
         return {
             key: value for key, value in self.model_dump().items() if value is not None
         }
+
+
+def product_filters(
+    category: str | None = Query(None),
+    price_min: Decimal | None = Query(None, ge=0),
+    price_max: Decimal | None = Query(None, ge=0),
+    size: str | None = Query(None),
+    brand: str | None = Query(None),
+    condition: str | None = Query(None),
+    color: str | None = Query(None),
+) -> ProductFilters:
+    return ProductFilters(
+        category=category,
+        price_min=price_min,
+        price_max=price_max,
+        size=size,
+        brand=brand,
+        condition=condition,
+        color=color,
+    )
 
 
 class FeedStoreResponse(BaseModel):
