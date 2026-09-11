@@ -9,6 +9,7 @@ from app.schemas.product_schema import (
     ProductAIStatusResponse,
     ProductAIStatusValue,
     ProductFeedItemResponse,
+    ProductFilters,
 )
 from app.services.ai.base import ImageAnalysisResult
 
@@ -17,8 +18,8 @@ class ProductController:
     def __init__(self, db: Session):
         self.repository = ProductRepository(db)
 
-    def get_feed(self, params: PageParams) -> FeedResponse:
-        rows, total = self.repository.get_active_feed(params)
+    def get_feed(self, params: PageParams, filters: ProductFilters) -> FeedResponse:
+        rows, total = self.repository.get_active_feed(params, filters)
         items = [
             ProductFeedItemResponse(
                 id=row["id"],
@@ -38,6 +39,7 @@ class ProductController:
             page=params.page,
             page_size=params.page_size,
             total=total,
+            applied_filters=filters.applied(),
         )
 
     def get_ai_status(self, product_id: int, user_id: int) -> ProductAIStatusResponse:
