@@ -34,10 +34,11 @@ def make_product(
     images: list[ProductImage] | None = None,
     **attributes,
 ) -> Product:
+    price = attributes.pop("price", Decimal("99.90"))
     product = Product(
         store=store,
         name=name,
-        price=Decimal("99.90"),
+        price=price,
         status=status,
         created_at=created_at,
         images=images or [],
