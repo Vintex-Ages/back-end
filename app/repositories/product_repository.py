@@ -1,3 +1,6 @@
+from decimal import Decimal
+from typing import TypedDict, cast
+
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
@@ -7,13 +10,21 @@ from app.models.product_image import ProductImage
 from app.models.store import Store
 
 
+class ProductFeedRow(TypedDict):
+    id: int
+    name: str
+    price: Decimal
+    cover_image_url: str | None
+    status: str
+    store_id: int
+    store_name: str
+
+
 class ProductRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def get_active_feed(
-        self, params: PageParams
-    ) -> tuple[list[dict[str, object]], int]:
+    def get_active_feed(self, params: PageParams) -> tuple[list[ProductFeedRow], int]:
         cover_image_url = (
             select(ProductImage.image_url)
             .where(ProductImage.product_id == Product.id)
@@ -43,4 +54,4 @@ class ProductRepository:
             .mappings()
             .all()
         )
-        return [dict(row) for row in rows], total
+        return [cast(ProductFeedRow, dict(row)) for row in rows], total
