@@ -1,17 +1,16 @@
 from decimal import Decimal
 
-from fastapi import Query
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ProductFilters(BaseModel):
-    category: str | None = Query(None)
-    price_min: Decimal | None = Query(None, ge=0)
-    price_max: Decimal | None = Query(None, ge=0)
-    size: str | None = Query(None)
-    brand: str | None = Query(None)
-    condition: str | None = Query(None)
-    color: str | None = Query(None)
+    category: str | None = None
+    price_min: Decimal | None = Field(default=None, ge=0)
+    price_max: Decimal | None = Field(default=None, ge=0)
+    size: str | None = None
+    brand: str | None = None
+    condition: str | None = None
+    color: str | None = None
 
     @model_validator(mode="after")
     def validate_price_range(self) -> "ProductFilters":
