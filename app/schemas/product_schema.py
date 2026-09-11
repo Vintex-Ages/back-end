@@ -1,6 +1,5 @@
 from decimal import Decimal
 
-from fastapi import Query
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
@@ -16,8 +15,8 @@ class ProductFilters(BaseModel):
     @model_validator(mode="after")
     def validate_price_range(self) -> "ProductFilters":
         if (
-            self.price_min is not None
-            and self.price_max is not None
+            isinstance(self.price_min, Decimal)
+            and isinstance(self.price_max, Decimal)
             and self.price_min > self.price_max
         ):
             raise ValueError("price_min deve ser menor ou igual a price_max")
@@ -30,13 +29,13 @@ class ProductFilters(BaseModel):
 
 
 def product_filters(
-    category: str | None = Query(None),
-    price_min: Decimal | None = Query(None, ge=0),
-    price_max: Decimal | None = Query(None, ge=0),
-    size: str | None = Query(None),
-    brand: str | None = Query(None),
-    condition: str | None = Query(None),
-    color: str | None = Query(None),
+    category: str | None = None,
+    price_min: Decimal | None = None,
+    price_max: Decimal | None = None,
+    size: str | None = None,
+    brand: str | None = None,
+    condition: str | None = None,
+    color: str | None = None,
 ) -> ProductFilters:
     return ProductFilters(
         category=category,
