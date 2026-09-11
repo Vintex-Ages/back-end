@@ -7,6 +7,7 @@ from app.controllers.product_controller import ProductController
 from app.core.current_user import get_current_user_id
 from app.core.pagination import PageParams, page_params
 from app.database import get_db
+<<<<<<< HEAD
 from app.schemas.product_schema import (
     FeedResponse,
     ProductAIStatusResponse,
