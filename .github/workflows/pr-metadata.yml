@@ -15,7 +15,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: pr-metadata-${{ github.repository }}-${{ github.event.pull_request.number || github.event.issue.number || 'all' }}
+  group: pr-metadata-${{ github.repository }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.event.issue.number || 'all' }}
   cancel-in-progress: true
 
 jobs:

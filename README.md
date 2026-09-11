@@ -56,6 +56,44 @@ uvicorn app.main:app --reload
 A API estará disponível em `http://localhost:8000`.
 Documentação Swagger em `http://localhost:8000/docs`.
 
+## Migrations
+
+O schema do banco é versionado com Alembic. `alembic/env.py` lê `DATABASE_URL` de `app/config.py` — nunca configure a URL diretamente no `alembic.ini`.
+
+```bash
+# Aplicar todas as migrations pendentes (banco vazio -> estado atual)
+alembic upgrade head
+
+# Reverter a última migration
+alembic downgrade -1
+
+# Reverter todas as migrations (volta ao banco vazio)
+alembic downgrade base
+
+# Criar uma nova revisão a partir das mudanças nos models (app/models/)
+alembic revision --autogenerate -m "descricao_da_mudanca"
+
+# Criar uma revisão vazia (sem autogenerate), para editar manualmente
+alembic revision -m "descricao_da_mudanca"
+
+# Ver o histórico de revisões / a revisão atual do banco
+alembic history
+alembic current
+```
+
+Sempre revise o arquivo gerado em `alembic/versions/` antes de aplicar — o autogenerate não detecta tudo (renomear coluna, alguns constraints, etc.).
+
+## Seeds
+
+Dados sintéticos para desenvolvimento e demo. Rode **depois** de `alembic upgrade head`, nesta ordem:
+
+```bash
+python -m app.seeds.lojas   # endereços, vendedores e lojas (RS)
+python -m app.seeds.pecas   # peças e imagens, distribuídas entre as lojas
+```
+
+Ambos são idempotentes — rodar de novo não duplica.
+
 ## Testes
 
 ```bash
