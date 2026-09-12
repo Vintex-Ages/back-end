@@ -11,6 +11,13 @@ class Settings(BaseSettings):
     # em produção, informe a lista separada por vírgula.
     CORS_ORIGINS: str = "*"
 
+    # Autenticação JWT — ver `.ai/adr/0002-autenticacao-jwt.md`.
+    # Em produção, JWT_SECRET é obrigatório vir do ambiente (nunca este default).
+    JWT_SECRET: str = "dev-only-change-me"
+    JWT_ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 30
+
     class Config:
         env_file = ".env"
 
