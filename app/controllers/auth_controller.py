@@ -105,16 +105,22 @@ class AuthController:
             self.db.commit()
 
     def refresh(self, raw_refresh_token: str) -> AuthResponse:
-        """Rotaciona a sessão: revoga o refresh token usado e emite um par novo."""
-        stored = self.refresh_tokens.get_by_hash(hash_refresh_token(raw_refresh_token))
-        if stored is None or not stored.is_valid:
+        """Rotaciona a sessão: revoga o refresh token usado e emite um par novo.
+
+        `revoke_if_valid` checa e revoga numa única operação atômica no
+        banco — duas chamadas concorrentes com o mesmo token nunca revogam
+        e emitem par novo as duas (ver `RefreshTokenRepository`).
+        """
+        stored = self.refresh_tokens.revoke_if_valid(
+            hash_refresh_token(raw_refresh_token)
+        )
+        if stored is None:
             raise Unauthorized(_SESSAO_INVALIDA)
 
         user = self.repository.get_by_id(stored.user_id)
         if user is None:
             raise Unauthorized(_SESSAO_INVALIDA)
 
-        self.refresh_tokens.revoke(stored)
         response = self._issue_auth_response(user)
         self.db.commit()
         return response

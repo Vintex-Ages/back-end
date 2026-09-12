@@ -1,9 +1,10 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
 from sqlalchemy import BigInteger, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.clock import utcnow_naive
 from app.models.base_model import BaseModel
 
 if TYPE_CHECKING:
@@ -36,6 +37,4 @@ class RefreshToken(BaseModel):
     def is_valid(self) -> bool:
         if self.revoked_at is not None:
             return False
-        # naive UTC, consistente com created_at/updated_at de BaseModel.
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
-        return self.expires_at > now
+        return self.expires_at > utcnow_naive()
