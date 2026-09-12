@@ -24,6 +24,12 @@ _CREDENCIAIS_INVALIDAS = "E-mail ou senha inválidos."
 
 _EMAIL_JA_CADASTRADO = "Este e-mail já está cadastrado."
 
+# Hash bcrypt de uma senha que não existe em lugar nenhum — usado só pra
+# gastar o mesmo tempo de verify_password quando o e-mail não existe (ver
+# login()). Sem isso, e-mail inexistente responde muito mais rápido que
+# senha errada, e dá pra enumerar contas cadastradas medindo latência.
+_HASH_FICTICIO = "$2b$12$1.AKZTlsRKwIQBLhZvhr6uS6SPfEQQDo/spTe4Nhe9G6fIKaVHkJu"
+
 
 class AuthController:
     def __init__(self, db: Session):
@@ -56,8 +62,13 @@ class AuthController:
 
     def login(self, data: LoginRequest) -> AuthResponse:
         user = self.repository.get_by_email(data.email)
+        # Roda o bcrypt sempre, mesmo sem usuário — contra um hash fictício
+        # quando não há um de verdade — pra não vazar por timing se o
+        # e-mail existe (ver _HASH_FICTICIO).
+        password_hash = user.password_hash if user is not None else _HASH_FICTICIO
+        senha_valida = verify_password(data.password, password_hash)
         # Mensagem genérica: não revela se o erro foi no e-mail ou na senha.
-        if user is None or not verify_password(data.password, user.password_hash):
+        if user is None or not senha_valida:
             raise Unauthorized(
                 _CREDENCIAIS_INVALIDAS, code=ErrorCode.INVALID_CREDENTIALS
             )

@@ -58,6 +58,42 @@ def test_login_com_senha_errada_retorna_401_com_mesma_mensagem_generica(client):
     assert resposta_senha_errada.json()["error"]["code"] == "INVALID_CREDENTIALS"
 
 
+def test_login_com_email_inexistente_ainda_roda_verificacao_de_senha(monkeypatch):
+    # Contra vazamento de existência de conta por timing: bcrypt deve rodar
+    # mesmo sem usuário, contra um hash fictício (ver _HASH_FICTICIO).
+    from app.controllers import auth_controller as auth_controller_module
+
+    chamadas = []
+    original = auth_controller_module.verify_password
+
+    def espiao(password, password_hash):
+        chamadas.append(password_hash)
+        return original(password, password_hash)
+
+    monkeypatch.setattr(auth_controller_module, "verify_password", espiao)
+
+    class RepoFalso:
+        def get_by_email(self, email):
+            return None
+
+    controller = auth_controller_module.AuthController.__new__(
+        auth_controller_module.AuthController
+    )
+    controller.repository = RepoFalso()
+
+    import pytest
+
+    from app.core.errors import Unauthorized
+    from app.schemas.auth_schema import LoginRequest
+
+    with pytest.raises(Unauthorized):
+        controller.login(
+            LoginRequest(email="fantasma@example.com", password="qualquer")
+        )
+
+    assert chamadas == [auth_controller_module._HASH_FICTICIO]
+
+
 def test_login_token_contem_id_e_papel_do_usuario(client):
     import jwt
 
