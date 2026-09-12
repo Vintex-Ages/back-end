@@ -32,6 +32,13 @@ class RegisterRequest(BaseModel):
     password: str
     phone: str | None = None
 
+    @field_validator("email")
+    @classmethod
+    def normalizar_email(cls, value: str) -> str:
+        # "Nome@Ex.com" e "nome@ex.com" são o mesmo e-mail: sem isso,
+        # unicidade e login divergem silenciosamente por causa da caixa.
+        return value.lower()
+
     @field_validator("password")
     @classmethod
     def validar_senha(cls, value: str) -> str:
@@ -41,6 +48,11 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+
+    @field_validator("email")
+    @classmethod
+    def normalizar_email(cls, value: str) -> str:
+        return value.lower()
 
 
 class UserPublic(BaseModel):
