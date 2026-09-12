@@ -32,14 +32,17 @@ def make_product(
     created_at: datetime,
     status: str = "ativo",
     images: list[ProductImage] | None = None,
+    **attributes,
 ) -> Product:
+    price = attributes.pop("price", Decimal("99.90"))
     product = Product(
         store=store,
         name=name,
-        price=Decimal("99.90"),
+        price=price,
         status=status,
         created_at=created_at,
         images=images or [],
+        **attributes,
     )
     db_session.add(product)
     return product
@@ -101,5 +104,102 @@ def test_feed_returns_null_cover_and_paginates_by_recent(client, db_session):
 
 def test_feed_rejects_unknown_sort(client):
     response = client.get("/api/products?sort=oldest")
+
+    assert response.status_code == 422
+
+
+def test_feed_filters_each_product_attribute(client, db_session):
+    store = make_store(db_session, "Brechó Filtros")
+    now = datetime.now(timezone.utc)
+    make_product(
+        db_session,
+        store,
+        "Jaqueta azul",
+        now,
+        category="Jaquetas",
+        size="M",
+        brand="Marca A",
+        condition="Bom",
+        color="Azul",
+        price=Decimal("120.00"),
+    )
+    make_product(
+        db_session,
+        store,
+        "Vestido vermelho",
+        now - timedelta(minutes=1),
+        category="Vestidos",
+        size="G",
+        brand="Marca B",
+        condition="Novo",
+        color="Vermelho",
+        price=Decimal("220.00"),
+    )
+    db_session.commit()
+
+    for query in (
+        "category=Jaquetas",
+        "size=M",
+        "brand=Marca+A",
+        "condition=Bom",
+        "color=Azul",
+        "price_min=100&price_max=150",
+    ):
+        response = client.get(f"/api/products?{query}")
+        assert response.status_code == 200
+        assert response.json()["total"] == 1
+
+
+def test_feed_combines_filters_with_and_and_reports_applied_filters(client, db_session):
+    store = make_store(db_session, "Brechó Combinado")
+    now = datetime.now(timezone.utc)
+    matching = make_product(
+        db_session,
+        store,
+        "Jaqueta azul",
+        now,
+        category="Jaquetas",
+        size="M",
+        brand="Marca A",
+        condition="Bom",
+        color="Azul",
+        price=Decimal("120.00"),
+    )
+    make_product(
+        db_session,
+        store,
+        "Jaqueta azul cara",
+        now - timedelta(minutes=1),
+        category="Jaquetas",
+        size="M",
+        brand="Marca A",
+        condition="Bom",
+        color="Azul",
+        price=Decimal("220.00"),
+    )
+    db_session.commit()
+
+    response = client.get(
+        "/api/products?category=Jaquetas&size=M&brand=Marca+A"
+        "&condition=Bom&color=Azul&price_min=100&price_max=150"
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 1
+    assert body["items"][0]["id"] == matching.id
+    assert body["applied_filters"] == {
+        "category": "Jaquetas",
+        "price_min": "100",
+        "price_max": "150",
+        "size": "M",
+        "brand": "Marca A",
+        "condition": "Bom",
+        "color": "Azul",
+    }
+
+
+def test_feed_rejects_inverted_price_range(client):
+    response = client.get("/api/products?price_min=200&price_max=100")
 
     assert response.status_code == 422
