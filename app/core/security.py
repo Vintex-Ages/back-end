@@ -26,8 +26,8 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.core.errors import Forbidden, Unauthorized
 from app.database import get_db
-from app.models.seller import Seller
 from app.models.user import User
+from app.repositories.seller_repository import SellerRepository
 
 _pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -110,8 +110,7 @@ def require_seller(
     db: Session = Depends(get_db),
 ) -> User:
     """Exige que o usuário autenticado tenha cadastro de vendedor. Senão -> 403 `FORBIDDEN`."""
-    is_seller = db.query(Seller).filter(Seller.user_id == user.id).first() is not None
-    if not is_seller:
+    if not SellerRepository(db).exists_for_user(user.id):
         raise Forbidden("Ação restrita a vendedores.")
     return user
 
