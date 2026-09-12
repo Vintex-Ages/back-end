@@ -9,11 +9,18 @@ from __future__ import annotations
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.errors import Conflict, ErrorCode
-from app.core.security import create_access_token, hash_password
+from app.core.errors import Conflict, ErrorCode, Unauthorized
+from app.core.security import create_access_token, hash_password, verify_password
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
-from app.schemas.auth_schema import AuthResponse, RegisterRequest, UserPublic
+from app.schemas.auth_schema import (
+    AuthResponse,
+    LoginRequest,
+    RegisterRequest,
+    UserPublic,
+)
+
+_CREDENCIAIS_INVALIDAS = "E-mail ou senha inválidos."
 
 _EMAIL_JA_CADASTRADO = "Este e-mail já está cadastrado."
 
@@ -45,6 +52,18 @@ class AuthController:
             self.db.rollback()
             raise Conflict(_EMAIL_JA_CADASTRADO, code=ErrorCode.EMAIL_TAKEN)
 
+        return self._issue_auth_response(user)
+
+    def login(self, data: LoginRequest) -> AuthResponse:
+        user = self.repository.get_by_email(data.email)
+        # Mensagem genérica: não revela se o erro foi no e-mail ou na senha.
+        if user is None or not verify_password(data.password, user.password_hash):
+            raise Unauthorized(
+                _CREDENCIAIS_INVALIDAS, code=ErrorCode.INVALID_CREDENTIALS
+            )
+        return self._issue_auth_response(user)
+
+    def _issue_auth_response(self, user: User) -> AuthResponse:
         token = create_access_token(user.id, user.is_admin)
         return AuthResponse(
             user=UserPublic.model_validate(user),
