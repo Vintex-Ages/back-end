@@ -18,16 +18,24 @@ Routers de domínio são agregados em `app/views/__init__.py` sob o prefixo `/ap
 
 ## Autenticação
 
-JWT é a direção arquitetural informada para o Vintex. Porém, o clone atual não contém implementação JWT nem dependência correspondente. Não copie a antiga regra de autenticação mock e não declare autenticação pronta. Antes de implementar, confirme biblioteca, algoritmo, expiração, refresh/revogação, armazenamento de senha, papéis e política de autorização.
+JWT via `PyJWT` (HS256), hash de senha com bcrypt e as dependencies de
+autorização (`get_current_user`, `require_auth`, `require_seller`,
+`require_admin`, `optional_user`) vivem em `app/core/security.py`. Papéis não
+são uma coluna: comprador é todo usuário, vendedor é derivado de existir linha
+em `sellers`, admin é `users.is_admin`. Ver `.ai/adr/0002-autenticacao-jwt.md`
+para o contrato completo (algoritmo, expiração, estratégia de sessão/logout via
+refresh token).
 
 ## Decisões registradas
 
 - `.ai/adr/0001-fundacao-http-kit-api.md`: envelope de erro, prefixo `/api` (sem
   `/v1`), paginação, CORS por ambiente (`CORS_ORIGINS`) e fronteira de transação
   (commit no controller).
+- `.ai/adr/0002-autenticacao-jwt.md`: biblioteca, algoritmo, expiração,
+  estratégia de sessão persistente/logout (refresh token), hash de senha,
+  claim de papel e localização do código de autenticação.
 
 ## Decisões pendentes
 
-- contrato e estratégia completa de autenticação/autorização JWT;
 - padrão de migrations e ciclo de ambientes;
 - estratégia de testes com banco.
