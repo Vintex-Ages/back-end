@@ -1,9 +1,8 @@
 """Contrato de rota pública (absorve a BE-US001-1 / #75).
 
-As rotas de descoberta respondem sem `Authorization`. Enquanto os endpoints
-reais não existem, cobre-se o que já dá: `/health`, o envelope de erro em rota
-inexistente, e os quatro caminhos de descoberta ficam marcados para valer
-quando as issues #85, #93, #108 e #79 entrarem.
+As rotas de descoberta respondem sem `Authorization`. O feed de produtos possui
+testes próprios com banco configurado; este teste mantém a cobertura das rotas
+de descoberta ainda não implementadas.
 """
 
 import pytest
@@ -14,7 +13,6 @@ from app.main import app
 client = TestClient(app)
 
 DISCOVERY_ROUTES = [
-    "/api/products",
     "/api/products/1",
     "/api/stores/1",
     "/api/styles",
