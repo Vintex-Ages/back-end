@@ -1,7 +1,7 @@
 """add refresh_tokens
 
 Revision ID: c1278d935a84
-Revises: 42fe2f7c474e
+Revises: 0f9a7f647244
 Create Date: 2026-09-12 10:00:00.000000
 
 """
@@ -14,7 +14,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "c1278d935a84"
-down_revision: Union[str, None] = "42fe2f7c474e"
+down_revision: Union[str, None] = "0f9a7f647244"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
