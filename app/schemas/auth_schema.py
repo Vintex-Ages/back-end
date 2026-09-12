@@ -68,4 +68,11 @@ class UserPublic(BaseModel):
 class AuthResponse(BaseModel):
     user: UserPublic
     access_token: str
+    refresh_token: str
     token_type: str = "bearer"
+
+
+class RefreshTokenRequest(BaseModel):
+    """Corpo de `/api/auth/logout` e `/api/auth/refresh` — ver ADR 0002."""
+
+    refresh_token: str

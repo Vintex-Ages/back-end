@@ -10,10 +10,15 @@ Ver `.ai/adr/0002-autenticacao-jwt.md` para o contrato completo. Resumo:
 - Senha nunca em texto puro: hash com bcrypt (`passlib`).
 - Dependencies expostas para as rotas: `get_current_user`, `require_auth`,
   `require_seller`, `require_admin`, `optional_user`.
+- Refresh token: valor aleatório de alta entropia, nunca gravado em texto
+  puro — só o hash SHA-256 (`refresh_tokens.token_hash`), usado como sessão
+  persistente (login/logout/refresh, issue #83).
 """
 
 from __future__ import annotations
 
+import hashlib
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -66,6 +71,30 @@ def create_access_token(user_id: int, is_admin: bool) -> str:
         "exp": now + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
     }
     return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
+
+
+def generate_refresh_token() -> str:
+    """Gera o valor aleatório do refresh token (nunca persistido em texto puro)."""
+    return secrets.token_urlsafe(48)
+
+
+def hash_refresh_token(raw_token: str) -> str:
+    """Hash determinístico (SHA-256) para gravar/consultar `refresh_tokens.token_hash`.
+
+    Não é bcrypt: o refresh token já tem alta entropia própria (não é uma
+    senha escolhida por humano) e precisa ser localizável por igualdade no
+    banco, o que um hash com salt aleatório não permite.
+    """
+    return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+
+
+def utcnow_naive() -> datetime:
+    """`datetime` UTC sem tzinfo — consistente com `BaseModel.created_at`/`updated_at`."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def refresh_token_expires_at() -> datetime:
+    return utcnow_naive() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
 
 
 def decode_token(token: str) -> dict:
