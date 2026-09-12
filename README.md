@@ -83,6 +83,17 @@ alembic current
 
 Sempre revise o arquivo gerado em `alembic/versions/` antes de aplicar — o autogenerate não detecta tudo (renomear coluna, alguns constraints, etc.).
 
+## Seeds
+
+Dados sintéticos para desenvolvimento e demo. Rode **depois** de `alembic upgrade head`, nesta ordem:
+
+```bash
+python -m app.seeds.lojas   # endereços, vendedores e lojas (RS)
+python -m app.seeds.pecas   # peças e imagens, distribuídas entre as lojas
+```
+
+Ambos são idempotentes — rodar de novo não duplica.
+
 ## Testes
 
 ```bash
