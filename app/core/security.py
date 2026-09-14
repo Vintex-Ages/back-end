@@ -29,6 +29,7 @@ from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.core.clock import utcnow_naive
 from app.core.errors import Forbidden, Unauthorized
 from app.database import get_db
 from app.models.user import User
@@ -105,11 +106,6 @@ def hash_refresh_token(raw_token: str) -> str:
     banco, o que um hash com salt aleatório não permite.
     """
     return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
-
-
-def utcnow_naive() -> datetime:
-    """`datetime` UTC sem tzinfo — consistente com `BaseModel.created_at`/`updated_at`."""
-    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def refresh_token_expires_at() -> datetime:

@@ -78,6 +78,46 @@ def test_refresh_com_token_invalido_retorna_401(client):
     assert response.status_code == 401
 
 
+def test_refresh_com_usuario_orfao_comita_a_revogacao_antes_do_401():
+    # Linha órfã (usuário apagado sem cascade no refresh token) não deveria
+    # acontecer, mas se acontecer a revogação feita por revoke_if_valid()
+    # não pode ficar só pendente na transação: sem o commit, o rollback
+    # implícito no fechamento da sessão desfaria a revogação, e o token
+    # "inválido" continuaria utilizável.
+    import pytest
+
+    from app.controllers.auth_controller import AuthController
+    from app.core.errors import Unauthorized
+
+    class RevogadoFalso:
+        user_id = 999999  # não existe
+
+    class RefreshTokensFalso:
+        def revoke_if_valid(self, token_hash):
+            return RevogadoFalso()
+
+    class RepoFalso:
+        def get_by_id(self, user_id):
+            return None  # usuário órfão
+
+    class DbFalso:
+        def __init__(self):
+            self.comitou = False
+
+        def commit(self):
+            self.comitou = True
+
+    controller = AuthController.__new__(AuthController)
+    controller.db = DbFalso()
+    controller.repository = RepoFalso()
+    controller.refresh_tokens = RefreshTokensFalso()
+
+    with pytest.raises(Unauthorized):
+        controller.refresh("qualquer-token")
+
+    assert controller.db.comitou is True
+
+
 def test_logout_nao_revoga_refresh_token_de_outro_usuario(client):
     auth_a = _registrar(client, email="usuaria-a@example.com")
     auth_b = _registrar(client, email="usuaria-b@example.com")

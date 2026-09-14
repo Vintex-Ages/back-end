@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, Optional
 from sqlalchemy import BigInteger, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.clock import utcnow_naive
 from app.models.base_model import BaseModel
 
 if TYPE_CHECKING:
@@ -19,6 +18,12 @@ class RefreshToken(BaseModel):
     puro. `revoked_at` é preenchido no logout e na rotação (`/auth/refresh`
     revoga o token usado e emite um par novo). Datas são naive UTC, como
     `created_at`/`updated_at` de `BaseModel`.
+
+    A checagem de validade (não revogado e não expirado) não vive aqui como
+    propriedade Python — mora em `RefreshTokenRepository.revoke_if_valid()`,
+    como um único `UPDATE ... WHERE` atômico. Um `is_valid` de conveniência
+    reintroduziria a race condition que esse método fecha (ler validade e
+    revogar em dois passos separados, sem garantia contra concorrência).
     """
 
     __tablename__ = "refresh_tokens"
@@ -32,9 +37,3 @@ class RefreshToken(BaseModel):
     revoked_at: Mapped[Optional[datetime]] = mapped_column()
 
     user: Mapped["User"] = relationship()
-
-    @property
-    def is_valid(self) -> bool:
-        if self.revoked_at is not None:
-            return False
-        return self.expires_at > utcnow_naive()
