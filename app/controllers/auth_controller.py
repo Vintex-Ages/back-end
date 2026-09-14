@@ -10,7 +10,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.errors import Conflict, ErrorCode, Unauthorized
-from app.core.security import create_access_token, hash_password, verify_password
+from app.core.security import (
+    create_access_token,
+    hash_password,
+    verify_password_or_dummy,
+)
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.schemas.auth_schema import (
@@ -23,12 +27,6 @@ from app.schemas.auth_schema import (
 _CREDENCIAIS_INVALIDAS = "E-mail ou senha inválidos."
 
 _EMAIL_JA_CADASTRADO = "Este e-mail já está cadastrado."
-
-# Hash bcrypt de uma senha que não existe em lugar nenhum — usado só pra
-# gastar o mesmo tempo de verify_password quando o e-mail não existe (ver
-# login()). Sem isso, e-mail inexistente responde muito mais rápido que
-# senha errada, e dá pra enumerar contas cadastradas medindo latência.
-_HASH_FICTICIO = "$2b$12$1.AKZTlsRKwIQBLhZvhr6uS6SPfEQQDo/spTe4Nhe9G6fIKaVHkJu"
 
 
 class AuthController:
@@ -69,16 +67,17 @@ class AuthController:
 
     def login(self, data: LoginRequest) -> AuthResponse:
         user = self.repository.get_by_email(data.email)
-        # Roda o bcrypt sempre, mesmo sem usuário — contra um hash fictício
-        # quando não há um de verdade — pra não vazar por timing se o
-        # e-mail existe (ver _HASH_FICTICIO).
-        password_hash = user.password_hash if user is not None else _HASH_FICTICIO
-        senha_valida = verify_password(data.password, password_hash)
+        # verify_password_or_dummy roda o bcrypt mesmo sem usuário (contra
+        # um hash fictício) — não vaza por timing se o e-mail existe.
+        senha_valida = verify_password_or_dummy(
+            data.password, user.password_hash if user is not None else None
+        )
         # Mensagem genérica: não revela se o erro foi no e-mail ou na senha.
-        if user is None or not senha_valida:
+        if not senha_valida:
             raise Unauthorized(
                 _CREDENCIAIS_INVALIDAS, code=ErrorCode.INVALID_CREDENTIALS
             )
+        assert user is not None  # senha_valida só é True com user existente
         return self._issue_auth_response(user)
 
     def _issue_auth_response(self, user: User) -> AuthResponse:

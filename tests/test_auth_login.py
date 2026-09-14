@@ -58,19 +58,22 @@ def test_login_com_senha_errada_retorna_401_com_mesma_mensagem_generica(client):
     assert resposta_senha_errada.json()["error"]["code"] == "INVALID_CREDENTIALS"
 
 
-def test_login_com_email_inexistente_ainda_roda_verificacao_de_senha(monkeypatch):
-    # Contra vazamento de existência de conta por timing: bcrypt deve rodar
-    # mesmo sem usuário, contra um hash fictício (ver _HASH_FICTICIO).
+def test_login_com_email_inexistente_delega_para_verify_password_or_dummy(
+    monkeypatch,
+):
+    # Contra vazamento de existência de conta por timing: login() precisa
+    # chamar verify_password_or_dummy com password_hash=None (que por sua
+    # vez roda o bcrypt contra um hash fictício - testado em
+    # test_security.py) em vez de pular a verificação quando não há usuário.
     from app.controllers import auth_controller as auth_controller_module
 
     chamadas = []
-    original = auth_controller_module.verify_password
 
     def espiao(password, password_hash):
         chamadas.append(password_hash)
-        return original(password, password_hash)
+        return False
 
-    monkeypatch.setattr(auth_controller_module, "verify_password", espiao)
+    monkeypatch.setattr(auth_controller_module, "verify_password_or_dummy", espiao)
 
     class RepoFalso:
         def get_by_email(self, email):
@@ -91,7 +94,7 @@ def test_login_com_email_inexistente_ainda_roda_verificacao_de_senha(monkeypatch
             LoginRequest(email="fantasma@example.com", password="qualquer")
         )
 
-    assert chamadas == [auth_controller_module._HASH_FICTICIO]
+    assert chamadas == [None]
 
 
 def test_login_token_contem_id_e_papel_do_usuario(client):
