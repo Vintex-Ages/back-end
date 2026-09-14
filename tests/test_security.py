@@ -19,6 +19,7 @@ from app.core.security import (
     require_auth,
     require_seller,
     verify_password,
+    verify_password_or_dummy,
 )
 from app.database import get_db
 from app.models import Seller, User
@@ -109,6 +110,31 @@ def test_verify_password_credenciais_erradas():
 def test_verify_password_hash_invalido_nunca_autentica():
     # sentinela gravado pelo seed (app/seeds/lojas.py) — nunca deve autenticar.
     assert verify_password("qualquer-coisa", "!seed-no-login") is False
+
+
+def test_verify_password_or_dummy_com_hash_none_roda_bcrypt_e_falha(monkeypatch):
+    # Contra vazamento de existência de conta por timing: bcrypt deve rodar
+    # mesmo sem hash (email/identificador inexistente).
+    import app.core.security as security_module
+
+    chamadas = []
+    original = security_module.verify_password
+
+    def espiao(password, password_hash):
+        chamadas.append(password_hash)
+        return original(password, password_hash)
+
+    monkeypatch.setattr(security_module, "verify_password", espiao)
+
+    assert verify_password_or_dummy("qualquer-senha", None) is False
+    assert len(chamadas) == 1
+    assert chamadas[0] is not None  # rodou contra o hash fictício, não pulou
+
+
+def test_verify_password_or_dummy_com_hash_real_funciona_normalmente():
+    h = hash_password("Senha123")
+    assert verify_password_or_dummy("Senha123", h) is True
+    assert verify_password_or_dummy("errada", h) is False
 
 
 # --- require_auth / get_current_user ---------------------------------------------

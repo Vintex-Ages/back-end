@@ -55,6 +55,25 @@ def verify_password(password: str, password_hash: str) -> bool:
         return False
 
 
+# Hash bcrypt de uma senha que não existe em lugar nenhum — usado por
+# `verify_password_or_dummy` pra gastar o mesmo tempo de bcrypt quando não há
+# usuário. Sem isso, autenticar com um e-mail inexistente responde bem mais
+# rápido que senha errada numa conta real, e dá pra enumerar contas
+# cadastradas medindo a latência da resposta.
+_DUMMY_PASSWORD_HASH = "$2b$12$1.AKZTlsRKwIQBLhZvhr6uS6SPfEQQDo/spTe4Nhe9G6fIKaVHkJu"
+
+
+def verify_password_or_dummy(password: str, password_hash: Optional[str]) -> bool:
+    """Como `verify_password`, mas segura contra timing quando não há usuário.
+
+    Chame com `password_hash=None` (em vez de pular a chamada) sempre que o
+    e-mail/identificador não existir — o bcrypt roda do mesmo jeito, contra
+    `_DUMMY_PASSWORD_HASH`, e a função sempre devolve `False` nesse caso.
+    """
+    resultado = verify_password(password, password_hash or _DUMMY_PASSWORD_HASH)
+    return password_hash is not None and resultado
+
+
 def create_access_token(user_id: int, is_admin: bool) -> str:
     """Emite o access token (expira em `ACCESS_TOKEN_EXPIRE_MINUTES`)."""
     now = datetime.now(timezone.utc)

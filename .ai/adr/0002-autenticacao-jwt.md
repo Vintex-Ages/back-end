@@ -54,10 +54,12 @@ gravam um valor sentinela (`"!seed-no-login"`) que não é um hash bcrypt válid
 
 Não existe coluna `role` em `users`: os papéis são compostos (comprador = todo
 usuário; vendedor = tem linha em `sellers`; admin = `users.is_admin`) e um
-usuário pode ser comprador **e** vendedor ao mesmo tempo. O payload carrega só
-`sub` (id do usuário), `is_admin` e `exp`. `is_seller` **não** vai no token —
-`require_seller` resolve por uma consulta a `sellers` a cada request. Efeito
-colateral desejado: quem vira vendedor não precisa relogar.
+usuário pode ser comprador **e** vendedor ao mesmo tempo. O payload carrega
+`sub` (id do usuário), `is_admin` e `exp`, mais `type` e `iat` (claims padrão
+de JWT — `type` distingue este token de outro formato que venha a existir,
+`iat` é informativo). `is_seller` **não** vai no token — `require_seller`
+resolve por uma consulta a `sellers` a cada request. Efeito colateral
+desejado: quem vira vendedor não precisa relogar.
 
 ### 7. Localização do código — `app/core/security.py`
 
