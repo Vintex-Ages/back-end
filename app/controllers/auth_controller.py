@@ -42,6 +42,13 @@ class AuthController:
             # é a garantia de verdade; o check antes é só a resposta rápida
             # no caso comum. `create()` já dá flush (o INSERT com RETURNING
             # roda ali, não só no commit), por isso o try cobre os dois.
+            #
+            # Assume que EMAIL_TAKEN é a única causa possível: hoje
+            # RegisterRequest nunca preenche `cpf` nem `address_id` (as
+            # outras colunas com constraint de unicidade/FK em `users`), só
+            # `email`. Se o cadastro passar a aceitar CPF ou endereço,
+            # revisar este except — outra IntegrityError seria mal
+            # reportada como EMAIL_TAKEN.
             self.db.rollback()
             raise Conflict(_EMAIL_JA_CADASTRADO, code=ErrorCode.EMAIL_TAKEN)
 

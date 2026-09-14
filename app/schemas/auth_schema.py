@@ -26,6 +26,12 @@ def _validar_senha(password: str) -> str:
     return password
 
 
+def _normalizar_email(email: str) -> str:
+    # "Nome@Ex.com" e "nome@ex.com" são o mesmo e-mail: sem isso, unicidade
+    # e login divergem silenciosamente por causa da caixa.
+    return email.lower()
+
+
 class RegisterRequest(BaseModel):
     name: str
     email: EmailStr
@@ -35,9 +41,7 @@ class RegisterRequest(BaseModel):
     @field_validator("email")
     @classmethod
     def normalizar_email(cls, value: str) -> str:
-        # "Nome@Ex.com" e "nome@ex.com" são o mesmo e-mail: sem isso,
-        # unicidade e login divergem silenciosamente por causa da caixa.
-        return value.lower()
+        return _normalizar_email(value)
 
     @field_validator("password")
     @classmethod
@@ -52,17 +56,27 @@ class LoginRequest(BaseModel):
     @field_validator("email")
     @classmethod
     def normalizar_email(cls, value: str) -> str:
-        return value.lower()
+        return _normalizar_email(value)
 
 
-class UserPublic(BaseModel):
+class UserIdentity(BaseModel):
+    """Campos públicos comuns a qualquer resposta que exponha o usuário.
+
+    Base de `UserPublic` (aqui) e de `MeResponse` (`app/schemas/user_schema.py`)
+    — cada uma acrescenta só o que é próprio do seu endpoint, sem duplicar
+    id/name/email/is_admin.
+    """
+
     id: int
     name: str
     email: str
     is_admin: bool
-    created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class UserPublic(UserIdentity):
+    created_at: datetime
 
 
 class AuthResponse(BaseModel):
