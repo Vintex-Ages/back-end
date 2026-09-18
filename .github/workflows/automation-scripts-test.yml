@@ -1,0 +1,16 @@
+name: Automation Scripts Test
+
+on:
+  pull_request:
+    paths: ['.github/scripts/**']
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: node --test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: node --test .github/scripts/lib/*.tests.mjs
