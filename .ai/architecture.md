@@ -10,6 +10,11 @@
 - `app/database.py`: conexão e sessões.
 - `app/config.py`: configuração por ambiente.
 - `app/core/`: fundação transversal (envelope de erro, paginação) — ver ADR 0001.
+- `app/services/ai/`: abstração do provedor de IA (VE-06, back-end#63). Toda
+  feature de IA consome `AIProvider`/`get_ai_provider()`, nunca um SDK
+  diretamente. Sem fornecedor escolhido, o provider ativo é
+  `UnavailableAIProvider`, que levanta `AIProviderUnavailableError` — quem
+  chama degrada a funcionalidade, nunca deixa isso virar um 500.
 - `app/main.py`: composição da aplicação (`create_app`) e middleware.
 
 Fluxo esperado: `Route/View → Controller → Repository → Model/Database`, usando schemas na fronteira HTTP. Rotas não devem conter queries; repositories não devem decidir respostas HTTP; models não devem acumular orquestração de casos de uso.
