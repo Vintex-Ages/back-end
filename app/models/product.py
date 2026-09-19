@@ -1,5 +1,5 @@
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from sqlalchemy import (
     JSON,
@@ -18,6 +18,8 @@ from app.models.base_model import BaseModel
 if TYPE_CHECKING:
     from app.models.product_image import ProductImage
     from app.models.store import Store
+
+AIStatus = Literal["pending", "processing", "done", "failed"]
 
 
 class Product(BaseModel):
@@ -59,7 +61,7 @@ class Product(BaseModel):
     # Pipeline assíncrono de ingestão de IA (VE-05, back-end#62).
     # `ai_status` nulo significa "nenhuma análise de IA foi solicitada para
     # esta peça" — só recebe um valor quando `enqueue_image_analysis` roda.
-    ai_status: Mapped[str | None] = mapped_column(String(20))
+    ai_status: Mapped[AIStatus | None] = mapped_column(String(20))
     # Resultado bruto de `AIProvider.analyze_image` (ver app/services/ai/base.py).
     # Aplicar essas sugestões aos campos editáveis do formulário é escopo da
     # VS-014 (back-end#33); aqui só guardamos o resultado da análise.

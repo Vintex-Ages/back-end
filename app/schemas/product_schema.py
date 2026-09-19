@@ -5,6 +5,10 @@ from pydantic import BaseModel, ConfigDict
 
 from app.services.ai.base import ImageAnalysisResult
 
+ProductAIStatusValue = Literal[
+    "not_requested", "pending", "processing", "done", "failed"
+]
+
 
 class FeedStoreResponse(BaseModel):
     id: int
@@ -36,6 +40,6 @@ class ProductAIStatusResponse(BaseModel):
     análise; os demais valores refletem `Product.ai_status`.
     """
 
-    status: Literal["not_requested", "pending", "processing", "done", "failed"]
+    status: ProductAIStatusValue
     error: str | None = None
     suggestions: ImageAnalysisResult | None = None

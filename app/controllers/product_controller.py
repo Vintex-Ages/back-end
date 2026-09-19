@@ -7,6 +7,7 @@ from app.schemas.product_schema import (
     FeedResponse,
     FeedStoreResponse,
     ProductAIStatusResponse,
+    ProductAIStatusValue,
     ProductFeedItemResponse,
 )
 from app.services.ai.base import ImageAnalysisResult
@@ -44,8 +45,11 @@ class ProductController:
         if product is None:
             raise NotFound("Peça não encontrada.", code=ErrorCode.PRODUCT_NOT_FOUND)
 
+        status: ProductAIStatusValue = (
+            "not_requested" if product.ai_status is None else product.ai_status
+        )
         return ProductAIStatusResponse(
-            status=product.ai_status or "not_requested",
+            status=status,
             error=product.ai_error,
             suggestions=(
                 ImageAnalysisResult.model_validate(product.ai_suggestions)
