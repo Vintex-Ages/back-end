@@ -1,6 +1,9 @@
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
+
+from app.services.ai.base import ImageAnalysisResult
 
 
 class FeedStoreResponse(BaseModel):
@@ -24,3 +27,15 @@ class FeedResponse(BaseModel):
     page: int
     page_size: int
     total: int
+
+
+class ProductAIStatusResponse(BaseModel):
+    """Status da análise de IA da peça (VE-05, back-end#62).
+
+    `not_requested` significa que a peça nunca teve fotos enviadas para
+    análise; os demais valores refletem `Product.ai_status`.
+    """
+
+    status: Literal["not_requested", "pending", "processing", "done", "failed"]
+    error: str | None = None
+    suggestions: ImageAnalysisResult | None = None

@@ -1,12 +1,15 @@
 from sqlalchemy.orm import Session
 
+from app.core.errors import ErrorCode, NotFound
 from app.core.pagination import PageParams
 from app.repositories.product_repository import ProductRepository
 from app.schemas.product_schema import (
     FeedResponse,
     FeedStoreResponse,
+    ProductAIStatusResponse,
     ProductFeedItemResponse,
 )
+from app.services.ai.base import ImageAnalysisResult
 
 
 class ProductController:
@@ -34,4 +37,19 @@ class ProductController:
             page=params.page,
             page_size=params.page_size,
             total=total,
+        )
+
+    def get_ai_status(self, product_id: int) -> ProductAIStatusResponse:
+        product = self.repository.get_by_id(product_id)
+        if product is None:
+            raise NotFound("Peça não encontrada.", code=ErrorCode.PRODUCT_NOT_FOUND)
+
+        return ProductAIStatusResponse(
+            status=product.ai_status or "not_requested",
+            error=product.ai_error,
+            suggestions=(
+                ImageAnalysisResult.model_validate(product.ai_suggestions)
+                if product.ai_suggestions is not None
+                else None
+            ),
         )
