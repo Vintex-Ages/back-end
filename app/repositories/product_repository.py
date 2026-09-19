@@ -24,6 +24,9 @@ class ProductRepository:
     def __init__(self, db: Session):
         self.db = db
 
+    def get_by_id(self, product_id: int) -> Product | None:
+        return self.db.get(Product, product_id)
+
     def get_active_feed(self, params: PageParams) -> tuple[list[ProductFeedRow], int]:
         cover_image_url = (
             select(ProductImage.image_url)

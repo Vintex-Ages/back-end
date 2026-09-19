@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.controllers.product_controller import ProductController
 from app.core.pagination import PageParams, page_params
 from app.database import get_db
-from app.schemas.product_schema import FeedResponse
+from app.schemas.product_schema import FeedResponse, ProductAIStatusResponse
 
 router = APIRouter(prefix="/products", tags=["Products"])
 
@@ -24,3 +24,11 @@ def list_products(
     controller: ProductController = Depends(get_controller),
 ) -> FeedResponse:
     return controller.get_feed(params)
+
+
+@router.get("/{product_id}/ai-status", response_model=ProductAIStatusResponse)
+def get_product_ai_status(
+    product_id: int,
+    controller: ProductController = Depends(get_controller),
+) -> ProductAIStatusResponse:
+    return controller.get_ai_status(product_id)
