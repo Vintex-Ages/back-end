@@ -2,7 +2,7 @@ from decimal import Decimal
 from typing import TypedDict, cast
 
 from sqlalchemy import Select, func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.pagination import Page, PageParams, paginate
 from app.models.product import Product
@@ -78,6 +78,17 @@ class ProductRepository:
             .join(Seller, Seller.id == Store.seller_id)
             .where(Product.id == product_id, Seller.user_id == user_id)
         )
+
+    def get_detail_by_id(self, product_id: int) -> Product | None:
+        stmt = (
+            select(Product)
+            .options(
+                joinedload(Product.store).joinedload(Store.address),
+                selectinload(Product.images),
+            )
+            .where(Product.id == product_id)
+        )
+        return self.db.execute(stmt).scalar_one_or_none()
 
     def save(self, product: Product) -> Product:
         self.db.commit()

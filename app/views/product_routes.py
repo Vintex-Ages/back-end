@@ -12,7 +12,7 @@ from app.schemas.product_management_schema import (
     ProductManagementResponse,
     ProductUpdate,
 )
-from app.schemas.product_schema import FeedResponse
+from app.schemas.product_schema import FeedResponse, ProductDetailResponse
 
 router = APIRouter(prefix="/products", tags=["Products"])
 seller_router = APIRouter(prefix="/seller/products", tags=["Seller products"])
@@ -60,6 +60,19 @@ seller_router.add_api_route(
     methods=["GET"],
     response_model=ProductManagementPage,
 )
+
+
+@router.get(
+    "/{product_id}",
+    response_model=ProductDetailResponse,
+    summary="Detalhe da peça",
+    responses={404: {"description": "PRODUCT_NOT_FOUND"}},
+)
+def get_product_detail(
+    product_id: int,
+    controller: ProductController = Depends(get_controller),
+) -> ProductDetailResponse:
+    return controller.get_detail(product_id)
 
 
 @router.api_route(
