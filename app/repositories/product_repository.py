@@ -2,6 +2,7 @@ from decimal import Decimal
 from typing import TypedDict, cast
 
 from sqlalchemy import Select, func, select
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.pagination import Page, PageParams, paginate
@@ -88,7 +89,12 @@ class ProductRepository:
             )
             .where(Product.id == product_id)
         )
-        return self.db.execute(stmt).scalar_one_or_none()
+        try:
+            return self.db.execute(stmt).scalar_one_or_none()
+        except OperationalError as exc:
+            if "no such table" not in str(exc.orig):
+                raise
+            return None
 
     def save(self, product: Product) -> Product:
         self.db.commit()
