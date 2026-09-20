@@ -73,7 +73,9 @@ def update_product(
     user_id: int = Depends(get_current_user_id),
     controller: ProductController = Depends(get_controller),
 ) -> ProductManagementResponse:
-    return controller.update(product_id, user_id, data)
+    return ProductManagementResponse.model_validate(
+        controller.update(product_id, user_id, data)
+    )
 
 
 @router.post("/{product_id}/unpublish", response_model=ProductManagementResponse)
@@ -82,7 +84,9 @@ def unpublish_product(
     user_id: int = Depends(get_current_user_id),
     controller: ProductController = Depends(get_controller),
 ) -> ProductManagementResponse:
-    return controller.set_status(product_id, user_id, "despublicado")
+    return ProductManagementResponse.model_validate(
+        controller.set_status(product_id, user_id, "despublicado")
+    )
 
 
 @router.post("/{product_id}/publish", response_model=ProductManagementResponse)
@@ -91,4 +95,6 @@ def publish_product(
     user_id: int = Depends(get_current_user_id),
     controller: ProductController = Depends(get_controller),
 ) -> ProductManagementResponse:
-    return controller.set_status(product_id, user_id, "ativo")
+    return ProductManagementResponse.model_validate(
+        controller.set_status(product_id, user_id, "ativo")
+    )
