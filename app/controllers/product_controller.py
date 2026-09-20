@@ -48,7 +48,7 @@ class ProductController:
     def list_for_seller(
         self, user_id: int, params: PageParams, status: str | None
     ) -> ProductManagementPage:
-        page: Page[Product] = self.repository.list_for_seller(user_id, params, status)
+        page: Page[object] = self.repository.list_for_seller(user_id, params, status)
         return ProductManagementPage(
             items=[
                 ProductManagementResponse.model_validate(product)

@@ -59,7 +59,7 @@ class ProductRepository:
 
     def list_for_seller(
         self, user_id: int, params: PageParams, status: str | None = None
-    ) -> Page[Product]:
+    ) -> Page[object]:
         stmt = (
             select(Product)
             .join(Store, Store.id == Product.store_id)
@@ -69,10 +69,7 @@ class ProductRepository:
         )
         if status is not None:
             stmt = stmt.where(Product.status == status)
-        return cast(
-            Page[Product],
-            paginate(self.db, cast(Select[tuple[object, ...]], stmt), params),
-        )
+        return paginate(self.db, cast(Select[tuple[object, ...]], stmt), params)
 
     def get_for_seller(self, product_id: int, user_id: int) -> Product | None:
         return self.db.scalar(
