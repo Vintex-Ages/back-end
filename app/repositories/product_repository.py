@@ -4,9 +4,10 @@ from typing import TypedDict, cast
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
-from app.core.pagination import PageParams
+from app.core.pagination import Page, PageParams, paginate
 from app.models.product import Product
 from app.models.product_image import ProductImage
+from app.models.seller import Seller
 from app.models.store import Store
 
 
@@ -55,3 +56,30 @@ class ProductRepository:
             .all()
         )
         return [cast(ProductFeedRow, dict(row)) for row in rows], total
+
+    def list_for_seller(
+        self, user_id: int, params: PageParams, status: str | None = None
+    ) -> Page[Product]:
+        stmt = (
+            select(Product)
+            .join(Store, Store.id == Product.store_id)
+            .join(Seller, Seller.id == Store.seller_id)
+            .where(Seller.user_id == user_id)
+            .order_by(Product.created_at.desc(), Product.id.desc())
+        )
+        if status is not None:
+            stmt = stmt.where(Product.status == status)
+        return cast(Page[Product], paginate(self.db, stmt, params))
+
+    def get_for_seller(self, product_id: int, user_id: int) -> Product | None:
+        return self.db.scalar(
+            select(Product)
+            .join(Store, Store.id == Product.store_id)
+            .join(Seller, Seller.id == Store.seller_id)
+            .where(Product.id == product_id, Seller.user_id == user_id)
+        )
+
+    def save(self, product: Product) -> Product:
+        self.db.commit()
+        self.db.refresh(product)
+        return product
