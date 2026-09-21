@@ -1,0 +1,38 @@
+name: Close Guard
+
+on:
+  issues:
+    types: [closed]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: "Issue number to run the guard against"
+        required: true
+      dry_run:
+        description: "Log the intended action without reopening/restoring anything"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    if: vars.GPA_APP_CLIENT_ID != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.GPA_APP_CLIENT_ID }}
+          private-key: ${{ secrets.GPA_APP_PRIVATE_KEY }}
+          owner: Vintex-Ages
+      - run: node .github/scripts/close-guard.mjs
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PROJECT_ORG: Vintex-Ages
+          SOURCE_PROJECT_NUMBER: 4
+          AGGREGATE_PROJECT_NUMBER: 2
+          ISSUE_NUMBER_OVERRIDE: ${{ github.event.inputs.issue_number }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run || 'false' }}
