@@ -132,6 +132,41 @@ jobs:
       - name: Run tests
         run: pytest tests/ -v
 
+  test-postgres:
+    name: Tests (Postgres)
+    runs-on: ubuntu-latest
+    needs: [lint, type-check]
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: vintex_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      TEST_POSTGRES_URL: postgresql://postgres:postgres@localhost:5432/vintex_test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Postgres-only tests
+        run: pytest tests/ -v -m postgres
+
   docker:
     name: Build Docker Image
     runs-on: ubuntu-latest
