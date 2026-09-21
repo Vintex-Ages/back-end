@@ -1,12 +1,18 @@
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.controllers.product_controller import ProductController
+from app.core.current_user import get_current_user_id
 from app.core.pagination import PageParams, page_params
 from app.database import get_db
-from app.schemas.product_schema import FeedResponse
+from app.schemas.product_schema import (
+    FeedResponse,
+    ProductDraftCreate,
+    ProductDraftResponse,
+    ProductDraftUpdate,
+)
 
 router = APIRouter(prefix="/products", tags=["Products"])
 
@@ -24,3 +30,33 @@ def list_products(
     controller: ProductController = Depends(get_controller),
 ) -> FeedResponse:
     return controller.get_feed(params)
+
+
+@router.post(
+    "", response_model=ProductDraftResponse, status_code=status.HTTP_201_CREATED
+)
+def create_draft(
+    data: ProductDraftCreate,
+    user_id: int = Depends(get_current_user_id),
+    controller: ProductController = Depends(get_controller),
+) -> ProductDraftResponse:
+    return controller.create_draft(user_id, data)
+
+
+@router.patch("/{product_id}", response_model=ProductDraftResponse)
+def update_draft(
+    product_id: int,
+    data: ProductDraftUpdate,
+    user_id: int = Depends(get_current_user_id),
+    controller: ProductController = Depends(get_controller),
+) -> ProductDraftResponse:
+    return controller.update_draft(user_id, product_id, data)
+
+
+@router.post("/{product_id}/publish", response_model=ProductDraftResponse)
+def publish_draft(
+    product_id: int,
+    user_id: int = Depends(get_current_user_id),
+    controller: ProductController = Depends(get_controller),
+) -> ProductDraftResponse:
+    return controller.publish(user_id, product_id)
