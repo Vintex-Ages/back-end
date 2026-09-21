@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
+    # Provedor de IA ativo (chave registrada em app/services/ai/factory.py).
+    # Nenhum fornecedor foi escolhido ainda (ver .ai/architecture.md); o
+    # padrão "unavailable" degrada sem erro fatal (VE-06).
+    AI_PROVIDER: str = "unavailable"
 
     class Config:
         env_file = ".env"
