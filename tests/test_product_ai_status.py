@@ -1,4 +1,4 @@
-"""GET /api/products/{id}/ai-status (VE-05, back-end#62)."""
+"""GET /api/users/me/products/{id}/ai-status (VE-05, back-end#62)."""
 
 from decimal import Decimal
 
@@ -21,7 +21,7 @@ def test_status_not_requested_quando_ia_nunca_foi_solicitada(
     db_session.add(product)
     db_session.commit()
 
-    response = client.get(f"/api/products/{product.id}/ai-status")
+    response = client.get(f"/api/users/me/products/{product.id}/ai-status")
 
     assert response.status_code == 200
     assert response.json() == {
@@ -43,7 +43,7 @@ def test_status_done_retorna_sugestoes(client, db_session) -> None:
     db_session.add(product)
     db_session.commit()
 
-    response = client.get(f"/api/products/{product.id}/ai-status")
+    response = client.get(f"/api/users/me/products/{product.id}/ai-status")
 
     assert response.status_code == 200
     body = response.json()
@@ -63,7 +63,7 @@ def test_status_failed_retorna_erro(client, db_session) -> None:
     db_session.add(product)
     db_session.commit()
 
-    response = client.get(f"/api/products/{product.id}/ai-status")
+    response = client.get(f"/api/users/me/products/{product.id}/ai-status")
 
     assert response.status_code == 200
     body = response.json()
@@ -73,7 +73,7 @@ def test_status_failed_retorna_erro(client, db_session) -> None:
 
 
 def test_status_404_quando_peca_nao_existe(client) -> None:
-    response = client.get("/api/products/999999/ai-status")
+    response = client.get("/api/users/me/products/999999/ai-status")
 
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "PRODUCT_NOT_FOUND"

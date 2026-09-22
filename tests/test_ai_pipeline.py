@@ -36,6 +36,17 @@ class _StubFailingProvider(AIProvider):
         yield  # pragma: no cover
 
 
+class _StubCrashingProvider(AIProvider):
+    """Simula uma falha que não é `AIProviderError` (ex.: bug do SDK do fornecedor real)."""
+
+    def analyze_image(self, image_urls):
+        raise KeyError("campo inesperado na resposta do fornecedor")
+
+    async def stream_interpret_search(self, query, history=()):
+        raise NotImplementedError
+        yield  # pragma: no cover
+
+
 def make_product(db_session) -> Product:
     store = Store(seller_id=1, name="Brechó Teste")
     product = Product(store=store, name="Jaqueta", price=Decimal("99.90"))
@@ -96,6 +107,22 @@ def test_run_image_analysis_falha_do_provider_marca_failed_sem_derrubar(
     db_session.refresh(product)
     assert product.ai_status == "failed"
     assert product.ai_error
+    assert product.ai_suggestions is None
+
+
+def test_run_image_analysis_falha_inesperada_tambem_marca_failed_sem_derrubar(
+    db_session, monkeypatch
+) -> None:
+    """Exceção que não é `AIProviderError` (ex.: fornecedor real) não deve travar a peça em `processing`."""
+    monkeypatch.setattr(pipeline, "SessionLocal", TestingSessionLocal)
+    monkeypatch.setattr(pipeline, "get_ai_provider", lambda: _StubCrashingProvider())
+    product = make_product(db_session)
+
+    pipeline._run_image_analysis(product.id, ["https://cdn.test/foto.jpg"])
+
+    db_session.refresh(product)
+    assert product.ai_status == "failed"
+    assert product.ai_error == "Falha inesperada na análise de IA."
     assert product.ai_suggestions is None
 
 
