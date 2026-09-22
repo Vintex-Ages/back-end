@@ -4,6 +4,8 @@ Consulte o [guia de contribuição](CONTRIBUTING.md) antes de abrir uma issue ou
 
 Backend da aplicação Vintex, desenvolvido com **Python** e **FastAPI**, seguindo o padrão **MVC**.
 
+Documentação viva (arquitetura, decisões, infraestrutura) em [`documentation/`](documentation/README.md).
+
 ## Arquitetura
 
 ```

@@ -12,3 +12,7 @@ build/
 .mypy_cache/
 *.db
 .coverage
+
+# Docusaurus (VE-25)
+node_modules/
+.docusaurus/
