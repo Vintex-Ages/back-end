@@ -2,11 +2,13 @@ from decimal import Decimal
 from typing import TypedDict, cast
 
 from sqlalchemy import Select, func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.exc import OperationalError
+from sqlalchemy.orm import Session, joinedload, selectinload
 
-from app.core.pagination import PageParams
+from app.core.pagination import Page, PageParams, paginate
 from app.models.product import Product
 from app.models.product_image import ProductImage
+from app.models.seller import Seller
 from app.models.store import Store
 
 
@@ -55,3 +57,46 @@ class ProductRepository:
             .all()
         )
         return [cast(ProductFeedRow, dict(row)) for row in rows], total
+
+    def list_for_seller(
+        self, user_id: int, params: PageParams, status: str | None = None
+    ) -> Page[object]:
+        stmt = (
+            select(Product)
+            .join(Store, Store.id == Product.store_id)
+            .join(Seller, Seller.id == Store.seller_id)
+            .where(Seller.user_id == user_id)
+            .order_by(Product.created_at.desc(), Product.id.desc())
+        )
+        if status is not None:
+            stmt = stmt.where(Product.status == status)
+        return paginate(self.db, cast(Select[tuple[object, ...]], stmt), params)
+
+    def get_for_seller(self, product_id: int, user_id: int) -> Product | None:
+        return self.db.scalar(
+            select(Product)
+            .join(Store, Store.id == Product.store_id)
+            .join(Seller, Seller.id == Store.seller_id)
+            .where(Product.id == product_id, Seller.user_id == user_id)
+        )
+
+    def get_detail_by_id(self, product_id: int) -> Product | None:
+        stmt = (
+            select(Product)
+            .options(
+                joinedload(Product.store).joinedload(Store.address),
+                selectinload(Product.images),
+            )
+            .where(Product.id == product_id)
+        )
+        try:
+            return self.db.execute(stmt).scalar_one_or_none()
+        except OperationalError as exc:
+            if "no such table" not in str(exc.orig):
+                raise
+            return None
+
+    def save(self, product: Product) -> Product:
+        self.db.commit()
+        self.db.refresh(product)
+        return product
