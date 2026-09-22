@@ -40,8 +40,8 @@ class ProductController:
             total=total,
         )
 
-    def get_ai_status(self, product_id: int) -> ProductAIStatusResponse:
-        product = self.repository.get_by_id(product_id)
+    def get_ai_status(self, product_id: int, user_id: int) -> ProductAIStatusResponse:
+        product = self.repository.get_for_seller(product_id, user_id)
         if product is None:
             raise NotFound("Peça não encontrada.", code=ErrorCode.PRODUCT_NOT_FOUND)
 
