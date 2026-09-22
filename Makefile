@@ -64,10 +64,10 @@ test-unit:
 # Implementados junto com as respectivas issues; por ora só sinalizam que
 # ainda não fazem nada, sem quebrar infra-local-test/infra-complete.
 test-localstack:
-	@echo "[test-localstack] ainda não implementado — ver VE-20 (#171)"
+	@echo "[test-localstack] ainda nao implementado - ver VE-20 (#171)"
 
 test-ministack:
-	@echo "[test-ministack] ainda não implementado — ver VE-21 (#172)"
+	@echo "[test-ministack] ainda nao implementado - ver VE-21 (#172)"
 
 test-interoperability:
-	@echo "[test-interoperability] ainda não implementado — ver VE-22 (#173)"
+	@echo "[test-interoperability] ainda nao implementado - ver VE-22 (#173)"
