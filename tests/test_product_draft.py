@@ -36,7 +36,7 @@ def test_create_draft_uses_store_from_current_user(client, db_session):
     user, store = make_seller_store(db_session, "Brecho Aurora", city="Porto Alegre")
 
     resp = client.post(
-        "/api/products",
+        "/api/users/me/products",
         json={"name": "Jaqueta jeans", "price": "149.90"},
         headers={"X-User-Id": str(user.id)},
     )
@@ -52,7 +52,7 @@ def test_create_draft_uses_store_from_current_user(client, db_session):
 
 def test_create_draft_without_store_is_rejected(client, db_session):
     resp = client.post(
-        "/api/products",
+        "/api/users/me/products",
         json={"name": "Jaqueta", "price": "10.00"},
         headers={"X-User-Id": "999"},
     )
@@ -66,7 +66,7 @@ def test_update_draft_applies_only_sent_fields_and_accumulates_ai_corrections(
 ):
     user, _ = make_seller_store(db_session, "Brecho Central")
     created = client.post(
-        "/api/products",
+        "/api/users/me/products",
         json={
             "name": "Vestido",
             "description": "Descrição original",
@@ -116,7 +116,7 @@ def test_update_draft_rejects_other_sellers_product(client, db_session):
     owner, _ = make_seller_store(db_session, "Brecho Dono")
     intruder, _ = make_seller_store(db_session, "Brecho Intruso")
     created = client.post(
-        "/api/products",
+        "/api/users/me/products",
         json={"name": "Bolsa", "price": "50.00"},
         headers={"X-User-Id": str(owner.id)},
     ).json()
@@ -167,13 +167,14 @@ def test_update_draft_missing_product_returns_404(client, db_session):
 def test_publish_requires_at_least_one_photo(client, db_session):
     user, _ = make_seller_store(db_session, "Brecho Sem Foto")
     created = client.post(
-        "/api/products",
+        "/api/users/me/products",
         json={"name": "Sapato", "price": "120.00"},
         headers={"X-User-Id": str(user.id)},
     ).json()
 
     resp = client.post(
-        f"/api/products/{created['id']}/publish", headers={"X-User-Id": str(user.id)}
+        f"/api/users/me/products/{created['id']}/publish",
+        headers={"X-User-Id": str(user.id)},
     )
 
     assert resp.status_code == 422
@@ -185,7 +186,7 @@ def test_publish_requires_at_least_one_photo(client, db_session):
 def test_publish_moves_draft_to_catalog_and_appears_in_feed(client, db_session):
     user, _ = make_seller_store(db_session, "Brecho Publica")
     created = client.post(
-        "/api/products",
+        "/api/users/me/products",
         json={
             "name": "Calça",
             "price": "90.00",
@@ -195,7 +196,8 @@ def test_publish_moves_draft_to_catalog_and_appears_in_feed(client, db_session):
     ).json()
 
     resp = client.post(
-        f"/api/products/{created['id']}/publish", headers={"X-User-Id": str(user.id)}
+        f"/api/users/me/products/{created['id']}/publish",
+        headers={"X-User-Id": str(user.id)},
     )
 
     assert resp.status_code == 200
