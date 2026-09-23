@@ -118,6 +118,48 @@ def test_refresh_com_usuario_orfao_comita_a_revogacao_antes_do_401():
     assert controller.db.comitou is True
 
 
+def test_logout_sem_corpo_retorna_204(client):
+    auth = _registrar(client, email="sem-corpo@example.com")
+
+    response = client.post(ROTA_LOGOUT, headers=_auth_header(auth["access_token"]))
+
+    assert response.status_code == 204
+
+
+def test_logout_sem_corpo_revoga_todos_os_refresh_tokens_ativos_do_usuario(client):
+    # Corpo opcional (revisão do Mauro na #131): sem refresh_token, a rota
+    # já provou identidade via require_auth, então revoga toda sessão ativa
+    # do usuário autenticado — não só a que originou o access_token em uso.
+    auth = _registrar(client, email="duas-sessoes@example.com")
+    login = client.post(
+        ROTA_LOGIN,
+        json={"email": "duas-sessoes@example.com", "password": "Senha123"},
+    ).json()
+
+    assert auth["refresh_token"] != login["refresh_token"]
+
+    response = client.post(
+        ROTA_LOGOUT, headers=_auth_header(login["access_token"])
+    )
+    assert response.status_code == 204
+
+    resposta_registro = client.post(
+        ROTA_REFRESH, json={"refresh_token": auth["refresh_token"]}
+    )
+    resposta_login = client.post(
+        ROTA_REFRESH, json={"refresh_token": login["refresh_token"]}
+    )
+    assert resposta_registro.status_code == 401
+    assert resposta_login.status_code == 401
+
+
+def test_logout_sem_corpo_sem_token_de_acesso_retorna_401(client):
+    response = client.post(ROTA_LOGOUT)
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "AUTH_REQUIRED"
+
+
 def test_logout_nao_revoga_refresh_token_de_outro_usuario(client):
     auth_a = _registrar(client, email="usuaria-a@example.com")
     auth_b = _registrar(client, email="usuaria-b@example.com")

@@ -89,14 +89,27 @@ class AuthController:
         self.db.commit()
         return response
 
-    def logout(self, user: User, raw_refresh_token: str) -> None:
-        """Revoga o refresh token informado. Idempotente e silencioso.
+    def logout(self, user: User, raw_refresh_token: str | None) -> None:
+        """Revoga a sessão. Idempotente e silencioso.
 
-        Um token que não existe, já revogado ou de outro usuário não gera
-        erro — o resultado observável do logout (a sessão não funciona mais)
-        já é garantido nesses casos, e o endpoint não deve confirmar ou negar
-        a existência de um token que o chamador não comprovou possuir.
+        Com `raw_refresh_token`: revoga só aquele token. Um token que não
+        existe, já revogado ou de outro usuário não gera erro — o resultado
+        observável do logout (a sessão não funciona mais) já é garantido
+        nesses casos, e o endpoint não deve confirmar ou negar a existência
+        de um token que o chamador não comprovou possuir.
+
+        Sem `raw_refresh_token` (corpo omitido): revoga todos os refresh
+        tokens ativos do usuário autenticado. A rota já exige `require_auth`
+        — a identidade está provada pelo access token, então exigir o
+        refresh token por cima não acrescenta segurança, e sem esse caminho
+        quem perdeu o refresh token mas ainda tem access token válido não
+        teria como deslogar.
         """
+        if raw_refresh_token is None:
+            self.refresh_tokens.revoke_all_for_user(user.id)
+            self.db.commit()
+            return
+
         stored = self.refresh_tokens.get_by_hash(hash_refresh_token(raw_refresh_token))
         if (
             stored is not None

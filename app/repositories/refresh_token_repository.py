@@ -32,6 +32,27 @@ class RefreshTokenRepository:
         refresh_token.revoked_at = utcnow_naive()
         self.db.add(refresh_token)
 
+    def revoke_all_for_user(self, user_id: int) -> None:
+        """Revoga todos os refresh tokens ainda ativos do usuário.
+
+        Usado pelo logout sem corpo (ADR 0002, decisão 4 — ver
+        `AuthController.logout`): sem um token específico para revogar,
+        a única sessão que a rota pode encerrar com segurança é a de quem
+        já provou identidade pelo access token, então revoga tudo que
+        ainda está ativo para esse usuário. Um `UPDATE` em massa, sem
+        `SELECT` prévio — mesma lógica de `revoke_if_valid`, sem a
+        necessidade de devolver a linha.
+        """
+        stmt = (
+            update(RefreshToken)
+            .where(
+                RefreshToken.user_id == user_id,
+                RefreshToken.revoked_at.is_(None),
+            )
+            .values(revoked_at=utcnow_naive())
+        )
+        self.db.execute(stmt)
+
     def revoke_if_valid(self, token_hash: str) -> RefreshToken | None:
         """Revoga atomicamente só se o token ainda estiver válido.
 

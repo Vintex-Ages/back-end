@@ -41,11 +41,11 @@ def login(
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 def logout(
-    data: RefreshTokenRequest,
+    data: RefreshTokenRequest | None = None,
     user: User = Depends(require_auth),
     controller: AuthController = Depends(get_controller),
 ) -> None:
-    controller.logout(user, data.refresh_token)
+    controller.logout(user, data.refresh_token if data is not None else None)
 
 
 @router.post("/refresh", response_model=AuthResponse)
