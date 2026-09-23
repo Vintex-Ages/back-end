@@ -2,7 +2,7 @@
 
 Ver `.ai/adr/0001-fundacao-http-kit-api.md` §4: `/api/users/me/*` é o
 prefixo de todo recurso do usuário logado (ações de credencial ficam em
-`/api/auth/*`). Substitui a issue #84, que previa `GET /api/auth/me`.
+`/api/auth/*`). Implementa a issue #84.
 """
 
 from fastapi import APIRouter, Depends

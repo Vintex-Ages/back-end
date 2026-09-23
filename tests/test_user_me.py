@@ -1,5 +1,5 @@
-# GET /api/users/me (#84). Substitui GET /api/auth/me — ver ADR 0001 §4 e a
-# nota em app/views/user_routes.py.
+# GET /api/users/me (#84) — ver ADR 0001 §4 e a nota em
+# app/views/user_routes.py.
 
 from app.models.seller import Seller
 
