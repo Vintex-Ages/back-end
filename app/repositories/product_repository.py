@@ -72,6 +72,7 @@ class ProductRepository:
             .where(Product.id == product_id)
             .options(
                 joinedload(Product.store).joinedload(Store.address),
+                joinedload(Product.store).joinedload(Store.seller),
                 selectinload(Product.images),
                 selectinload(Product.ai_corrections),
             )

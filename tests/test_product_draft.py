@@ -112,6 +112,40 @@ def test_update_draft_applies_only_sent_fields_and_accumulates_ai_corrections(
     assert {"field": "color", "suggested": "Azul", "final": "Verde"} in corrections
 
 
+def test_update_draft_rejects_explicit_null_price(client, db_session):
+    user, _ = make_seller_store(db_session, "Brecho Nulo")
+    created = client.post(
+        "/api/users/me/products",
+        json={"name": "Saia", "price": "40.00"},
+        headers={"X-User-Id": str(user.id)},
+    ).json()
+
+    resp = client.patch(
+        f"/api/products/{created['id']}",
+        json={"price": None},
+        headers={"X-User-Id": str(user.id)},
+    )
+
+    assert resp.status_code == 422
+
+
+def test_update_draft_rejects_explicit_null_name(client, db_session):
+    user, _ = make_seller_store(db_session, "Brecho Nulo Nome")
+    created = client.post(
+        "/api/users/me/products",
+        json={"name": "Saia", "price": "40.00"},
+        headers={"X-User-Id": str(user.id)},
+    ).json()
+
+    resp = client.patch(
+        f"/api/products/{created['id']}",
+        json={"name": None},
+        headers={"X-User-Id": str(user.id)},
+    )
+
+    assert resp.status_code == 422
+
+
 def test_update_draft_rejects_other_sellers_product(client, db_session):
     owner, _ = make_seller_store(db_session, "Brecho Dono")
     intruder, _ = make_seller_store(db_session, "Brecho Intruso")

@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class FeedStoreResponse(BaseModel):
@@ -72,6 +72,16 @@ class ProductDraftUpdate(BaseModel):
     price: Decimal | None = None
     images: list[str] | None = None
     ai_corrections: list[AiCorrectionInput] = Field(default_factory=list)
+
+    @field_validator("name", "price")
+    @classmethod
+    def _reject_explicit_null(cls, value: object) -> object:
+        """`name`/`price` são NOT NULL no banco: aceitamos o campo ausente
+        (não altera nada), mas não `null` explícito (limparia um campo
+        obrigatório e quebraria no commit)."""
+        if value is None:
+            raise ValueError("Este campo não pode ser definido como nulo.")
+        return value
 
 
 class ProductStoreResponse(BaseModel):
