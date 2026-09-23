@@ -107,9 +107,13 @@ def test_login_token_contem_id_e_papel_do_usuario(client):
         ROTA_LOGIN, json={"email": "payload@example.com", "password": "Senha123"}
     )
 
-    token = response.json()["access_token"]
+    body = response.json()
     payload = jwt.decode(
-        token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM]
+        body["access_token"], settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM]
     )
-    assert "sub" in payload
-    assert "is_admin" in payload
+    # Verifica o valor, não só a presença: um token emitido para o usuário
+    # errado (`_issue_auth_response(outro_user)`) passaria em `"sub" in
+    # payload`, mas é exatamente o bug que este teste existe para pegar —
+    # é o claim em que toda a autorização da plataforma confia depois.
+    assert payload["sub"] == str(body["user"]["id"])
+    assert payload["is_admin"] is False
