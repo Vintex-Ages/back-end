@@ -10,6 +10,8 @@ from app.schemas.product_schema import (
     AiCorrectionResponse,
     FeedResponse,
     FeedStoreResponse,
+    ProductAIStatusResponse,
+    ProductAIStatusValue,
     ProductDraftCreate,
     ProductDraftResponse,
     ProductDraftUpdate,
@@ -166,6 +168,8 @@ class ProductController:
                 )
                 for correction in product.ai_corrections
             ],
+        )
+
     def get_ai_status(self, product_id: int, user_id: int) -> ProductAIStatusResponse:
         product = self.repository.get_for_seller(product_id, user_id)
         if product is None:

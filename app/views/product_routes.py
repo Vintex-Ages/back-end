@@ -9,6 +9,7 @@ from app.core.pagination import PageParams, page_params
 from app.database import get_db
 from app.schemas.product_schema import (
     FeedResponse,
+    ProductAIStatusResponse,
     ProductDraftCreate,
     ProductDraftResponse,
     ProductDraftUpdate,
@@ -65,6 +66,8 @@ def publish_draft(
     controller: ProductController = Depends(get_controller),
 ) -> ProductDraftResponse:
     return controller.publish(user_id, product_id)
+
+
 @me_router.get("/{product_id}/ai-status", response_model=ProductAIStatusResponse)
 def get_product_ai_status(
     product_id: int,
