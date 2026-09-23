@@ -113,6 +113,8 @@ class ProductDraftResponse(BaseModel):
     store: ProductStoreResponse
     images: list[str]
     ai_corrections: list[AiCorrectionResponse]
+
+
 class ProductAIStatusResponse(BaseModel):
     """Status da análise de IA da peça (VE-05, back-end#62).
 
