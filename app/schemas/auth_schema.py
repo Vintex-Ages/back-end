@@ -22,9 +22,7 @@ def _validar_nome(name: str) -> str:
     # length 2 e passaria. O strip aqui garante que a checagem de tamanho
     # vale para o conteúdo de verdade, não para espaços em branco.
     if len(nome) < _NAME_MIN_LENGTH:
-        raise ValueError(
-            f"O nome deve ter no mínimo {_NAME_MIN_LENGTH} caracteres."
-        )
+        raise ValueError(f"O nome deve ter no mínimo {_NAME_MIN_LENGTH} caracteres.")
     return nome
 
 
