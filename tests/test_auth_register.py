@@ -41,6 +41,43 @@ def test_cadastro_sem_cpf_conclui_normalmente(client):
     assert response.status_code == 201
 
 
+def test_cadastro_com_nome_vazio_retorna_422(client):
+    response = client.post(ROTA, json=_payload(name=""))
+
+    assert response.status_code == 422
+    body = response.json()
+    assert body["error"]["code"] == "VALIDATION_ERROR"
+    assert "name" in body["error"]["fields"]
+
+
+def test_cadastro_com_nome_so_espacos_retorna_422(client):
+    response = client.post(ROTA, json=_payload(name="   "))
+
+    assert response.status_code == 422
+    body = response.json()
+    assert body["error"]["code"] == "VALIDATION_ERROR"
+    assert "name" in body["error"]["fields"]
+
+
+def test_cadastro_com_nome_maior_que_120_retorna_422(client):
+    response = client.post(ROTA, json=_payload(name="A" * 121))
+
+    assert response.status_code == 422
+    body = response.json()
+    assert body["error"]["code"] == "VALIDATION_ERROR"
+    assert "name" in body["error"]["fields"]
+
+
+def test_cadastro_com_nome_com_espacos_nas_bordas_e_normalizado(client, db_session):
+    response = client.post(ROTA, json=_payload(name="  Nova Compradora  "))
+
+    assert response.status_code == 201
+    assert response.json()["user"]["name"] == "Nova Compradora"
+
+    user = db_session.query(User).filter_by(email="nova@example.com").one()
+    assert user.name == "Nova Compradora"
+
+
 def test_cadastro_com_email_invalido_retorna_422(client):
     response = client.post(ROTA, json=_payload(email="invalido.com"))
 

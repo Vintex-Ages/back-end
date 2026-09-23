@@ -9,9 +9,23 @@ from __future__ import annotations
 import re
 from datetime import datetime
 
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 _PASSWORD_MIN_LENGTH = 8
+_NAME_MIN_LENGTH = 2
+_NAME_MAX_LENGTH = 120  # acompanha a coluna users.name (String(120))
+
+
+def _validar_nome(name: str) -> str:
+    nome = name.strip()
+    # `Field(min_length=...)` sozinho não barra nome só de espaços: "  " tem
+    # length 2 e passaria. O strip aqui garante que a checagem de tamanho
+    # vale para o conteúdo de verdade, não para espaços em branco.
+    if len(nome) < _NAME_MIN_LENGTH:
+        raise ValueError(
+            f"O nome deve ter no mínimo {_NAME_MIN_LENGTH} caracteres."
+        )
+    return nome
 
 
 def _validar_senha(password: str) -> str:
@@ -33,10 +47,15 @@ def _normalizar_email(email: str) -> str:
 
 
 class RegisterRequest(BaseModel):
-    name: str
+    name: str = Field(max_length=_NAME_MAX_LENGTH)
     email: EmailStr
     password: str
     phone: str | None = None
+
+    @field_validator("name")
+    @classmethod
+    def validar_nome(cls, value: str) -> str:
+        return _validar_nome(value)
 
     @field_validator("email")
     @classmethod
