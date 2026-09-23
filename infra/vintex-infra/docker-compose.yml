@@ -1,0 +1,99 @@
+name: vintex-infra
+
+# Projeto Compose complementar de infraestrutura de teste local (VE-12).
+# Isolado do docker-compose.yml de desenvolvimento da raiz: portas de host
+# diferentes, rede própria, nunca sobe junto com o compose de dev sem querer.
+#
+# Containers se comunicam entre si pelos aliases de serviço (db, api,
+# localstack, ministack) — nunca por localhost. O host usa localhost com as
+# portas mapeadas abaixo (ex.: Terraform rodando fora do container aponta
+# para localhost:4566 / localhost:4567).
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-vintex_infra}
+    ports:
+      - "${DB_HOST_PORT:-5434}:5432"
+    volumes:
+      - vintex_infra_pgdata:/var/lib/postgresql/data
+    networks:
+      - vintex-infra-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-vintex_infra}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    ports:
+      - "${API_HOST_PORT:-8001}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-vintex_infra}
+      APP_ENV: test
+    networks:
+      - vintex-infra-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  localstack:
+    image: localstack/localstack:3
+    environment:
+      SERVICES: s3,sqs,secretsmanager,iam,sts
+      GATEWAY_LISTEN: 0.0.0.0:4566
+      DEBUG: ${LOCALSTACK_DEBUG:-0}
+    ports:
+      - "${LOCALSTACK_HOST_PORT:-4566}:4566"
+    networks:
+      vintex-infra-net:
+        aliases:
+          - localstack
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:4566/_localstack/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  ministack:
+    # Emula ECS/Fargate, Cloud Map, API Gateway e VPC Link (serviços que o
+    # LocalStack Community não cobre). A VE-21 decide se/quando montar
+    # /var/run/docker.sock — necessário só quando o ECS emulado precisar
+    # subir containers reais; fora de escopo da VE-12.
+    image: ministackorg/ministack:latest
+    environment:
+      GATEWAY_PORT: 4567
+    ports:
+      - "${MINISTACK_HOST_PORT:-4567}:4567"
+    networks:
+      vintex-infra-net:
+        aliases:
+          - ministack
+    healthcheck:
+      # Imagem não tem curl/wget; usa o python3 já presente nela.
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4567/_ministack/health')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+networks:
+  vintex-infra-net:
+    name: vintex-infra-net
+
+volumes:
+  vintex_infra_pgdata:
+    name: vintex_infra_pgdata

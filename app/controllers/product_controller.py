@@ -16,6 +16,7 @@ from app.schemas.product_schema import (
     ProductFeedItemResponse,
     ProductStoreResponse,
 )
+from app.services.ai.base import ImageAnalysisResult
 
 
 class ProductController:
@@ -165,4 +166,20 @@ class ProductController:
                 )
                 for correction in product.ai_corrections
             ],
+    def get_ai_status(self, product_id: int, user_id: int) -> ProductAIStatusResponse:
+        product = self.repository.get_for_seller(product_id, user_id)
+        if product is None:
+            raise NotFound("Peça não encontrada.", code=ErrorCode.PRODUCT_NOT_FOUND)
+
+        status: ProductAIStatusValue = (
+            "not_requested" if product.ai_status is None else product.ai_status
+        )
+        return ProductAIStatusResponse(
+            status=status,
+            error=product.ai_error,
+            suggestions=(
+                ImageAnalysisResult.model_validate(product.ai_suggestions)
+                if product.ai_suggestions is not None
+                else None
+            ),
         )

@@ -65,3 +65,10 @@ def publish_draft(
     controller: ProductController = Depends(get_controller),
 ) -> ProductDraftResponse:
     return controller.publish(user_id, product_id)
+@me_router.get("/{product_id}/ai-status", response_model=ProductAIStatusResponse)
+def get_product_ai_status(
+    product_id: int,
+    user_id: int = Depends(get_current_user_id),
+    controller: ProductController = Depends(get_controller),
+) -> ProductAIStatusResponse:
+    return controller.get_ai_status(product_id, user_id)
