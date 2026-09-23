@@ -46,7 +46,10 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-> **Nota:** A `DATABASE_URL` deve ser fornecida pelo responsável pelo banco de dados.
+> **Nota:** o `.env.example` já aponta para a porta `5433` (o compose publica o
+> Postgres nela, não na `5432` padrão). Se a `5433` estiver ocupada na sua
+> máquina, suba o banco com `DB_HOST_PORT=5434 docker compose up -d db` e
+> ajuste a porta na `DATABASE_URL` do seu `.env` para bater.
 
 ```bash
 # Rodar a API
