@@ -56,6 +56,44 @@ uvicorn app.main:app --reload
 A API estará disponível em `http://localhost:8000`.
 Documentação Swagger em `http://localhost:8000/docs`.
 
+## Migrations
+
+O schema do banco é versionado com Alembic. `alembic/env.py` lê `DATABASE_URL` de `app/config.py` — nunca configure a URL diretamente no `alembic.ini`.
+
+```bash
+# Aplicar todas as migrations pendentes (banco vazio -> estado atual)
+alembic upgrade head
+
+# Reverter a última migration
+alembic downgrade -1
+
+# Reverter todas as migrations (volta ao banco vazio)
+alembic downgrade base
+
+# Criar uma nova revisão a partir das mudanças nos models (app/models/)
+alembic revision --autogenerate -m "descricao_da_mudanca"
+
+# Criar uma revisão vazia (sem autogenerate), para editar manualmente
+alembic revision -m "descricao_da_mudanca"
+
+# Ver o histórico de revisões / a revisão atual do banco
+alembic history
+alembic current
+```
+
+Sempre revise o arquivo gerado em `alembic/versions/` antes de aplicar — o autogenerate não detecta tudo (renomear coluna, alguns constraints, etc.).
+
+## Seeds
+
+Dados sintéticos para desenvolvimento e demo. Rode **depois** de `alembic upgrade head`, nesta ordem:
+
+```bash
+python -m app.seeds.lojas   # endereços, vendedores e lojas (RS)
+python -m app.seeds.pecas   # peças e imagens, distribuídas entre as lojas
+```
+
+Ambos são idempotentes — rodar de novo não duplica.
+
 ## Testes
 
 ```bash
@@ -68,6 +106,29 @@ pytest tests/ -v
 ruff check .
 black --check .
 ```
+
+## Infraestrutura de teste local
+
+Projeto Compose complementar (`vintex-infra`), isolado do compose de dev da raiz — sobe Postgres, API, LocalStack e MiniStack numa rede própria. Ver a issue [VE-29](https://github.com/Vintex-Ages/back-end/issues/180) para o desenho completo e o backlog relacionado.
+
+```bash
+# Copiar as variáveis de ambiente do projeto de infra (sem segredos)
+cp infra/vintex-infra/.env.example infra/vintex-infra/.env
+```
+
+Alvos principais:
+
+| Alvo | O que faz |
+| --- | --- |
+| `make infra-qa` | Lint, format-check e `terraform fmt/init/validate`. Nunca executa `terraform apply`. |
+| `make infra-up` | Sobe o Compose `vintex-infra` e aguarda os health checks. |
+| `make infra-down` | Derruba somente os containers/redes/volumes do projeto `vintex-infra`. |
+| `make infra-local-test` | Roda os testes locais (unitários, Terraform mockado, LocalStack, MiniStack, interoperabilidade) sem derrubar o ambiente. |
+| `make infra-complete` | QA + subida + testes + `infra-down`, sempre derrubando o ambiente no final (mesmo em falha), preservando o código de saída da primeira falha. |
+
+Alvos granulares para diagnóstico: `lint`, `format-check`, `terraform-init`, `terraform-fmt`, `terraform-validate`, `terraform-test`, `test-unit`, `test-localstack`, `test-ministack`, `test-interoperability`.
+
+`test-localstack`, `test-ministack` e `test-interoperability` ainda são placeholders — passam a testar de verdade quando as issues VE-20, VE-21 e VE-22 forem implementadas.
 
 ## Convenção de branches
 
