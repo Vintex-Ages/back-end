@@ -13,6 +13,9 @@ build/
 *.db
 .coverage
 
+# Cognitrace: prompts/respostas locais não devem ser publicados automaticamente
+.ai_log/
+
 # Docusaurus (VE-25)
 node_modules/
 .docusaurus/
