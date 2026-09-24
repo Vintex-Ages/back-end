@@ -107,6 +107,29 @@ ruff check .
 black --check .
 ```
 
+## Infraestrutura de teste local
+
+Projeto Compose complementar (`vintex-infra`), isolado do compose de dev da raiz — sobe Postgres, API, LocalStack e MiniStack numa rede própria. Ver a issue [VE-29](https://github.com/Vintex-Ages/back-end/issues/180) para o desenho completo e o backlog relacionado.
+
+```bash
+# Copiar as variáveis de ambiente do projeto de infra (sem segredos)
+cp infra/vintex-infra/.env.example infra/vintex-infra/.env
+```
+
+Alvos principais:
+
+| Alvo | O que faz |
+| --- | --- |
+| `make infra-qa` | Lint, format-check e `terraform fmt/init/validate`. Nunca executa `terraform apply`. |
+| `make infra-up` | Sobe o Compose `vintex-infra` e aguarda os health checks. |
+| `make infra-down` | Derruba somente os containers/redes/volumes do projeto `vintex-infra`. |
+| `make infra-local-test` | Roda os testes locais (unitários, Terraform mockado, LocalStack, MiniStack, interoperabilidade) sem derrubar o ambiente. |
+| `make infra-complete` | QA + subida + testes + `infra-down`, sempre derrubando o ambiente no final (mesmo em falha), preservando o código de saída da primeira falha. |
+
+Alvos granulares para diagnóstico: `lint`, `format-check`, `terraform-init`, `terraform-fmt`, `terraform-validate`, `terraform-test`, `test-unit`, `test-localstack`, `test-ministack`, `test-interoperability`.
+
+`test-localstack`, `test-ministack` e `test-interoperability` ainda são placeholders — passam a testar de verdade quando as issues VE-20, VE-21 e VE-22 forem implementadas.
+
 ## Convenção de branches
 
 ```
