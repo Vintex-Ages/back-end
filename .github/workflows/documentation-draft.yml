@@ -1,0 +1,107 @@
+name: Documentation Draft
+
+# Informativo (VE-25): identifica caminhos alterados via documentation/path-map.json,
+# gera um rascunho e builda o portal Docusaurus como preview. Nao bloqueia merge —
+# falha de build ou caminho sem mapeamento aparecem no comentario, nunca derrubam o job.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: documentation-draft-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  draft:
+    name: Documentation Draft
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Listar arquivos alterados no PR
+        run: |
+          git diff --name-only \
+            "${{ github.event.pull_request.base.sha }}" \
+            "${{ github.event.pull_request.head.sha }}" \
+            > "$RUNNER_TEMP/changed-files.txt"
+          cat "$RUNNER_TEMP/changed-files.txt"
+
+      - name: Gerar rascunho a partir do path-map
+        run: |
+          python scripts/docs/generate_draft.py \
+            --changed-files-file "$RUNNER_TEMP/changed-files.txt" \
+            --output "$RUNNER_TEMP/draft.md"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: documentation/package-lock.json
+
+      - name: Instalar dependencias do Docusaurus
+        working-directory: documentation
+        run: npm ci
+
+      - name: Build do preview Docusaurus
+        id: build
+        working-directory: documentation
+        continue-on-error: true
+        run: npm run build
+
+      - name: Publicar preview como artifact
+        if: steps.build.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: documentation-preview-pr-${{ github.event.pull_request.number }}
+          path: documentation/build
+          retention-days: 14
+
+      - name: Comentar no PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require("fs");
+            const draft = fs.readFileSync(process.env.RUNNER_TEMP + "/draft.md", "utf8");
+            const buildOk = "${{ steps.build.outcome }}" === "success";
+            const buildLine = buildOk
+              ? `Preview do Docusaurus buildou OK — [artifact desta run](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}).`
+              : "Preview do Docusaurus **falhou** ao buildar nesta run (ver logs do job) — isso e so informativo, nao bloqueia o merge.";
+
+            const marker = "<!-- documentation-draft-bot -->";
+            const body = `${marker}\n## Documentation Draft\n\n${buildLine}\n\n${draft}`;
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find((c) => c.body && c.body.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }

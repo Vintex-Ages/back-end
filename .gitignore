@@ -13,6 +13,9 @@ build/
 *.db
 .coverage
 
+# Docusaurus (VE-25)
+node_modules/
+.docusaurus/
 # Terraform (VE-13)
 **/.terraform/*
 *.tfstate
