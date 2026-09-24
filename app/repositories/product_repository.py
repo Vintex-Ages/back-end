@@ -77,6 +77,7 @@ class ProductRepository:
             select(Product)
             .options(
                 joinedload(Product.store).joinedload(Store.address),
+                joinedload(Product.store).joinedload(Store.seller),
                 selectinload(Product.images),
             )
             .where(Product.id == product_id)

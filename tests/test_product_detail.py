@@ -73,7 +73,7 @@ def test_detail_retorna_atributos_media_e_loja(client, db_session):
         "color": "Azul",
         "size": "M",
         "condition": "Usado - bom estado",
-        "price": "199.90",
+        "price": 199.90,
         "status": "ativo",
         "city": "Porto Alegre",
         "state": "RS",
@@ -85,6 +85,7 @@ def test_detail_retorna_atributos_media_e_loja(client, db_session):
             "id": store.id,
             "name": "Brechó Aurora",
             "logo_url": "https://cdn.test/logo.png",
+            "verified": False,
         },
     }
 
@@ -130,7 +131,7 @@ def test_detail_de_id_inexistente_responde_404(client, db_session):
     assert response.json()["error"]["code"] == "PRODUCT_NOT_FOUND"
 
 
-def test_detail_sem_endereco_na_loja_devolve_cidade_nula(client, db_session):
+def test_detail_sem_endereco_na_loja_devolve_cidade_vazia(client, db_session):
     store = make_store_with_address(db_session, "Brechó Sem Endereço")
     store.address = None
     product = Product(
@@ -146,6 +147,24 @@ def test_detail_sem_endereco_na_loja_devolve_cidade_nula(client, db_session):
 
     assert response.status_code == 200
     body = response.json()
-    assert body["city"] is None
-    assert body["state"] is None
+    assert body["city"] == ""
+    assert body["state"] == ""
     assert body["media"] == []
+
+
+def test_detail_expoe_verified_do_vendedor(client, db_session):
+    store = make_store_with_address(db_session, "Brechó Verificado")
+    store.seller.verified = True
+    product = Product(
+        store=store,
+        name="Vestido",
+        price=Decimal("120.00"),
+        status="ativo",
+    )
+    db_session.add(product)
+    db_session.commit()
+
+    response = client.get(f"/api/products/{product.id}")
+
+    assert response.status_code == 200
+    assert response.json()["store"]["verified"] is True
