@@ -1,15 +1,20 @@
 import os
+import subprocess
+import sys
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 SQLALCHEMY_DATABASE_URL = "sqlite://"
 os.environ.setdefault("DATABASE_URL", SQLALCHEMY_DATABASE_URL)
+
+RAIZ = Path(__file__).resolve().parents[1]
 
 TEST_POSTGRES_URL = os.environ.get("TEST_POSTGRES_URL")
 
@@ -63,34 +68,38 @@ def pytest_collection_modifyitems(
             item.add_marker(pular)
 
 
+def _rodar_alembic(comando: str, revisao: str, url: str) -> None:
+    """Aplica ou desfaz as migrations num processo separado.
+
+    O `alembic/env.py` sempre sobrescreve a URL com `settings.DATABASE_URL`,
+    que neste processo ja nasceu como SQLite. Um subprocesso com a variavel
+    de ambiente propria e o mesmo caminho usado pelo job `Migrations` do CI.
+    """
+    subprocess.run(
+        [sys.executable, "-m", "alembic", comando, revisao],
+        cwd=RAIZ,
+        env={**os.environ, "DATABASE_URL": url},
+        check=True,
+    )
+
+
 @pytest.fixture(scope="session")
 def pg_engine() -> Iterator[Engine]:
     if not TEST_POSTGRES_URL:
         pytest.skip("exige PostgreSQL: defina TEST_POSTGRES_URL para rodar")
 
-    nome_do_banco = make_url(TEST_POSTGRES_URL).database or ""
-    if "test" not in nome_do_banco:
+    nome_do_banco = (make_url(TEST_POSTGRES_URL).database or "").lower()
+    if not nome_do_banco.endswith("_test"):
         pytest.fail(
             f"TEST_POSTGRES_URL aponta para o banco '{nome_do_banco}'. "
-            "Use um banco cujo nome contenha 'test': esta fixture apaga todas as tabelas."
+            "Use um banco cujo nome termine em '_test': esta fixture apaga todas as tabelas."
         )
 
+    _rodar_alembic("upgrade", "head", TEST_POSTGRES_URL)
     pg = create_engine(TEST_POSTGRES_URL)
-    with pg.begin() as conn:
-        conn.execute(text("CREATE EXTENSION IF NOT EXISTS unaccent"))
-        conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
-        conn.execute(
-            text(
-                "CREATE OR REPLACE FUNCTION immutable_unaccent(text) "
-                "RETURNS text LANGUAGE sql IMMUTABLE PARALLEL SAFE STRICT "
-                "AS $func$ SELECT public.unaccent('public.unaccent', $1) $func$"
-            )
-        )
-    Base.metadata.drop_all(bind=pg)
-    Base.metadata.create_all(bind=pg)
     yield pg
-    Base.metadata.drop_all(bind=pg)
     pg.dispose()
+    _rodar_alembic("downgrade", "base", TEST_POSTGRES_URL)
 
 
 @pytest.fixture
