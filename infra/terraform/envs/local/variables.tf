@@ -12,7 +12,7 @@ variable "environment" {
 variable "aws_region" {
   description = "Região AWS declarada ao provider. LocalStack/MiniStack não validam a região de verdade, mas o provider exige um valor."
   type        = string
-  default     = "us-east-1"
+  default     = "us-east-2"
 }
 
 variable "localstack_endpoint" {
