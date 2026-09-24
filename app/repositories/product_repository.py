@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 from app.core.pagination import PageParams
 from app.models.product import Product
 from app.models.product_image import ProductImage
+from app.models.seller import Seller
 from app.models.store import Store
 
 
@@ -23,6 +24,21 @@ class ProductFeedRow(TypedDict):
 class ProductRepository:
     def __init__(self, db: Session):
         self.db = db
+
+    def get_for_seller(self, product_id: int, user_id: int) -> Product | None:
+        """Peça filtrada pelo dono (join `Store` → `Seller`).
+
+        Não existe `get_by_id` sem dono: quem chama sempre sabe quem está
+        pedindo (`get_current_user_id`), e um `Product` de outro vendedor
+        deve responder igual a "não existe" (`PRODUCT_NOT_FOUND`), nunca
+        vazar que a peça existe mas não é dele.
+        """
+        return self.db.scalar(
+            select(Product)
+            .join(Store, Store.id == Product.store_id)
+            .join(Seller, Seller.id == Store.seller_id)
+            .where(Product.id == product_id, Seller.user_id == user_id)
+        )
 
     def get_active_feed(self, params: PageParams) -> tuple[list[ProductFeedRow], int]:
         cover_image_url = (

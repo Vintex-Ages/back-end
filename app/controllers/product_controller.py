@@ -6,11 +6,14 @@ from app.repositories.product_repository import ProductRepository
 from app.schemas.product_schema import (
     FeedResponse,
     FeedStoreResponse,
+    ProductAIStatusResponse,
+    ProductAIStatusValue,
     ProductDetailResponse,
     ProductDetailStoreResponse,
     ProductFeedItemResponse,
     ProductMediaResponse,
 )
+from app.services.ai.base import ImageAnalysisResult
 
 
 class ProductController:
@@ -51,17 +54,17 @@ class ProductController:
         return ProductDetailResponse(
             id=product.id,
             name=product.name,
-            description=product.description,
-            category=product.category,
-            style=product.style,
-            brand=product.brand,
-            color=product.color,
-            size=product.size,
-            condition=product.condition,
+            description=product.description or "",
+            category=product.category or "",
+            style=product.style or "",
+            brand=product.brand or "",
+            color=product.color or "",
+            size=product.size or "",
+            condition=product.condition or "",
             price=product.price,
             status=product.status,
-            city=address.city if address else None,
-            state=address.state if address else None,
+            city=address.city if address else "",
+            state=address.state if address else "",
             media=[
                 ProductMediaResponse(url=image.image_url, position=image.position)
                 for image in product.images
@@ -70,5 +73,24 @@ class ProductController:
                 id=product.store.id,
                 name=product.store.name,
                 logo_url=product.store.logo_url,
+                verified=product.store.seller.verified,
+            ),
+        )
+
+    def get_ai_status(self, product_id: int, user_id: int) -> ProductAIStatusResponse:
+        product = self.repository.get_for_seller(product_id, user_id)
+        if product is None:
+            raise NotFound("Peça não encontrada.", code=ErrorCode.PRODUCT_NOT_FOUND)
+
+        status: ProductAIStatusValue = (
+            "not_requested" if product.ai_status is None else product.ai_status
+        )
+        return ProductAIStatusResponse(
+            status=status,
+            error=product.ai_error,
+            suggestions=(
+                ImageAnalysisResult.model_validate(product.ai_suggestions)
+                if product.ai_suggestions is not None
+                else None
             ),
         )
