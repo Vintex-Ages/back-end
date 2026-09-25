@@ -51,15 +51,23 @@ class GoogleAIProvider(AIProvider):
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
         if not texts:
             return []
+        # Um `types.Content` por texto: `contents=list(texts)` (strings soltas)
+        # faz o SDK tratar a lista inteira como as partes de UM conteúdo só,
+        # devolvendo um único vetor para todos os textos juntos — não um por
+        # texto. Encapsular cada texto no seu próprio `Content` é o que faz o
+        # batch devolver um vetor por entrada, na mesma ordem.
+        contents = [types.Content(parts=[types.Part(text=text)]) for text in texts]
         try:
             response = self._client.models.embed_content(
                 model=settings.GOOGLE_EMBEDDING_MODEL,
-                contents=list(texts),
+                contents=contents,
                 config=types.EmbedContentConfig(output_dimensionality=EMBEDDING_DIM),
             )
         except Exception as exc:  # SDK do Google não documenta uma exceção só
             raise AIProviderError(f"Falha ao gerar embedding: {exc}") from exc
 
-        if response.embeddings is None:
-            raise AIProviderError("Resposta de embedding do Google veio vazia.")
+        if response.embeddings is None or len(response.embeddings) != len(texts):
+            raise AIProviderError(
+                "Resposta de embedding do Google não tem um vetor por texto enviado."
+            )
         return [list(item.values or []) for item in response.embeddings]
