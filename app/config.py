@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     # padrão "unavailable" degrada sem erro fatal (VE-06).
     AI_PROVIDER: str = "unavailable"
 
+    # Embedding do catálogo (BE-US027-1, back-end#92). Só lido quando
+    # AI_PROVIDER=google; a chave vem do Google AI Studio (camada gratuita).
+    GOOGLE_API_KEY: str = ""
+    GOOGLE_EMBEDDING_MODEL: str = "gemini-embedding-2"
+
     class Config:
         env_file = ".env"
 

@@ -44,6 +44,9 @@ def test_trocar_provider_e_so_registrar_e_apontar_a_config(monkeypatch) -> None:
             raise NotImplementedError
             yield  # pragma: no cover
 
+        def embed(self, texts):
+            raise NotImplementedError
+
     monkeypatch.setitem(_PROVIDERS, "stub", _StubProvider)
     monkeypatch.setattr("app.services.ai.factory.settings.AI_PROVIDER", "stub")
 

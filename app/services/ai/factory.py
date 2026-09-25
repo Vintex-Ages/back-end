@@ -9,10 +9,12 @@ from __future__ import annotations
 
 from app.config import settings
 from app.services.ai.base import AIProvider
+from app.services.ai.google import GoogleAIProvider
 from app.services.ai.unavailable import UnavailableAIProvider
 
 _PROVIDERS: dict[str, type[AIProvider]] = {
     "unavailable": UnavailableAIProvider,
+    "google": GoogleAIProvider,
 }
 
 
