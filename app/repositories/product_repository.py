@@ -2,7 +2,6 @@ from decimal import Decimal
 from typing import TypedDict, cast
 
 from sqlalchemy import Select, func, select
-from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.pagination import Page, PageParams, paginate
@@ -10,6 +9,7 @@ from app.models.product import Product
 from app.models.product_image import ProductImage
 from app.models.seller import Seller
 from app.models.store import Store
+from app.schemas.product_management_schema import ProductManagementResponse
 
 
 class ProductFeedRow(TypedDict):
@@ -70,7 +70,12 @@ class ProductRepository:
         )
         if status is not None:
             stmt = stmt.where(Product.status == status)
-        return paginate(self.db, cast(Select[tuple[object, ...]], stmt), params)
+        return paginate(
+            self.db,
+            stmt,
+            params,
+            item_schema=ProductManagementResponse,
+        )
 
     def get_for_seller(self, product_id: int, user_id: int) -> Product | None:
         return self.db.scalar(
@@ -89,12 +94,7 @@ class ProductRepository:
             )
             .where(Product.id == product_id)
         )
-        try:
-            return self.db.execute(stmt).scalar_one_or_none()
-        except OperationalError as exc:
-            if "no such table" not in str(exc.orig):
-                raise
-            return None
+        return self.db.execute(stmt).scalar_one_or_none()
 
     def save(self, product: Product) -> Product:
         self.db.commit()

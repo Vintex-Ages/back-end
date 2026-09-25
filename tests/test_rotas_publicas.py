@@ -6,11 +6,6 @@ de descoberta ainda não implementadas.
 """
 
 import pytest
-from fastapi.testclient import TestClient
-
-from app.main import app
-
-client = TestClient(app)
 
 DISCOVERY_ROUTES = [
     "/api/products/1",
@@ -19,13 +14,13 @@ DISCOVERY_ROUTES = [
 ]
 
 
-def test_health_responde_sem_token() -> None:
+def test_health_responde_sem_token(client) -> None:
     resp = client.get("/health")
     assert resp.status_code == 200
     assert resp.json() == {"status": "ok"}
 
 
-def test_rota_inexistente_usa_o_envelope_de_erro() -> None:
+def test_rota_inexistente_usa_o_envelope_de_erro(client) -> None:
     resp = client.get("/api/nao-existe")
     assert resp.status_code == 404
     body = resp.json()
@@ -34,7 +29,7 @@ def test_rota_inexistente_usa_o_envelope_de_erro() -> None:
 
 
 @pytest.mark.parametrize("route", DISCOVERY_ROUTES)
-def test_rota_de_descoberta_responde_sem_token(route: str) -> None:
+def test_rota_de_descoberta_responde_sem_token(route: str, client) -> None:
     resp = client.get(route)
     if resp.status_code == 404:
         pytest.skip(f"{route} chega com as issues #85 / #93 / #108 / #79")

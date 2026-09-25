@@ -43,14 +43,14 @@ def test_seller_lists_all_statuses_and_filters(client, db_session):
     make_product(db_session, store, "Fora do ar", "despublicado")
     db_session.commit()
 
-    response = client.get("/api/products/mine", headers={"X-User-Id": "10"})
+    response = client.get("/api/users/me/products", headers={"X-User-Id": "10"})
 
     assert response.status_code == 200
     assert response.json()["total"] == 3
     assert {item["id"] for item in response.json()["items"]} >= {sold.id}
 
     response = client.get(
-        "/api/seller/products?status=vendido", headers={"X-User-Id": "10"}
+        "/api/users/me/products?status=vendido", headers={"X-User-Id": "10"}
     )
 
     assert response.status_code == 200
@@ -65,12 +65,12 @@ def test_seller_cannot_see_or_edit_another_sellers_product(client, db_session):
     make_product(db_session, own_store, "Own product", "ativo")
     db_session.commit()
 
-    response = client.get("/api/products/mine", headers={"X-User-Id": "20"})
+    response = client.get("/api/users/me/products", headers={"X-User-Id": "20"})
     assert response.status_code == 200
     assert all(item["id"] != other_product.id for item in response.json()["items"])
 
     response = client.patch(
-        f"/api/products/{other_product.id}",
+        f"/api/users/me/products/{other_product.id}",
         json={"name": "Tampered"},
         headers={"X-User-Id": "20"},
     )
@@ -84,7 +84,7 @@ def test_sold_product_cannot_be_edited(client, db_session):
     db_session.commit()
 
     response = client.patch(
-        f"/api/products/{product.id}",
+        f"/api/users/me/products/{product.id}",
         json={"name": "Changed"},
         headers={"X-User-Id": "30"},
     )
@@ -93,20 +93,58 @@ def test_sold_product_cannot_be_edited(client, db_session):
     assert response.json()["error"]["code"] == "PRODUCT_SOLD"
 
 
-def test_product_can_be_unpublished_and_published_again(client, db_session):
+def test_draft_product_can_be_edited_with_patch(client, db_session):
+    store = make_store(db_session, 35, "Draft")
+    product = make_product(db_session, store, "Draft product", "despublicado")
+    db_session.commit()
+
+    response = client.patch(
+        f"/api/users/me/products/{product.id}",
+        json={"name": "Edited draft"},
+        headers={"X-User-Id": "35"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["name"] == "Edited draft"
+
+
+def test_update_rejects_explicit_null_for_required_field(client, db_session):
+    store = make_store(db_session, 36, "Null")
+    product = make_product(db_session, store, "Null product", "ativo")
+    db_session.commit()
+
+    response = client.patch(
+        f"/api/users/me/products/{product.id}",
+        json={"price": None},
+        headers={"X-User-Id": "36"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+def test_product_can_be_unpublished(client, db_session):
     store = make_store(db_session, 40, "Cycle")
     product = make_product(db_session, store, "Cycle product", "ativo")
     db_session.commit()
 
     response = client.post(
-        f"/api/products/{product.id}/unpublish", headers={"X-User-Id": "40"}
+        f"/api/users/me/products/{product.id}/unpublish",
+        headers={"X-User-Id": "40"},
     )
     assert response.status_code == 200
     assert response.json()["status"] == "despublicado"
     assert db_session.get(Product, product.id) is not None
 
-    response = client.post(
-        f"/api/products/{product.id}/publish", headers={"X-User-Id": "40"}
+    response = client.put(
+        f"/api/users/me/products/{product.id}",
+        json={"name": "No PUT"},
+        headers={"X-User-Id": "40"},
     )
-    assert response.status_code == 200
-    assert response.json()["status"] == "ativo"
+    assert response.status_code == 405
+
+    response = client.post(
+        f"/api/users/me/products/{product.id}/publish",
+        headers={"X-User-Id": "40"},
+    )
+    assert response.status_code == 404

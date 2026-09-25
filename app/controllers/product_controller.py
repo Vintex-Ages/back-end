@@ -8,7 +8,6 @@ from app.models.product import Product
 from app.repositories.product_repository import ProductRepository
 from app.schemas.product_management_schema import (
     ProductManagementPage,
-    ProductManagementResponse,
     ProductUpdate,
 )
 from app.schemas.product_schema import (
@@ -84,10 +83,7 @@ class ProductController:
     ) -> ProductManagementPage:
         page: Page[object] = self.repository.list_for_seller(user_id, params, status)
         return ProductManagementPage(
-            items=[
-                ProductManagementResponse.model_validate(product)
-                for product in page.items
-            ],
+            items=page.items,
             page=page.page,
             page_size=page.page_size,
             total=page.total,
@@ -99,12 +95,6 @@ class ProductController:
             raise AppError(
                 "Peça vendida não pode ser editada.",
                 code=ErrorCode.PRODUCT_SOLD,
-                status_code=409,
-            )
-        if product.status != "ativo":
-            raise AppError(
-                "Somente peças publicadas podem ser editadas.",
-                code=ErrorCode.PRODUCT_NOT_EDITABLE,
                 status_code=409,
             )
         for field, value in data.model_dump(exclude_unset=True).items():

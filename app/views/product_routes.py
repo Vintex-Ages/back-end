@@ -15,7 +15,7 @@ from app.schemas.product_management_schema import (
 from app.schemas.product_schema import FeedResponse, ProductDetailResponse
 
 router = APIRouter(prefix="/products", tags=["Products"])
-seller_router = APIRouter(prefix="/seller/products", tags=["Seller products"])
+seller_router = APIRouter(prefix="/users/me/products", tags=["Seller products"])
 
 
 def get_controller(db: Session = Depends(get_db)) -> ProductController:
@@ -42,18 +42,6 @@ def list_seller_products(
     return controller.list_for_seller(user_id, params, status)
 
 
-router.add_api_route(
-    "/mine",
-    list_seller_products,
-    methods=["GET"],
-    response_model=ProductManagementPage,
-)
-router.add_api_route(
-    "/seller",
-    list_seller_products,
-    methods=["GET"],
-    response_model=ProductManagementPage,
-)
 seller_router.add_api_route(
     "",
     list_seller_products,
@@ -75,9 +63,8 @@ def get_product_detail(
     return controller.get_detail(product_id)
 
 
-@router.api_route(
+@seller_router.patch(
     "/{product_id}",
-    methods=["PATCH", "PUT"],
     response_model=ProductManagementResponse,
 )
 def update_product(
@@ -91,7 +78,7 @@ def update_product(
     )
 
 
-@router.post("/{product_id}/unpublish", response_model=ProductManagementResponse)
+@seller_router.post("/{product_id}/unpublish", response_model=ProductManagementResponse)
 def unpublish_product(
     product_id: int,
     user_id: int = Depends(get_current_user_id),
@@ -99,15 +86,4 @@ def unpublish_product(
 ) -> ProductManagementResponse:
     return ProductManagementResponse.model_validate(
         controller.set_status(product_id, user_id, "despublicado")
-    )
-
-
-@router.post("/{product_id}/publish", response_model=ProductManagementResponse)
-def publish_product(
-    product_id: int,
-    user_id: int = Depends(get_current_user_id),
-    controller: ProductController = Depends(get_controller),
-) -> ProductManagementResponse:
-    return ProductManagementResponse.model_validate(
-        controller.set_status(product_id, user_id, "ativo")
     )
