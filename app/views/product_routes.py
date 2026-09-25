@@ -1,10 +1,13 @@
+from decimal import Decimal
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
+from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy.orm import Session
 
 from app.controllers.product_controller import ProductController
 from app.core.current_user import get_current_user_id
+from app.core.errors import ValidationError
 from app.core.pagination import PageParams, page_params
 from app.database import get_db
 from app.schemas.product_schema import (
@@ -27,10 +30,37 @@ def get_controller(db: Session = Depends(get_db)) -> ProductController:
     return ProductController(db)
 
 
+def product_filters(
+    category: str | None = Query(None),
+    price_min: Decimal | None = Query(None),
+    price_max: Decimal | None = Query(None),
+    size: str | None = Query(None),
+    brand: str | None = Query(None),
+    condition: str | None = Query(None),
+    color: str | None = Query(None),
+) -> ProductFilters:
+    try:
+        return ProductFilters(
+            category=category,
+            price_min=price_min,
+            price_max=price_max,
+            size=size,
+            brand=brand,
+            condition=condition,
+            color=color,
+        )
+    except PydanticValidationError as exc:
+        fields = {
+            ".".join(str(part) for part in error["loc"]) or "body": error["msg"]
+            for error in exc.errors()
+        }
+        raise ValidationError("Dados inválidos na requisição.", fields=fields) from exc
+
+
 @router.get("", response_model=FeedResponse)
 def list_products(
     params: PageParams = Depends(page_params),
-    filters: ProductFilters = Depends(),
+    filters: ProductFilters = Depends(product_filters),
     sort: Literal["recent"] = Query(
         "recent", description="Ordenação do feed; atualmente apenas recentes."
     ),
