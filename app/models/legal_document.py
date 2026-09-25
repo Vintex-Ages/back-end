@@ -5,6 +5,9 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base_model import BaseModel
 
+TERMS_OF_USE = "termos_uso"
+SELLER_CONTRACT = "contrato_venda"
+
 
 class LegalDocument(BaseModel):
     """Texto jurídico versionado (termos de uso e contrato de venda).
