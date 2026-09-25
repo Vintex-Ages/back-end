@@ -1,35 +1,7 @@
 from decimal import Decimal
 from typing import Literal
 
-from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-
-from app.services.ai.base import ImageAnalysisResult
-
-
-class ProductFilters(BaseModel):
-    category: str | None = None
-    price_min: Decimal | None = Field(default=None, ge=0)
-    price_max: Decimal | None = Field(default=None, ge=0)
-    size: str | None = None
-    brand: str | None = None
-    condition: str | None = None
-    color: str | None = None
-
-    @model_validator(mode="after")
-    def validate_price_range(self) -> "ProductFilters":
-        if (
-            self.price_min is not None
-            and self.price_max is not None
-            and self.price_min > self.price_max
-        ):
-            raise ValueError("price_min deve ser menor ou igual a price_max")
-        return self
-
-    def applied(self) -> dict[str, str | Decimal]:
-        return {
-            key: value for key, value in self.model_dump().items() if value is not None
-        }
 
 from app.services.ai.base import ImageAnalysisResult
 
@@ -61,35 +33,6 @@ class ProductFilters(BaseModel):
         return {
             key: value for key, value in self.model_dump().items() if value is not None
         }
-
-
-def product_filters(
-    category: str | None = None,
-    price_min: Decimal | None = None,
-    price_max: Decimal | None = None,
-    size: str | None = None,
-    brand: str | None = None,
-    condition: str | None = None,
-    color: str | None = None,
-) -> ProductFilters:
-    if price_min is not None and price_min < 0:
-        raise HTTPException(status_code=422, detail="price_min deve ser não negativo")
-    if price_max is not None and price_max < 0:
-        raise HTTPException(status_code=422, detail="price_max deve ser não negativo")
-    if price_min is not None and price_max is not None and price_min > price_max:
-        raise HTTPException(
-            status_code=422,
-            detail="price_min deve ser menor ou igual a price_max",
-        )
-    return ProductFilters(
-        category=category,
-        price_min=price_min,
-        price_max=price_max,
-        size=size,
-        brand=brand,
-        condition=condition,
-        color=color,
-    )
 
 
 class FeedStoreResponse(BaseModel):

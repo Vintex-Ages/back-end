@@ -199,7 +199,29 @@ def test_feed_combines_filters_with_and_and_reports_applied_filters(client, db_s
     }
 
 
+def test_feed_text_filters_ignore_case(client, db_session):
+    store = make_store(db_session, "Brechó Normalizado")
+    make_product(
+        db_session,
+        store,
+        "Jaqueta azul",
+        datetime.now(timezone.utc),
+        category="Jaquetas",
+        color="Azul",
+    )
+    db_session.commit()
+
+    response = client.get("/api/products?category=jaquetas&color=azul")
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 1
+
+
 def test_feed_rejects_inverted_price_range(client):
     response = client.get("/api/products?price_min=200&price_max=100")
 
     assert response.status_code == 422
+    body = response.json()
+    assert body["error"]["code"] == "VALIDATION_ERROR"
+    assert body["error"]["message"] == "Dados inválidos na requisição."
+    assert body["error"]["fields"]
