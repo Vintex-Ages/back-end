@@ -14,6 +14,9 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base_model import BaseModel
+from app.models.types import EmbeddingVector
+
+EMBEDDING_DIM = 768
 
 if TYPE_CHECKING:
     from app.models.product_image import ProductImage
@@ -67,6 +70,14 @@ class Product(BaseModel):
     # VS-014 (back-end#33); aqui só guardamos o resultado da análise.
     ai_suggestions: Mapped[dict | None] = mapped_column(JSON)
     ai_error: Mapped[str | None] = mapped_column(Text)
+
+    # Embedding do catálogo (BE-US027-1, back-end#92) — alimenta busca por
+    # similaridade (VS-027). `embedding_model` registra qual modelo gerou a
+    # posição, para saber o que está desatualizado quando o modelo mudar.
+    embedding: Mapped[list[float] | None] = mapped_column(
+        EmbeddingVector(EMBEDDING_DIM)
+    )
+    embedding_model: Mapped[str | None] = mapped_column(String(60))
 
     store: Mapped["Store"] = relationship(back_populates="products")
     images: Mapped[list["ProductImage"]] = relationship(

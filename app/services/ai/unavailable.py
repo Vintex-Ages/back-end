@@ -29,3 +29,6 @@ class UnavailableAIProvider(AIProvider):
     ) -> AsyncIterator[SearchStreamEvent]:
         raise AIProviderUnavailableError(_MESSAGE)
         yield  # pragma: no cover - nunca alcançado; mantém a função geradora
+
+    def embed(self, texts: Sequence[str]) -> list[list[float]]:
+        raise AIProviderUnavailableError(_MESSAGE)
