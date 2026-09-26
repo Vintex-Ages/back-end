@@ -73,11 +73,13 @@ terraform-test:
 test-unit:
 	pytest tests/ -v
 
-# Implementados junto com as respectivas issues; por ora só sinalizam que
-# ainda não fazem nada, sem quebrar infra-local-test/infra-complete.
-## Placeholder para testes do LocalStack (VE-20, ainda não implementado).
+# Os alvos MiniStack e interoperabilidade continuam como placeholders até
+# as respectivas issues; LocalStack executa testes reais nesta issue.
+## Verifica recursos e operações reais no LocalStack (VE-20).
 test-localstack:
-	@echo "[test-localstack] ainda nao implementado - ver VE-20 (#171)"
+	$(COMPOSE) exec -T -e LOCALSTACK_ENDPOINT_URL=http://localstack:4566 api python -m scripts.infra.localstack_resources seed
+	$(COMPOSE) exec -T -e LOCALSTACK_ENDPOINT_URL=http://localstack:4566 -e VINTEX_INFRA_LOCALSTACK_TEST=1 api pytest tests/test_infra_localstack.py -v
+	$(COMPOSE) exec -T -e LOCALSTACK_ENDPOINT_URL=http://localstack:4566 api python -m scripts.infra.localstack_resources verify
 
 ## Placeholder para testes do MiniStack (VE-21, ainda não implementado).
 test-ministack:

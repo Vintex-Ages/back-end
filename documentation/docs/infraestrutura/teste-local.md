@@ -29,8 +29,23 @@ Sobe Postgres, API, LocalStack (`4566`) e MiniStack (`4567`) numa rede Docker pr
 
 `infra/terraform/envs/local` configura o provider AWS apontando para o LocalStack (S3, SQS, Secrets Manager, IAM, STS) e o MiniStack (ECS, Cloud Map, API Gateway, ECR). Nenhum recurso é declarado ainda — os módulos de feature entram em `infra/terraform/modules/` conforme cada issue (VE-14 a VE-19) sai do hold. `terraform test` roda mockado (`mock_provider`), sem tocar rede nenhuma.
 
+## LocalStack (VE-20)
+
+`make infra-up` prepara um bucket, uma fila, um segredo e um usuário IAM sintéticos no LocalStack. O script verifica também STS. Ele pode ser executado de novo sem duplicar os recursos. Os nomes começam com `vintex-infra-`; o segredo contém apenas `{"synthetic": true}`.
+
+```bash
+make infra-up
+make test-localstack
+make test-localstack  # segunda execução confirma isolamento e limpeza
+make infra-down
+```
+
+O provisionamento e `make test-localstack` rodam dentro do container da API, onde as dependências Python do projeto já estão instaladas. Os testes criam, leem e removem recursos de S3, SQS, Secrets Manager e IAM, além de consultar STS, pelo alias `http://localstack:4566`. Objetos temporários recebem nomes únicos e são removidos ao final do teste. `make infra-down` remove os containers, a rede e os volumes do projeto `vintex-infra`.
+
+No host, a porta vem de `LOCALSTACK_HOST_PORT` em `infra/vintex-infra/.env` (padrão `4566`). Para apontar explicitamente ao emulador, use `LOCALSTACK_ENDPOINT_URL=http://127.0.0.1:4566`. A ferramenta só aceita endereços HTTP locais ou o alias `localstack` e usa credenciais fictícias `test`; ela não chama a AWS real.
+
 ## Estado atual (S2)
 
-Ativo nesta sprint: base local ([VE-12, #163](https://github.com/Vintex-Ages/back-end/issues/163)), estrutura Terraform ([VE-13, #164](https://github.com/Vintex-Ages/back-end/issues/164)), integração LocalStack ([VE-20, #171](https://github.com/Vintex-Ages/back-end/issues/171)), integração MiniStack ([VE-21, #172](https://github.com/Vintex-Ages/back-end/issues/172)) e testes de interoperabilidade ([VE-22, #173](https://github.com/Vintex-Ages/back-end/issues/173)).
+Base local ([VE-12, #163](https://github.com/Vintex-Ages/back-end/issues/163)) e estrutura Terraform ([VE-13, #164](https://github.com/Vintex-Ages/back-end/issues/164)) concluídas. A integração LocalStack ([VE-20, #171](https://github.com/Vintex-Ages/back-end/issues/171)) provisiona recursos sintéticos e os testa. Integração MiniStack ([VE-21, #172](https://github.com/Vintex-Ages/back-end/issues/172)) e testes de interoperabilidade ([VE-22, #173](https://github.com/Vintex-Ages/back-end/issues/173)) seguem como próximas etapas.
 
 Em hold: os módulos de feature (rede, banco/pgvector, storage, mensageria, worker, computação) e os gates de CI/promoção — ver a lista completa no épico VE-29.
