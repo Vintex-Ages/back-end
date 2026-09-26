@@ -1,7 +1,7 @@
 from sqlalchemy.orm import Session
 
 from app.core.errors import ErrorCode, NotFound
-from app.core.pagination import Page, PageParams, paginate
+from app.core.pagination import Page, PageParams
 from app.models.store import Store
 from app.repositories.store_repository import StoreRepository
 from app.schemas.store_schema import (
@@ -53,8 +53,7 @@ class StoreController:
     ) -> Page[StoreProductItemResponse]:
         self._get_or_404(store_id)
 
-        stmt = self.repository.active_products_query(store_id)
-        page = paginate(self.db, stmt, params)
+        products, total = self.repository.get_active_products(store_id, params)
         items = [
             StoreProductItemResponse(
                 id=product.id,
@@ -65,10 +64,10 @@ class StoreController:
                 ),
                 status=product.status,
             )
-            for product in page.items
+            for product in products
         ]
         return Page[StoreProductItemResponse](
-            items=items, page=page.page, page_size=page.page_size, total=page.total
+            items=items, page=params.page, page_size=params.page_size, total=total
         )
 
     def _get_or_404(self, store_id: int) -> Store:

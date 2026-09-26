@@ -99,17 +99,19 @@ def test_get_metrics_sem_pecas_devolve_zero(db_session):
     assert metrics["products_sold"] == 0
 
 
-def test_active_products_query_so_traz_pecas_ativas_da_loja(db_session):
+def test_get_active_products_so_traz_pecas_ativas_da_loja_e_pagina(db_session):
     store = persist_store(db_session, name="Brechó A")
     outra_loja = persist_store(db_session, name="Brechó B")
     ativo = persist_product(db_session, store, status="ativo")
     persist_product(db_session, store, status="vendido")
     persist_product(db_session, outra_loja, status="ativo")
 
-    stmt = StoreRepository(db_session).active_products_query(store.id)
-    resultado = db_session.scalars(stmt).all()
+    produtos, total = StoreRepository(db_session).get_active_products(
+        store.id, PageParams(page=1, page_size=20)
+    )
 
-    assert [p.id for p in resultado] == [ativo.id]
+    assert total == 1
+    assert [p.id for p in produtos] == [ativo.id]
 
 
 def test_get_store_devolve_detalhe_com_selo_e_metricas(db_session):
