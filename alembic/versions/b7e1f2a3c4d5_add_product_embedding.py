@@ -16,7 +16,7 @@ from app.constants.embedding import EMBEDDING_DIM
 
 # revision identifiers, used by Alembic.
 revision: str = "b7e1f2a3c4d5"
-down_revision: Union[str, None] = "a1c2d3e4f5a6"
+down_revision: Union[str, None] = "c1278d935a84"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
