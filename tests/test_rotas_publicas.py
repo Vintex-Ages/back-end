@@ -34,7 +34,7 @@ def test_rota_inexistente_usa_o_envelope_de_erro() -> None:
 
 
 @pytest.mark.parametrize("route", DISCOVERY_ROUTES)
-def test_rota_de_descoberta_responde_sem_token(route: str) -> None:
+def test_rota_de_descoberta_responde_sem_token(route: str, client: TestClient) -> None:
     resp = client.get(route)
     if resp.status_code == 404:
         pytest.skip(f"{route} chega com as issues #85 / #93 / #108 / #79")
