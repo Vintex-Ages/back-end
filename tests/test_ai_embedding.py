@@ -4,6 +4,7 @@ from collections.abc import AsyncIterator, Sequence
 
 import pytest
 
+from app.constants.embedding import EMBEDDING_DIM
 from app.services.ai.base import (
     AIProvider,
     AIProviderError,
@@ -12,7 +13,6 @@ from app.services.ai.base import (
     ImageAnalysisResult,
     SearchStreamEvent,
 )
-from app.constants.embedding import EMBEDDING_DIM
 from app.services.ai.factory import _PROVIDERS, get_ai_provider
 from app.services.ai.google import GoogleAIProvider
 from app.services.ai.unavailable import UnavailableAIProvider
