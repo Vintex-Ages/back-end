@@ -1,0 +1,24 @@
+/**
+ * Tema minimo — cores default do Docusaurus.
+ */
+
+:root {
+  --ifm-color-primary: #b60205;
+  --ifm-color-primary-dark: #a40204;
+  --ifm-color-primary-darker: #9b0204;
+  --ifm-color-primary-darkest: #800203;
+  --ifm-color-primary-light: #c80205;
+  --ifm-color-primary-lighter: #d10206;
+  --ifm-color-primary-lightest: #e8030a;
+  --ifm-code-font-size: 95%;
+}
+
+[data-theme="dark"] {
+  --ifm-color-primary: #ff5a5d;
+  --ifm-color-primary-dark: #ff383c;
+  --ifm-color-primary-darker: #ff262a;
+  --ifm-color-primary-darkest: #f70004;
+  --ifm-color-primary-light: #ff7c7e;
+  --ifm-color-primary-lighter: #ff8e90;
+  --ifm-color-primary-lightest: #ffc0c1;
+}
