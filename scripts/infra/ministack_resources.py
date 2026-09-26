@@ -51,7 +51,13 @@ def endpoint_url() -> str:
 def clients() -> dict[str, object]:
     """Cria clientes AWS com credenciais fictícias e endpoint explícito."""
     endpoint = endpoint_url()
-    config = Config(connect_timeout=3, read_timeout=5, retries={"max_attempts": 2})
+    config = Config(
+        connect_timeout=3,
+        read_timeout=5,
+        retries={"max_attempts": 2},
+        # DiscoverInstances adicionaria o prefixo data- ao alias do Compose.
+        inject_host_prefix=False,
+    )
     return {
         service: boto3.client(
             service,
