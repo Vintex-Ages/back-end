@@ -139,7 +139,11 @@ jobs:
     needs: [lint, type-check]
     services:
       postgres:
-        image: postgres:16-alpine
+        # pgvector/pgvector:pg16 — esta fixture roda `alembic upgrade head`
+        # (via pg_engine/tests/conftest.py), e a cadeia de migrations inclui
+        # `CREATE EXTENSION vector` (BE-US027-1, back-end#92). Mesma imagem
+        # do job `migrations` acima, mesmo motivo.
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
