@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     # padrão "unavailable" degrada sem erro fatal (VE-06).
     AI_PROVIDER: str = "unavailable"
 
+    # Storage de mídia (VE-16). Sem endpoint explícito, boto3 usa a AWS.
+    AWS_REGION: str = "us-east-2"
+    S3_ENDPOINT_URL: str | None = None
+    MEDIA_BUCKET: str | None = None
+
     class Config:
         env_file = ".env"
 
