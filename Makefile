@@ -20,7 +20,7 @@ infra-qa: lint format-check terraform-fmt terraform-init terraform-validate
 
 ## Sobe a infraestrutura local e cria recursos sintéticos de teste.
 infra-up:
-	$(COMPOSE) up -d --wait
+	$(COMPOSE) up -d --build --wait
 	bash scripts/infra/seed-synthetic-resources.sh
 
 ## Derruba containers, redes e volumes da infraestrutura local.
@@ -73,17 +73,18 @@ terraform-test:
 test-unit:
 	pytest tests/ -v
 
-# Os alvos MiniStack e interoperabilidade continuam como placeholders até
-# as respectivas issues; LocalStack executa testes reais nesta issue.
+# Interoperabilidade continua como placeholder até a VE-22.
 ## Verifica recursos e operações reais no LocalStack (VE-20).
 test-localstack:
 	$(COMPOSE) exec -T -e LOCALSTACK_ENDPOINT_URL=http://localstack:4566 api python -m scripts.infra.localstack_resources seed
 	$(COMPOSE) exec -T -e LOCALSTACK_ENDPOINT_URL=http://localstack:4566 -e VINTEX_INFRA_LOCALSTACK_TEST=1 api pytest tests/test_infra_localstack.py -v
 	$(COMPOSE) exec -T -e LOCALSTACK_ENDPOINT_URL=http://localstack:4566 api python -m scripts.infra.localstack_resources verify
 
-## Placeholder para testes do MiniStack (VE-21, ainda não implementado).
+## Verifica recursos e operações reais no MiniStack (VE-21).
 test-ministack:
-	@echo "[test-ministack] ainda nao implementado - ver VE-21 (#172)"
+	$(COMPOSE) exec -T -e MINISTACK_ENDPOINT_URL=http://ministack:4567 api python -m scripts.infra.ministack_resources seed
+	$(COMPOSE) exec -T -e MINISTACK_ENDPOINT_URL=http://ministack:4567 -e VINTEX_INFRA_MINISTACK_TEST=1 api pytest tests/test_infra_ministack.py -v
+	$(COMPOSE) exec -T -e MINISTACK_ENDPOINT_URL=http://ministack:4567 api python -m scripts.infra.ministack_resources verify
 
 ## Placeholder para testes de interoperabilidade (VE-22, ainda não implementado).
 test-interoperability:
