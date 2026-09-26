@@ -19,6 +19,7 @@ class ProductFeedRow(TypedDict):
     status: str
     store_id: int
     store_name: str
+    store_verified: bool
 
 
 class ProductRepository:
@@ -57,8 +58,10 @@ class ProductRepository:
                 Product.status,
                 Store.id.label("store_id"),
                 Store.name.label("store_name"),
+                Seller.verified.label("store_verified"),
             )
             .join(Store, Store.id == Product.store_id)
+            .join(Seller, Seller.id == Store.seller_id)
             .where(Product.status == "ativo")
             .order_by(Product.created_at.desc(), Product.id.desc())
         )

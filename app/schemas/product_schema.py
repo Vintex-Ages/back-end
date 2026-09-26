@@ -13,6 +13,7 @@ ProductAIStatusValue = Literal[
 class FeedStoreResponse(BaseModel):
     id: int
     name: str
+    verified: bool
 
 
 class ProductFeedItemResponse(BaseModel):

@@ -29,6 +29,7 @@ class ProductController:
                 store=FeedStoreResponse(
                     id=row["store_id"],
                     name=row["store_name"],
+                    verified=row["store_verified"],
                 ),
             )
             for row in rows
