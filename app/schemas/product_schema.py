@@ -1,14 +1,45 @@
+from __future__ import annotations
+
 from decimal import Decimal
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
-from pydantic import BaseModel, ConfigDict, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
 
-from app.repositories.product_repository import ProductFeedRow
 from app.services.ai.base import ImageAnalysisResult
+
+if TYPE_CHECKING:
+    # Só para tipagem: `product_repository` importa `ProductFilters` daqui,
+    # então um import de verdade em tempo de execução criaria um ciclo.
+    from app.repositories.product_repository import ProductFeedRow
 
 ProductAIStatusValue = Literal[
     "not_requested", "pending", "processing", "done", "failed"
 ]
+
+
+class ProductFilters(BaseModel):
+    category: str | None = None
+    price_min: Decimal | None = Field(default=None, ge=0)
+    price_max: Decimal | None = Field(default=None, ge=0)
+    size: str | None = None
+    brand: str | None = None
+    condition: str | None = None
+    color: str | None = None
+
+    @model_validator(mode="after")
+    def validate_price_range(self) -> "ProductFilters":
+        if (
+            isinstance(self.price_min, Decimal)
+            and isinstance(self.price_max, Decimal)
+            and self.price_min > self.price_max
+        ):
+            raise ValueError("price_min deve ser menor ou igual a price_max")
+        return self
+
+    def applied(self) -> dict[str, str | Decimal]:
+        return {
+            key: value for key, value in self.model_dump().items() if value is not None
+        }
 
 
 class FeedStoreResponse(BaseModel):
@@ -48,6 +79,7 @@ class FeedResponse(BaseModel):
     page: int
     page_size: int
     total: int
+    applied_filters: dict[str, str | Decimal] = Field(default_factory=dict)
 
 
 class ProductMediaResponse(BaseModel):
