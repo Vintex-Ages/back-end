@@ -1,9 +1,16 @@
+from __future__ import annotations
+
 from decimal import Decimal
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
 
 from app.services.ai.base import ImageAnalysisResult
+
+if TYPE_CHECKING:
+    # Só para tipagem: `product_repository` importa `ProductFilters` daqui,
+    # então um import de verdade em tempo de execução criaria um ciclo.
+    from app.repositories.product_repository import ProductFeedRow
 
 ProductAIStatusValue = Literal[
     "not_requested", "pending", "processing", "done", "failed"
@@ -47,6 +54,18 @@ class ProductFeedItemResponse(BaseModel):
     cover_image_url: str | None
     store: FeedStoreResponse
     status: str
+
+    @classmethod
+    def from_row(cls, row: ProductFeedRow) -> "ProductFeedItemResponse":
+        """Monta a partir de uma `ProductFeedRow` (feed, busca por similaridade)."""
+        return cls(
+            id=row["id"],
+            name=row["name"],
+            price=row["price"],
+            cover_image_url=row["cover_image_url"],
+            status=row["status"],
+            store=FeedStoreResponse(id=row["store_id"], name=row["store_name"]),
+        )
 
     @field_serializer("price")
     def serializar_preco(self, price: Decimal) -> float:

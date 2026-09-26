@@ -5,7 +5,6 @@ from app.core.pagination import PageParams
 from app.repositories.product_repository import ProductRepository
 from app.schemas.product_schema import (
     FeedResponse,
-    FeedStoreResponse,
     ProductAIStatusResponse,
     ProductAIStatusValue,
     ProductDetailResponse,
@@ -23,20 +22,7 @@ class ProductController:
 
     def get_feed(self, params: PageParams, filters: ProductFilters) -> FeedResponse:
         rows, total = self.repository.get_active_feed(params, filters)
-        items = [
-            ProductFeedItemResponse(
-                id=row["id"],
-                name=row["name"],
-                price=row["price"],
-                cover_image_url=row["cover_image_url"],
-                status=row["status"],
-                store=FeedStoreResponse(
-                    id=row["store_id"],
-                    name=row["store_name"],
-                ),
-            )
-            for row in rows
-        ]
+        items = [ProductFeedItemResponse.from_row(row) for row in rows]
         return FeedResponse(
             items=items,
             page=params.page,

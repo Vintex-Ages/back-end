@@ -30,6 +30,14 @@ class EmbeddingVector(TypeDecorator):
         super().__init__(*args, **kwargs)
         self.dim = dim
 
+    # `.cosine_distance()`/`.l2_distance()` (BE-US027-3, back-end#149): sem
+    # isso, `Product.embedding.cosine_distance(...)` não existe — o
+    # TypeDecorator não herda o comparator do `impl` sozinho. Só faz sentido
+    # chamar isso contra Postgres (o comparador ainda existiria no SQLite,
+    # mas geraria SQL inválido — os testes de busca por similaridade usam a
+    # fixture `pg_session`, nunca o SQLite).
+    comparator_factory = Vector.comparator_factory
+
     def load_dialect_impl(self, dialect):
         if dialect.name == "postgresql":
             return dialect.type_descriptor(Vector(self.dim))

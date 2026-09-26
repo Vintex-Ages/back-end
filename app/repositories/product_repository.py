@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from decimal import Decimal
 from typing import TypedDict, cast
 
@@ -22,6 +23,28 @@ class ProductFeedRow(TypedDict):
     store_name: str
 
 
+def _feed_select() -> Select[tuple[object, ...]]:
+    """Base comum a qualquer listagem de peça (feed, busca) — o resultado
+    sempre bate com `ProductFeedRow`, incluindo a subquery da capa. Quem
+    chama ainda adiciona `join`/`where`/`order_by` próprios."""
+    cover_image_url = (
+        select(ProductImage.image_url)
+        .where(ProductImage.product_id == Product.id)
+        .order_by(ProductImage.position.asc(), ProductImage.id.asc())
+        .limit(1)
+        .scalar_subquery()
+    )
+    return select(
+        Product.id,
+        Product.name,
+        Product.price,
+        cover_image_url.label("cover_image_url"),
+        Product.status,
+        Store.id.label("store_id"),
+        Store.name.label("store_name"),
+    )
+
+
 class ProductRepository:
     def __init__(self, db: Session):
         self.db = db
@@ -44,13 +67,6 @@ class ProductRepository:
     def get_active_feed(
         self, params: PageParams, filters: ProductFilters
     ) -> tuple[list[ProductFeedRow], int]:
-        cover_image_url = (
-            select(ProductImage.image_url)
-            .where(ProductImage.product_id == Product.id)
-            .order_by(ProductImage.position.asc(), ProductImage.id.asc())
-            .limit(1)
-            .scalar_subquery()
-        )
         conditions = [Product.status == "ativo"]
         filter_columns = {
             "category": Product.category,
@@ -73,16 +89,8 @@ class ProductRepository:
         if filters.price_max is not None:
             conditions.append(Product.price <= filters.price_max)
 
-        stmt: Select[tuple[object, ...]] = (
-            select(
-                Product.id,
-                Product.name,
-                Product.price,
-                cover_image_url.label("cover_image_url"),
-                Product.status,
-                Store.id.label("store_id"),
-                Store.name.label("store_name"),
-            )
+        stmt = (
+            _feed_select()
             .join(Store, Store.id == Product.store_id)
             .where(*conditions)
             .order_by(Product.created_at.desc(), Product.id.desc())
@@ -96,6 +104,26 @@ class ProductRepository:
             .all()
         )
         return [cast(ProductFeedRow, dict(row)) for row in rows], total
+
+    def find_similar(
+        self, query_embedding: Sequence[float], limit: int = 5
+    ) -> list[ProductFeedRow]:
+        """Peças ativas mais próximas do vetor da pergunta (BE-US027-3, back-end#149).
+
+        Só peças com embedding entram na ordenação — sem isso, `ORDER BY
+        cosine_distance(NULL, ...)` derruba peças sem posição pro fim de
+        forma indefinida em vez de excluí-las. Nunca inventa peça: só o que
+        já existe no catálogo real pode aparecer aqui.
+        """
+        stmt = (
+            _feed_select()
+            .join(Store, Store.id == Product.store_id)
+            .where(Product.status == "ativo", Product.embedding.is_not(None))
+            .order_by(Product.embedding.cosine_distance(list(query_embedding)))
+            .limit(limit)
+        )
+        rows = self.db.execute(stmt).mappings().all()
+        return [cast(ProductFeedRow, dict(row)) for row in rows]
 
     def get_detail_by_id(self, product_id: int) -> Product | None:
         stmt = (
