@@ -13,3 +13,6 @@ class SellerRepository:
         return (
             self.db.query(Seller).filter(Seller.user_id == user_id).first() is not None
         )
+
+    def get_by_user_id(self, user_id: int) -> Seller | None:
+        return self.db.query(Seller).filter(Seller.user_id == user_id).one_or_none()
