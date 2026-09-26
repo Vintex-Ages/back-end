@@ -92,9 +92,10 @@ Dados sintéticos para desenvolvimento e demo. Rode **depois** de `alembic upgra
 ```bash
 python -m app.seeds.lojas   # endereços, vendedores e lojas (RS)
 python -m app.seeds.pecas   # peças e imagens, distribuídas entre as lojas
+python -m app.seeds.legal   # v0 dos termos de uso e do contrato de venda
 ```
 
-Ambos são idempotentes — rodar de novo não duplica.
+Todos são idempotentes — rodar de novo não duplica.
 
 ## Testes
 
