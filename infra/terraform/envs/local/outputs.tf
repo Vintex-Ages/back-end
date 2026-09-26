@@ -102,3 +102,18 @@ output "ecs_execution_role_policy_arn" {
   description = "Política gerenciada anexada ao papel de execução ECS."
   value       = module.ecs_execution_role.execution_policy_arn
 }
+
+output "media_bucket_name" {
+  description = "Bucket privado de mídia no ambiente local."
+  value       = module.media_storage.bucket_name
+}
+
+output "media_prefixes" {
+  description = "Prefixos lógicos de mídia do contrato VE-16."
+  value       = module.media_storage.prefixes
+}
+
+output "media_public_access_block" {
+  description = "Bloqueio de acesso público do bucket de mídia."
+  value       = module.media_storage.public_access_block
+}
