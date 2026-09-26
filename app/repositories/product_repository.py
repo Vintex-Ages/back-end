@@ -9,6 +9,7 @@ from app.models.product import Product
 from app.models.product_image import ProductImage
 from app.models.seller import Seller
 from app.models.store import Store
+from app.schemas.product_schema import ProductFilters
 
 
 class ProductFeedRow(TypedDict):
@@ -40,7 +41,9 @@ class ProductRepository:
             .where(Product.id == product_id, Seller.user_id == user_id)
         )
 
-    def get_active_feed(self, params: PageParams) -> tuple[list[ProductFeedRow], int]:
+    def get_active_feed(
+        self, params: PageParams, filters: ProductFilters
+    ) -> tuple[list[ProductFeedRow], int]:
         cover_image_url = (
             select(ProductImage.image_url)
             .where(ProductImage.product_id == Product.id)
@@ -48,6 +51,28 @@ class ProductRepository:
             .limit(1)
             .scalar_subquery()
         )
+        conditions = [Product.status == "ativo"]
+        filter_columns = {
+            "category": Product.category,
+            "size": Product.size,
+            "brand": Product.brand,
+            "condition": Product.condition,
+            "color": Product.color,
+        }
+        for field_name, column in filter_columns.items():
+            value = getattr(filters, field_name)
+            if value is not None:
+                normalized_column = func.lower(column)
+                normalized_value = func.lower(value)
+                if self.db.get_bind().dialect.name == "postgresql":
+                    normalized_column = func.immutable_unaccent(normalized_column)
+                    normalized_value = func.immutable_unaccent(normalized_value)
+                conditions.append(normalized_column == normalized_value)
+        if filters.price_min is not None:
+            conditions.append(Product.price >= filters.price_min)
+        if filters.price_max is not None:
+            conditions.append(Product.price <= filters.price_max)
+
         stmt: Select[tuple[object, ...]] = (
             select(
                 Product.id,
@@ -59,7 +84,7 @@ class ProductRepository:
                 Store.name.label("store_name"),
             )
             .join(Store, Store.id == Product.store_id)
-            .where(Product.status == "ativo")
+            .where(*conditions)
             .order_by(Product.created_at.desc(), Product.id.desc())
         )
 
