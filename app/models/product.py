@@ -13,10 +13,9 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.constants.embedding import EMBEDDING_DIM
 from app.models.base_model import BaseModel
 from app.models.types import EmbeddingVector
-
-EMBEDDING_DIM = 768
 
 if TYPE_CHECKING:
     from app.models.product_image import ProductImage

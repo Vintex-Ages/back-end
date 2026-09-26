@@ -15,6 +15,7 @@ from google import genai
 from google.genai import types
 
 from app.config import settings
+from app.constants.embedding import EMBEDDING_DIM
 from app.services.ai.base import (
     AIProvider,
     AIProviderError,
@@ -27,8 +28,6 @@ from app.services.ai.base import (
 _NOT_IMPLEMENTED = (
     "GoogleAIProvider ainda não implementa este método (fora do escopo do back-end#92)."
 )
-
-EMBEDDING_DIM = 768
 
 
 class GoogleAIProvider(AIProvider):
@@ -70,4 +69,14 @@ class GoogleAIProvider(AIProvider):
             raise AIProviderError(
                 "Resposta de embedding do Google não tem um vetor por texto enviado."
             )
-        return [list(item.values or []) for item in response.embeddings]
+
+        vectors = [list(item.values or []) for item in response.embeddings]
+        if any(len(vector) != EMBEDDING_DIM for vector in vectors):
+            # Sem isso, um vetor vazio (`values=None`) ou de dimensão errada
+            # (ex.: o modelo trocou o padrão) é gravado como se fosse válido —
+            # e como o backfill é idempotente por `embedding IS NOT NULL`, a
+            # peça nunca mais seria reprocessada, mesmo com o provedor bom.
+            raise AIProviderError(
+                f"Provedor devolveu vetor com dimensão diferente de {EMBEDDING_DIM}."
+            )
+        return vectors

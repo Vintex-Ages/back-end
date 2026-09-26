@@ -12,6 +12,7 @@ from app.services.ai.base import (
     ImageAnalysisResult,
     SearchStreamEvent,
 )
+from app.constants.embedding import EMBEDDING_DIM
 from app.services.ai.factory import _PROVIDERS, get_ai_provider
 from app.services.ai.google import GoogleAIProvider
 from app.services.ai.unavailable import UnavailableAIProvider
@@ -91,10 +92,16 @@ def test_fake_embedding_provider_devolve_um_vetor_por_texto() -> None:
     assert all(isinstance(v, list) for v in vectors)
 
 
+def _vector(seed: float) -> list[float]:
+    return [seed] * EMBEDDING_DIM
+
+
 def test_google_embed_envia_um_content_por_texto(monkeypatch) -> None:
     from google.genai import types
 
-    fake_models = _FakeModels([_FakeEmbedding([0.1, 0.2]), _FakeEmbedding([0.3, 0.4])])
+    fake_models = _FakeModels(
+        [_FakeEmbedding(_vector(0.1)), _FakeEmbedding(_vector(0.3))]
+    )
     monkeypatch.setattr("app.services.ai.google.settings.GOOGLE_API_KEY", "fake-key")
     monkeypatch.setattr(
         "app.services.ai.google.genai.Client", lambda **_: _FakeClient(fake_models)
@@ -103,14 +110,14 @@ def test_google_embed_envia_um_content_por_texto(monkeypatch) -> None:
 
     vectors = provider.embed(["jaqueta azul", "tênis branco"])
 
-    assert vectors == [[0.1, 0.2], [0.3, 0.4]]
+    assert vectors == [_vector(0.1), _vector(0.3)]
     sent_contents = fake_models.calls[0]
     assert len(sent_contents) == 2
     assert all(isinstance(c, types.Content) for c in sent_contents)
 
 
 def test_google_embed_levanta_se_resposta_nao_bate_com_o_pedido(monkeypatch) -> None:
-    fake_models = _FakeModels([_FakeEmbedding([0.1, 0.2])])
+    fake_models = _FakeModels([_FakeEmbedding(_vector(0.1))])
     monkeypatch.setattr("app.services.ai.google.settings.GOOGLE_API_KEY", "fake-key")
     monkeypatch.setattr(
         "app.services.ai.google.genai.Client", lambda **_: _FakeClient(fake_models)
@@ -119,6 +126,32 @@ def test_google_embed_levanta_se_resposta_nao_bate_com_o_pedido(monkeypatch) -> 
 
     with pytest.raises(AIProviderError):
         provider.embed(["jaqueta azul", "tênis branco"])
+
+
+def test_google_embed_levanta_se_vetor_vier_vazio(monkeypatch) -> None:
+    """`values=None` (falha silenciosa do SDK) não pode virar `[]` sem erro."""
+    fake_models = _FakeModels([_FakeEmbedding(None)])
+    monkeypatch.setattr("app.services.ai.google.settings.GOOGLE_API_KEY", "fake-key")
+    monkeypatch.setattr(
+        "app.services.ai.google.genai.Client", lambda **_: _FakeClient(fake_models)
+    )
+    provider = GoogleAIProvider()
+
+    with pytest.raises(AIProviderError):
+        provider.embed(["jaqueta azul"])
+
+
+def test_google_embed_levanta_se_dimensao_vier_errada(monkeypatch) -> None:
+    """Modelo devolvendo uma dimensão diferente da esperada não pode passar batido."""
+    fake_models = _FakeModels([_FakeEmbedding([0.1] * 3072)])
+    monkeypatch.setattr("app.services.ai.google.settings.GOOGLE_API_KEY", "fake-key")
+    monkeypatch.setattr(
+        "app.services.ai.google.genai.Client", lambda **_: _FakeClient(fake_models)
+    )
+    provider = GoogleAIProvider()
+
+    with pytest.raises(AIProviderError):
+        provider.embed(["jaqueta azul"])
 
 
 def test_trocar_para_google_e_so_registrar_e_apontar_a_config(monkeypatch) -> None:

@@ -2,10 +2,15 @@
 
 `EmbeddingVector` é `vector(dim)` de verdade no Postgres (via `pgvector`,
 usado pelo índice de similaridade) e cai para `JSON` em qualquer outro
-dialeto — hoje só o SQLite dos testes. Isso evita depender de Postgres para
-rodar a suíte (a #139/PR #161 cobre isso de forma mais geral; enquanto não
-mergeia, esta é a saída mínima para este model não quebrar os outros 13
-arquivos de teste).
+dialeto — hoje só o SQLite dos testes.
+
+A #139/PR #161 (mergeada) **não substitui isso**: ela só deixa testes
+marcados com `@pytest.mark.postgres` rodarem contra um Postgres real quando
+`TEST_POSTGRES_URL` está definido, pulando-os quando não está. Os fixtures
+padrão (`db_session`/`client`, usados pelos outros 13+ arquivos de teste,
+incluindo os deste model) continuam em SQLite por padrão — e sem este
+fallback, `Base.metadata.create_all()` quebraria todos eles assim que
+`Product.embedding` entrasse no model.
 """
 
 from __future__ import annotations
