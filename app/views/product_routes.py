@@ -13,6 +13,7 @@ from app.database import get_db
 from app.schemas.product_schema import (
     FeedResponse,
     ProductAIStatusResponse,
+    ProductDetailResponse,
     ProductFilters,
 )
 
@@ -67,6 +68,19 @@ def list_products(
     controller: ProductController = Depends(get_controller),
 ) -> FeedResponse:
     return controller.get_feed(params, filters)
+
+
+@router.get(
+    "/{product_id}",
+    response_model=ProductDetailResponse,
+    summary="Detalhe da peça",
+    responses={404: {"description": "PRODUCT_NOT_FOUND"}},
+)
+def get_product_detail(
+    product_id: int,
+    controller: ProductController = Depends(get_controller),
+) -> ProductDetailResponse:
+    return controller.get_detail(product_id)
 
 
 @me_router.get("/{product_id}/ai-status", response_model=ProductAIStatusResponse)

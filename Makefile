@@ -1,9 +1,9 @@
 .PHONY: help infra-qa infra-up infra-down infra-local-test infra-complete \
         lint format-check \
         terraform-init terraform-fmt terraform-validate terraform-test \
-        test-unit test-localstack test-ministack test-interoperability
+        test-unit test-infra-postgres test-localstack test-media-storage test-ministack test-interoperability
 
-# Infraestrutura de teste local (VE-12/VE-13/VE-20/VE-21/VE-22).
+# Infraestrutura de teste local (VE-12/VE-13/VE-16/VE-20/VE-21/VE-22).
 # Ver Vintex_Handoff_Infra_Local_Terraform_LocalStack_MiniStack.md para o
 # contrato completo destes alvos.
 
@@ -20,7 +20,8 @@ infra-qa: lint format-check terraform-fmt terraform-init terraform-validate
 
 ## Sobe a infraestrutura local e cria recursos sintéticos de teste.
 infra-up:
-	$(COMPOSE) up -d --wait
+	$(COMPOSE) up -d --build --wait
+	$(COMPOSE) exec -T api alembic upgrade head
 	bash scripts/infra/seed-synthetic-resources.sh
 
 ## Derruba containers, redes e volumes da infraestrutura local.
@@ -28,19 +29,14 @@ infra-down:
 	$(COMPOSE) down -v --remove-orphans
 
 ## Executa todos os testes locais sem derrubar a infraestrutura ao final.
-infra-local-test: test-unit terraform-test test-localstack test-ministack test-interoperability
+infra-local-test: test-unit terraform-test test-infra-postgres test-localstack test-media-storage test-ministack test-interoperability
 	@echo "[infra-local-test] ok"
 
-# Roda QA, sobe o ambiente, executa os testes e sempre derruba o ambiente no
-# final (inclusive em falha), preservando o código de saída da primeira
-# falha. infra-qa falhando aborta antes de subir qualquer container.
+# QA falhando aborta antes de subir containers. O script preserva a primeira
+# falha e executa infra-down mesmo se QA, infra-up ou infra-local-test falhar.
 ## Executa QA, infraestrutura e testes; sempre derruba o ambiente no final.
 infra-complete:
-	@set -e; \
-	$(MAKE) infra-qa; \
-	trap '$(MAKE) infra-down' EXIT; \
-	$(MAKE) infra-up; \
-	$(MAKE) infra-local-test
+	@bash scripts/infra/complete.sh "$(MAKE)"
 
 ## --- Alvos granulares (diagnóstico) ----------------------------------------
 
@@ -69,23 +65,35 @@ terraform-validate: terraform-init
 terraform-test:
 	$(TF) test
 
-## Executa os testes unitários do back-end.
+## Executa os testes unitários do back-end no container da API.
 test-unit:
-	pytest tests/ -v
+	$(COMPOSE) exec -T api pytest tests/ -v
 
-# Implementados junto com as respectivas issues; por ora só sinalizam que
-# ainda não fazem nada, sem quebrar infra-local-test/infra-complete.
-## Placeholder para testes do LocalStack (VE-20, ainda não implementado).
+## Verifica PostgreSQL, migrations e persistência no Compose vintex-infra (VE-15).
+test-infra-postgres:
+	$(COMPOSE) exec -T -e VINTEX_INFRA_POSTGRES_TEST=1 api pytest tests/test_infra_postgres.py -v
+
+## Verifica recursos e operações reais no LocalStack (VE-20).
 test-localstack:
-	@echo "[test-localstack] ainda nao implementado - ver VE-20 (#171)"
+	$(COMPOSE) exec -T -e LOCALSTACK_ENDPOINT_URL=http://localstack:4566 api python -m scripts.infra.localstack_resources seed
+	$(COMPOSE) exec -T -e LOCALSTACK_ENDPOINT_URL=http://localstack:4566 -e VINTEX_INFRA_LOCALSTACK_TEST=1 api pytest tests/test_infra_localstack.py -v
+	$(COMPOSE) exec -T -e LOCALSTACK_ENDPOINT_URL=http://localstack:4566 api python -m scripts.infra.localstack_resources verify
 
-## Placeholder para testes do MiniStack (VE-21, ainda não implementado).
+## Verifica bucket privado e operações de mídia reais no LocalStack (VE-16).
+test-media-storage:
+	$(COMPOSE) exec -T -e LOCALSTACK_ENDPOINT_URL=http://localstack:4566 api python -m scripts.infra.media_storage_resources seed
+	$(COMPOSE) exec -T -e LOCALSTACK_ENDPOINT_URL=http://localstack:4566 -e VINTEX_INFRA_MEDIA_TEST=1 api pytest tests/test_infra_media_storage.py -v
+	$(COMPOSE) exec -T -e LOCALSTACK_ENDPOINT_URL=http://localstack:4566 api python -m scripts.infra.media_storage_resources verify
+
+## Verifica recursos e operações reais no MiniStack (VE-21).
 test-ministack:
-	@echo "[test-ministack] ainda nao implementado - ver VE-21 (#172)"
+	$(COMPOSE) exec -T -e MINISTACK_ENDPOINT_URL=http://ministack:4567 api python -m scripts.infra.ministack_resources seed
+	$(COMPOSE) exec -T -e MINISTACK_ENDPOINT_URL=http://ministack:4567 -e VINTEX_INFRA_MINISTACK_TEST=1 api pytest tests/test_infra_ministack.py -v
+	$(COMPOSE) exec -T -e MINISTACK_ENDPOINT_URL=http://ministack:4567 api python -m scripts.infra.ministack_resources verify
 
-## Placeholder para testes de interoperabilidade (VE-22, ainda não implementado).
+## Verifica API, banco e fluxo sintético LocalStack/MiniStack (VE-22).
 test-interoperability:
-	@echo "[test-interoperability] ainda nao implementado - ver VE-22 (#173)"
+	$(COMPOSE) exec -T -e LOCALSTACK_ENDPOINT_URL=http://localstack:4566 -e MINISTACK_ENDPOINT_URL=http://ministack:4567 -e VINTEX_INFRA_INTEROP_TEST=1 api pytest tests/test_infra_interoperability.py -v
 
 ## --- Ajuda ----------------------------------------------------------------
 
