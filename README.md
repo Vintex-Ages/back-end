@@ -130,7 +130,7 @@ Alvos principais:
 
 Alvos granulares para diagnóstico: `lint`, `format-check`, `terraform-init`, `terraform-fmt`, `terraform-validate`, `terraform-test`, `test-unit`, `test-localstack`, `test-ministack`, `test-interoperability`.
 
-`test-localstack` e `test-ministack` executam smoke tests reais nos emuladores (VE-20/VE-21). O VPC Link da VE-21 segue pendente porque a imagem atual do MiniStack não implementa essa operação. `test-interoperability` ainda é placeholder da VE-22.
+`test-localstack` e `test-ministack` executam smoke tests reais nos emuladores (VE-20/VE-21). `test-interoperability` ainda é placeholder da VE-22. O módulo Terraform de VPC Link pertence à VE-19 (#170), em hold.
 
 ## Convenção de branches
 
