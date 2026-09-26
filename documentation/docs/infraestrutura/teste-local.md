@@ -20,7 +20,7 @@ Sobe Postgres, API, LocalStack (`4566`) e MiniStack (`4567`) numa rede Docker pr
 | Alvo | O que faz |
 | --- | --- |
 | `make infra-qa` | Lint, format-check e `terraform fmt/init/validate`. Nunca executa `terraform apply`. |
-| `make infra-up` | Sobe o Compose `vintex-infra` e aguarda os health checks. |
+| `make infra-up` | Reconstrói a imagem da API, sobe o Compose `vintex-infra` e aguarda os health checks. |
 | `make infra-down` | Derruba só os containers/rede/volume do projeto `vintex-infra`. |
 | `make infra-local-test` | Testes locais (unitários, Terraform mockado, LocalStack, MiniStack, interoperabilidade), sem derrubar o ambiente. |
 | `make infra-complete` | QA + subida + testes + `infra-down`, sempre derrubando o ambiente no final, preservando a primeira falha. |
@@ -44,8 +44,23 @@ O provisionamento e `make test-localstack` rodam dentro do container da API, ond
 
 No host, a porta vem de `LOCALSTACK_HOST_PORT` em `infra/vintex-infra/.env` (padrão `4566`). Para apontar explicitamente ao emulador, use `LOCALSTACK_ENDPOINT_URL=http://127.0.0.1:4566`. A ferramenta só aceita endereços HTTP locais ou o alias `localstack` e usa credenciais fictícias `test`; ela não chama a AWS real.
 
+## MiniStack (VE-21)
+
+`make infra-up` prepara um cluster ECS, uma task definition e um serviço Fargate com zero tarefas, um namespace e serviço Cloud Map, uma HTTP API e um repositório ECR sintéticos. O serviço Fargate usa VPC, subnet e grupo de segurança criados apenas como metadados de teste no MiniStack. O fluxo não inicia containers ECS; a execução de tarefas reais depende do socket Docker e fica para a etapa de computação.
+
+```bash
+make infra-up
+make test-ministack
+make test-ministack  # confirma que o provisionamento é idempotente
+make infra-down
+```
+
+Os comandos rodam no container da API por `http://ministack:4567`, alias da rede Compose. O host usa `MINISTACK_HOST_PORT` de `infra/vintex-infra/.env` (padrão `4567`), ou `MINISTACK_ENDPOINT_URL=http://127.0.0.1:4567` explícito. Só são aceitos endereços HTTP locais ou o alias `ministack`, sempre com credenciais fictícias `test`. Os smoke tests validam o plano de controle; a interoperação entre emuladores fica para a VE-22.
+
+O handoff de infraestrutura (item 10) e os critérios de aceite da VE-21 delimitam esta integração local a ECS, Cloud Map, HTTP API e ECR. O módulo Terraform de VPC Link é entregável da [VE-19 (#170)](https://github.com/Vintex-Ages/back-end/issues/170), hoje em hold. A imagem MiniStack atual responde 404 a `GetVpcLinks` (`/v2/vpclinks`); essa limitação deverá ser tratada ao retomar a VE-19. O script da VE-21 não simula VPC Link.
+
 ## Estado atual (S2)
 
-Base local ([VE-12, #163](https://github.com/Vintex-Ages/back-end/issues/163)) e estrutura Terraform ([VE-13, #164](https://github.com/Vintex-Ages/back-end/issues/164)) concluídas. A integração LocalStack ([VE-20, #171](https://github.com/Vintex-Ages/back-end/issues/171)) provisiona recursos sintéticos e os testa. Integração MiniStack ([VE-21, #172](https://github.com/Vintex-Ages/back-end/issues/172)) e testes de interoperabilidade ([VE-22, #173](https://github.com/Vintex-Ages/back-end/issues/173)) seguem como próximas etapas.
+Base local ([VE-12, #163](https://github.com/Vintex-Ages/back-end/issues/163)) e estrutura Terraform ([VE-13, #164](https://github.com/Vintex-Ages/back-end/issues/164)) concluídas. As integrações LocalStack ([VE-20, #171](https://github.com/Vintex-Ages/back-end/issues/171)) e MiniStack ([VE-21, #172](https://github.com/Vintex-Ages/back-end/issues/172)) provisionam e testam os recursos sintéticos previstos nesta sprint. Os testes de interoperabilidade ([VE-22, #173](https://github.com/Vintex-Ages/back-end/issues/173)) são a próxima etapa.
 
 Em hold: os módulos de feature (rede, banco/pgvector, storage, mensageria, worker, computação) e os gates de CI/promoção — ver a lista completa no épico VE-29.
