@@ -1,6 +1,6 @@
 # Módulos Terraform
 
-Módulos da VE-14:
+Módulos da VE-14 e VE-16:
 
 - `network`: VPC com DNS habilitado, duas subnets em zonas diferentes, Internet
   Gateway e rota de saída. As subnets não atribuem IP público automaticamente.
@@ -10,6 +10,10 @@ Módulos da VE-14:
   a política gerenciada `AmazonECSTaskExecutionRolePolicy`, para ECR/logs.
   Permissões de aplicação para S3, SQS, banco e secrets ficam para as tasks
   específicas das issues posteriores.
+- `media_storage` (VE-16): bucket S3 privado, bloqueio de ACLs/políticas
+  públicas e criptografia AES256. Expõe o nome do bucket e os prefixos lógicos
+  de fotos, vídeos curtos e comprovantes Pix. Os prefixos são proposta para
+  alinhamento com a [VE-04 (#59)](https://github.com/Vintex-Ages/back-end/issues/59).
 
 ECS Fargate usa `awsvpc`: cada task ganha sua própria interface de rede (ENI)
 na subnet escolhida. Não criamos `aws_network_interface` manualmente. A VE-19
@@ -30,7 +34,6 @@ VE-27.
 Módulos ainda em hold:
 
 - Banco e busca vetorial (pgvector) — VE-15
-- Storage de mídia (S3) — VE-16
 - Mensageria assíncrona (SQS) — VE-17
 - Worker e contrato de IA — VE-18
 - Computação e descoberta (ECS/Fargate, Cloud Map, API Gateway, ECR, VPC Link) — VE-19

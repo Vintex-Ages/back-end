@@ -1,6 +1,6 @@
 # Env local: aponta o provider AWS para LocalStack e MiniStack, nunca para
 # a AWS real. Rede e papel de execução ECS são planejados na VE-14; os módulos
-# de banco, storage, mensageria, worker e computação entram nas issues seguintes.
+# de banco, mensageria, worker e computação entram nas issues seguintes.
 
 provider "aws" {
   region = var.aws_region
@@ -45,4 +45,9 @@ module "network" {
 module "ecs_execution_role" {
   source      = "../../modules/ecs_execution_role"
   name_prefix = "vintex-${var.environment}"
+}
+
+module "media_storage" {
+  source      = "../../modules/media_storage"
+  bucket_name = "vintex-${var.environment}-media"
 }

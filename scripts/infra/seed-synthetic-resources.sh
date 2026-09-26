@@ -14,5 +14,11 @@ docker compose \
 docker compose \
   -f infra/vintex-infra/docker-compose.yml \
   --project-directory infra/vintex-infra \
+  exec -T -e LOCALSTACK_ENDPOINT_URL=http://localstack:4566 \
+  api python -m scripts.infra.media_storage_resources seed
+
+docker compose \
+  -f infra/vintex-infra/docker-compose.yml \
+  --project-directory infra/vintex-infra \
   exec -T -e MINISTACK_ENDPOINT_URL=http://ministack:4567 \
   api python -m scripts.infra.ministack_resources seed
