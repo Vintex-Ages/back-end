@@ -9,6 +9,7 @@ apenas `api_router`.
 
 from fastapi import APIRouter
 
+from app.views.auth_routes import router as auth_router
 from app.views.product_routes import me_router as product_me_router
 from app.views.product_routes import router as product_router
 from app.views.style_routes import router as styles_router
@@ -17,6 +18,7 @@ api_router = APIRouter(prefix="/api")
 
 # Routers de domínio (feed, auth, stores, styles...) são incluídos aqui
 # conforme as issues de rota forem entregues.
+api_router.include_router(auth_router)
 api_router.include_router(product_router)
 api_router.include_router(product_me_router)
 api_router.include_router(styles_router)
