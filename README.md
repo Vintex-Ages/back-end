@@ -4,6 +4,8 @@ Consulte o [guia de contribuição](CONTRIBUTING.md) antes de abrir uma issue ou
 
 Backend da aplicação Vintex, desenvolvido com **Python** e **FastAPI**, seguindo o padrão **MVC**.
 
+Documentação viva (arquitetura, decisões, infraestrutura) em [`documentation/`](documentation/README.md).
+
 ## Arquitetura
 
 ```
@@ -106,6 +108,31 @@ pytest tests/ -v
 ruff check .
 black --check .
 ```
+
+## Infraestrutura de teste local
+
+Projeto Compose complementar (`vintex-infra`), isolado do compose de dev da raiz — sobe Postgres, API, LocalStack e MiniStack numa rede própria. Ver a issue [VE-29](https://github.com/Vintex-Ages/back-end/issues/180) para o desenho completo e o backlog relacionado.
+
+```bash
+# Copiar as variáveis de ambiente do projeto de infra (sem segredos)
+cp infra/vintex-infra/.env.example infra/vintex-infra/.env
+```
+
+Alvos principais:
+
+| Alvo | O que faz |
+| --- | --- |
+| `make infra-qa` | Lint, format-check e `terraform fmt/init/validate`. Nunca executa `terraform apply`. |
+| `make infra-up` | Reconstrói a API, sobe o Compose `vintex-infra`, aplica migrations locais e prepara recursos sintéticos. |
+| `make infra-down` | Derruba somente os containers/redes/volumes do projeto `vintex-infra`. |
+| `make infra-local-test` | Roda os testes locais (unitários, Terraform mockado, PostgreSQL, LocalStack, MiniStack, interoperabilidade) sem derrubar o ambiente. |
+| `make infra-complete` | QA + subida + testes + `infra-down`, sempre derrubando o ambiente no final (mesmo em falha), preservando o código de saída da primeira falha. |
+
+Alvos granulares para diagnóstico: `lint`, `format-check`, `terraform-init`, `terraform-fmt`, `terraform-validate`, `terraform-test`, `test-unit`, `test-infra-postgres`, `test-localstack`, `test-ministack`, `test-interoperability`.
+
+`test-localstack`, `test-ministack` e `test-interoperability` executam testes reais dos emuladores e do fluxo local (VE-20/VE-21/VE-22). `infra-up` aplica as migrations ao Postgres local, e `test-unit` roda no container da API. A interoperabilidade usa um consumidor SQS sintético; o worker de produto pertence à VE-18 (#169), em hold. O módulo Terraform de VPC Link pertence à VE-19 (#170), também em hold.
+
+A [VE-14 (#165)](https://github.com/Vintex-Ages/back-end/issues/165) acrescenta módulos Terraform de rede e papel de execução ECS, exercitados apenas por plano mockado. A interface de cada task Fargate será criada pelo modo `awsvpc` quando a VE-19 ligar os módulos à computação; nenhum recurso AWS real é aplicado nesta fase. Veja [a documentação de Terraform](infra/terraform/README.md).
 
 ## Convenção de branches
 

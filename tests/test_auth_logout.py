@@ -138,9 +138,7 @@ def test_logout_sem_corpo_revoga_todos_os_refresh_tokens_ativos_do_usuario(clien
 
     assert auth["refresh_token"] != login["refresh_token"]
 
-    response = client.post(
-        ROTA_LOGOUT, headers=_auth_header(login["access_token"])
-    )
+    response = client.post(ROTA_LOGOUT, headers=_auth_header(login["access_token"]))
     assert response.status_code == 204
 
     resposta_registro = client.post(
