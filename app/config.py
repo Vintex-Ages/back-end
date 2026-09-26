@@ -25,6 +25,16 @@ class Settings(BaseSettings):
     # padrão "unavailable" degrada sem erro fatal (VE-06).
     AI_PROVIDER: str = "unavailable"
 
+    # Embedding do catálogo (BE-US027-1, back-end#92). Só lido quando
+    # AI_PROVIDER=google; a chave vem do Google AI Studio (camada gratuita).
+    GOOGLE_API_KEY: str = ""
+    GOOGLE_EMBEDDING_MODEL: str = "gemini-embedding-2"
+
+    # Storage de mídia (VE-16). Sem endpoint explícito, boto3 usa a AWS.
+    AWS_REGION: str = "us-east-2"
+    S3_ENDPOINT_URL: str | None = None
+    MEDIA_BUCKET: str | None = None
+
     class Config:
         env_file = ".env"
 
