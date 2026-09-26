@@ -116,3 +116,13 @@ class AIProvider(ABC):
         `InterpretedQuery.filters`/`similarity` (RN-65 — a IA não inventa
         peça, preço ou loja).
         """
+
+    @abstractmethod
+    def embed(self, texts: Sequence[str]) -> list[list[float]]:
+        """Gera um vetor por texto de entrada (BE-US027-1, back-end#92).
+
+        Base da busca por similaridade (VS-027): cada peça vira uma posição
+        num espaço vetorial, e "achar parecido" vira uma consulta de
+        distância nesse espaço (`Product.embedding`). Devolve um vetor por
+        texto, na mesma ordem de `texts`.
+        """
