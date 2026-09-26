@@ -74,7 +74,7 @@ def test_feed_returns_active_products_with_first_cover_and_store(client, db_sess
     assert body["items"][0] == {
         "id": product.id,
         "name": "Jaqueta vintage",
-        "price": "99.90",
+        "price": 99.90,
         "cover_image_url": "https://cdn.test/cover.jpg",
         "store": {"id": store.id, "name": "Brechó Aurora"},
         "status": "ativo",

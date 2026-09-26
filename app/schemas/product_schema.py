@@ -1,7 +1,7 @@
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_serializer
 
 from app.repositories.product_repository import ProductFeedRow
 from app.services.ai.base import ImageAnalysisResult
@@ -36,6 +36,10 @@ class ProductFeedItemResponse(BaseModel):
             store=FeedStoreResponse(id=row["store_id"], name=row["store_name"]),
         )
 
+    @field_serializer("price")
+    def serializar_preco(self, price: Decimal) -> float:
+        return float(price)
+
 
 class FeedResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -44,6 +48,39 @@ class FeedResponse(BaseModel):
     page: int
     page_size: int
     total: int
+
+
+class ProductMediaResponse(BaseModel):
+    type: str = "image"
+    url: str
+    position: int
+
+
+class ProductDetailStoreResponse(FeedStoreResponse):
+    logo_url: str | None
+    verified: bool
+
+
+class ProductDetailResponse(BaseModel):
+    id: int
+    name: str
+    description: str = ""
+    category: str = ""
+    style: str = ""
+    brand: str = ""
+    color: str = ""
+    size: str = ""
+    condition: str = ""
+    price: Decimal
+    status: str
+    city: str = ""
+    state: str = ""
+    media: list[ProductMediaResponse]
+    store: ProductDetailStoreResponse
+
+    @field_serializer("price")
+    def serializar_preco(self, price: Decimal) -> float:
+        return float(price)
 
 
 class ProductAIStatusResponse(BaseModel):
