@@ -1,12 +1,38 @@
 # Módulos Terraform
 
-Vazio por enquanto. Cada módulo de feature entra aqui quando a issue correspondente sair do hold:
+Módulos da VE-14:
 
-- Rede e segurança (VPC, subnets, security groups) — VE-14
+- `network`: VPC com DNS habilitado, duas subnets em zonas diferentes, Internet
+  Gateway e rota de saída. As subnets não atribuem IP público automaticamente.
+  Security groups separados para API, worker e VPC Link não têm ingress público.
+  Só o VPC Link alcança a porta 8000 da API; API e worker têm egress HTTPS.
+- `ecs_execution_role`: confiança limitada a `ecs-tasks.amazonaws.com` e apenas
+  a política gerenciada `AmazonECSTaskExecutionRolePolicy`, para ECR/logs.
+  Permissões de aplicação para S3, SQS, banco e secrets ficam para as tasks
+  específicas das issues posteriores.
+
+ECS Fargate usa `awsvpc`: cada task ganha sua própria interface de rede (ENI)
+na subnet escolhida. Não criamos `aws_network_interface` manualmente. A VE-19
+deve consumir os IDs de subnet/security group expostos pelo módulo e decidir
+explicitamente `assignPublicIp` para as tasks que precisam de saída HTTPS,
+inclusive para obter imagens ECR e enviar logs. A rota via Internet Gateway
+não fornece Internet a uma task sem IP público; sem NAT, a alternativa futura
+é configurar endpoints VPC apropriados. Os security groups continuam sem
+ingress público mesmo quando uma task recebe IP público. A VE-15 acrescentará
+as regras necessárias para comunicação com PostgreSQL; até lá, o grupo da API
+permite somente HTTPS de saída e entrada privada do VPC Link.
+
+Os recursos declarados aqui são verificados apenas com `terraform test`
+mockado. O ambiente local envia EC2 ao MiniStack e IAM ao LocalStack; ele não
+executa `apply`. Um ambiente AWS real, backend remoto e orçamento dependem da
+VE-27.
+
+Módulos ainda em hold:
+
 - Banco e busca vetorial (pgvector) — VE-15
 - Storage de mídia (S3) — VE-16
 - Mensageria assíncrona (SQS) — VE-17
 - Worker e contrato de IA — VE-18
 - Computação e descoberta (ECS/Fargate, Cloud Map, API Gateway, ECR, VPC Link) — VE-19
 
-`envs/local` já expõe o provider AWS configurado para LocalStack/MiniStack; os módulos acima devem importá-lo, não reconfigurar o provider.
+`envs/local` já expõe o provider AWS configurado para LocalStack/MiniStack; os módulos devem herdá-lo, sem reconfigurar o provider dentro de cada módulo.

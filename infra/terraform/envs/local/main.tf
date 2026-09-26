@@ -1,8 +1,6 @@
 # Env local: aponta o provider AWS para LocalStack e MiniStack, nunca para
-# a AWS real. Nenhum recurso é declarado aqui ainda — os módulos de feature
-# (rede, banco, storage, mensageria, worker, computação) entram quando VE-14
-# a VE-19 saírem do hold; este arquivo só fornece o provider já configurado
-# para eles importarem depois.
+# a AWS real. Rede e papel de execução ECS são planejados na VE-14; os módulos
+# de banco, storage, mensageria, worker e computação entram nas issues seguintes.
 
 provider "aws" {
   region = var.aws_region
@@ -27,9 +25,24 @@ provider "aws" {
 
     # MiniStack — cobre o que o LocalStack Community não emula mais de graça
     # (ECS/Fargate, Cloud Map, API Gateway HTTP API, VPC Link, ECR).
+    ec2              = var.ministack_endpoint
     ecs              = var.ministack_endpoint
     servicediscovery = var.ministack_endpoint
     apigatewayv2     = var.ministack_endpoint
     ecr              = var.ministack_endpoint
   }
+}
+
+module "network" {
+  source = "../../modules/network"
+
+  name_prefix         = "vintex-${var.environment}"
+  vpc_cidr            = "10.80.0.0/16"
+  availability_zones  = ["${var.aws_region}a", "${var.aws_region}b"]
+  public_subnet_cidrs = ["10.80.1.0/24", "10.80.2.0/24"]
+}
+
+module "ecs_execution_role" {
+  source      = "../../modules/ecs_execution_role"
+  name_prefix = "vintex-${var.environment}"
 }

@@ -27,7 +27,9 @@ Sobe Postgres, API, LocalStack (`4566`) e MiniStack (`4567`) numa rede Docker pr
 
 ## Terraform
 
-`infra/terraform/envs/local` configura o provider AWS apontando para o LocalStack (S3, SQS, Secrets Manager, IAM, STS) e o MiniStack (ECS, Cloud Map, API Gateway, ECR). Nenhum recurso é declarado ainda — os módulos de feature entram em `infra/terraform/modules/` conforme cada issue (VE-14 a VE-19) sai do hold. `terraform test` roda mockado (`mock_provider`), sem tocar rede nenhuma.
+`infra/terraform/envs/local` configura o provider AWS apontando para o LocalStack (S3, SQS, Secrets Manager, IAM, STS) e o MiniStack (EC2, ECS, Cloud Map, API Gateway, ECR). A [VE-14 (#165)](https://github.com/Vintex-Ages/back-end/issues/165) declara módulos de rede e papel mínimo ECS. `terraform test` roda mockado (`mock_provider`), sem tocar os emuladores ou a AWS real; não há `terraform apply` nesta etapa. Banco, storage, mensageria, worker e computação seguem nas respectivas issues.
+
+O módulo de rede especifica VPC, duas subnets em zonas distintas e rota pelo Internet Gateway. Nenhuma subnet atribui IP público automaticamente. A API só aceita a porta 8000 do security group do VPC Link; o worker não tem ingress. Os dois têm saída HTTPS, e o VPC Link só pode alcançar a API. O papel de execução ECS tem confiança apenas para tasks ECS e a política gerenciada de ECR/logs, sem permissões de aplicação. Cada task Fargate recebe uma ENI via `awsvpc`; a VE-19 deverá escolher subnets, grupos e a atribuição explícita de IP público para cada task que precise de saída HTTPS, inclusive ECR/logs, já que não há NAT. Os grupos continuam sem ingress público. A VE-15 tratará as regras de acesso ao banco.
 
 ## LocalStack (VE-20)
 
@@ -72,6 +74,6 @@ make infra-complete  # repetição confirma isolamento entre execuções
 
 ## Estado atual (S2)
 
-Base local ([VE-12, #163](https://github.com/Vintex-Ages/back-end/issues/163)) e estrutura Terraform ([VE-13, #164](https://github.com/Vintex-Ages/back-end/issues/164)) concluídas. As integrações LocalStack ([VE-20, #171](https://github.com/Vintex-Ages/back-end/issues/171)) e MiniStack ([VE-21, #172](https://github.com/Vintex-Ages/back-end/issues/172)) provisionam e testam os recursos sintéticos previstos nesta sprint. A interoperabilidade ([VE-22, #173](https://github.com/Vintex-Ages/back-end/issues/173)) cobre o fluxo local e o teardown; os módulos de produto seguem em hold.
+Base local ([VE-12, #163](https://github.com/Vintex-Ages/back-end/issues/163)) e estrutura Terraform ([VE-13, #164](https://github.com/Vintex-Ages/back-end/issues/164)) concluídas. As integrações LocalStack ([VE-20, #171](https://github.com/Vintex-Ages/back-end/issues/171)) e MiniStack ([VE-21, #172](https://github.com/Vintex-Ages/back-end/issues/172)) provisionam e testam os recursos sintéticos previstos nesta sprint. A interoperabilidade ([VE-22, #173](https://github.com/Vintex-Ages/back-end/issues/173)) cobre o fluxo local e o teardown. A rede e segurança (VE-14) foram retomadas em seguida.
 
-Em hold: os módulos de feature (rede, banco/pgvector, storage, mensageria, worker, computação) e os gates de CI/promoção — ver a lista completa no épico VE-29.
+Em hold: os módulos de banco/pgvector, storage, mensageria, worker e computação, além dos gates de CI/promoção — ver a lista completa no épico VE-29.
