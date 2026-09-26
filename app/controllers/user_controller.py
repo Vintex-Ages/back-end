@@ -1,4 +1,28 @@
-# Exemplo de Controller — substitua pelo seu domínio
+from sqlalchemy.orm import Session
+
+from app.core.errors import NotFound
+from app.repositories.store_repository import StoreRepository
+from app.repositories.user_repository import UserRepository
+from app.schemas.user_schema import UserMeResponse
+
+
+class UserController:
+    def __init__(self, db: Session):
+        self.users = UserRepository(db)
+        self.stores = StoreRepository(db)
+
+    def get_me(self, user_id: int) -> UserMeResponse:
+        user = self.users.get_by_id(user_id)
+        if user is None:
+            raise NotFound("Usuário não encontrado.")
+        return UserMeResponse(
+            id=user.id,
+            name=user.name,
+            email=user.email,
+            is_seller=self.stores.get_seller_by_user_id(user.id) is not None,
+        )  # Exemplo de Controller — substitua pelo seu domínio
+
+
 #
 # from fastapi import HTTPException, status
 # from sqlalchemy.orm import Session
