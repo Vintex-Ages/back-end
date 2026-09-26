@@ -2,7 +2,7 @@ from decimal import Decimal
 from typing import TypedDict, cast
 
 from sqlalchemy import Select, func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.pagination import PageParams
 from app.models.product import Product
@@ -71,3 +71,15 @@ class ProductRepository:
             .all()
         )
         return [cast(ProductFeedRow, dict(row)) for row in rows], total
+
+    def get_detail_by_id(self, product_id: int) -> Product | None:
+        stmt = (
+            select(Product)
+            .options(
+                joinedload(Product.store).joinedload(Store.address),
+                joinedload(Product.store).joinedload(Store.seller),
+                selectinload(Product.images),
+            )
+            .where(Product.id == product_id)
+        )
+        return self.db.execute(stmt).scalar_one_or_none()

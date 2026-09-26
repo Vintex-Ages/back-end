@@ -71,6 +71,6 @@ class Product(BaseModel):
     store: Mapped["Store"] = relationship(back_populates="products")
     images: Mapped[list["ProductImage"]] = relationship(
         back_populates="product",
-        order_by="ProductImage.position",
+        order_by="(ProductImage.position, ProductImage.id)",
         cascade="all, delete-orphan",
     )

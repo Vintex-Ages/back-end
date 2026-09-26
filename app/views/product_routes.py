@@ -7,7 +7,11 @@ from app.controllers.product_controller import ProductController
 from app.core.current_user import get_current_user_id
 from app.core.pagination import PageParams, page_params
 from app.database import get_db
-from app.schemas.product_schema import FeedResponse, ProductAIStatusResponse
+from app.schemas.product_schema import (
+    FeedResponse,
+    ProductAIStatusResponse,
+    ProductDetailResponse,
+)
 
 router = APIRouter(prefix="/products", tags=["Products"])
 
@@ -32,6 +36,19 @@ def list_products(
     controller: ProductController = Depends(get_controller),
 ) -> FeedResponse:
     return controller.get_feed(params)
+
+
+@router.get(
+    "/{product_id}",
+    response_model=ProductDetailResponse,
+    summary="Detalhe da peça",
+    responses={404: {"description": "PRODUCT_NOT_FOUND"}},
+)
+def get_product_detail(
+    product_id: int,
+    controller: ProductController = Depends(get_controller),
+) -> ProductDetailResponse:
+    return controller.get_detail(product_id)
 
 
 @me_router.get("/{product_id}/ai-status", response_model=ProductAIStatusResponse)
