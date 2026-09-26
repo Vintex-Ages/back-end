@@ -22,7 +22,7 @@ Sobe Postgres, API, LocalStack (`4566`) e MiniStack (`4567`) numa rede Docker pr
 | `make infra-qa` | Lint, format-check e `terraform fmt/init/validate`. Nunca executa `terraform apply`. |
 | `make infra-up` | Reconstrói a imagem da API, sobe o Compose `vintex-infra`, aguarda os health checks, aplica migrations no Postgres e prepara recursos sintéticos. |
 | `make infra-down` | Derruba só os containers/rede/volume do projeto `vintex-infra`. |
-| `make infra-local-test` | Testes locais (unitários, Terraform mockado, LocalStack, MiniStack, interoperabilidade), sem derrubar o ambiente. |
+| `make infra-local-test` | Testes locais (unitários, Terraform mockado, PostgreSQL, LocalStack, MiniStack, interoperabilidade), sem derrubar o ambiente. |
 | `make infra-complete` | QA + subida + testes + `infra-down`, sempre derrubando o ambiente no final, preservando a primeira falha. |
 
 ## Terraform
@@ -30,6 +30,14 @@ Sobe Postgres, API, LocalStack (`4566`) e MiniStack (`4567`) numa rede Docker pr
 `infra/terraform/envs/local` configura o provider AWS apontando para o LocalStack (S3, SQS, Secrets Manager, IAM, STS) e o MiniStack (EC2, ECS, Cloud Map, API Gateway, ECR). A [VE-14 (#165)](https://github.com/Vintex-Ages/back-end/issues/165) declara módulos de rede e papel mínimo ECS. `terraform test` roda mockado (`mock_provider`), sem tocar os emuladores ou a AWS real; não há `terraform apply` nesta etapa. Banco, storage, mensageria, worker e computação seguem nas respectivas issues.
 
 O módulo de rede especifica VPC, duas subnets em zonas distintas e rota pelo Internet Gateway. Nenhuma subnet atribui IP público automaticamente. A API só aceita a porta 8000 do security group do VPC Link; o worker não tem ingress. Os dois têm saída HTTPS, e o VPC Link só pode alcançar a API. O papel de execução ECS tem confiança apenas para tasks ECS e a política gerenciada de ECR/logs, sem permissões de aplicação. Cada task Fargate recebe uma ENI via `awsvpc`; a VE-19 deverá escolher subnets, grupos e a atribuição explícita de IP público para cada task que precise de saída HTTPS, inclusive ECR/logs, já que não há NAT. Os grupos continuam sem ingress público. A VE-15 tratará as regras de acesso ao banco.
+
+## PostgreSQL (VE-15)
+
+O serviço `db` usa PostgreSQL 16, persiste no volume nomeado `vintex_infra_pgdata` e só fica saudável quando `pg_isready` responde. A API depende desse estado saudável; `make infra-up` aplica as migrations Alembic antes de preparar os recursos sintéticos. Para validar o banco após a subida, execute `make test-infra-postgres`: o teste confirma PostgreSQL ativo, todas as migrations no head atual, tabelas `products` e `users`, e uma gravação/leitura temporária.
+
+Para repetir o ciclo sobre uma base vazia, execute `make infra-down` e depois `make infra-up`; o `down` remove o volume dedicado do projeto. `make infra-complete` também testa e remove o ambiente ao final.
+
+A dimensão, índice e métrica vetorial seguem a proposta da PR #188 — 768 dimensões, IVFFlat e distância cosseno — ainda pendente de review. A imagem `pgvector/pgvector` e a migration da extensão `vector` pertencem à [subissue #185](https://github.com/Vintex-Ages/back-end/issues/185), mantida em hold para revisar junto com a [PR #188](https://github.com/Vintex-Ages/back-end/pull/188). Esta etapa testa o PostgreSQL base e não ativa busca semântica.
 
 ## LocalStack (VE-20)
 
@@ -74,6 +82,6 @@ make infra-complete  # repetição confirma isolamento entre execuções
 
 ## Estado atual (S2)
 
-Base local ([VE-12, #163](https://github.com/Vintex-Ages/back-end/issues/163)) e estrutura Terraform ([VE-13, #164](https://github.com/Vintex-Ages/back-end/issues/164)) concluídas. As integrações LocalStack ([VE-20, #171](https://github.com/Vintex-Ages/back-end/issues/171)) e MiniStack ([VE-21, #172](https://github.com/Vintex-Ages/back-end/issues/172)) provisionam e testam os recursos sintéticos previstos nesta sprint. A interoperabilidade ([VE-22, #173](https://github.com/Vintex-Ages/back-end/issues/173)) cobre o fluxo local e o teardown. A rede e segurança (VE-14) foram retomadas em seguida.
+Base local ([VE-12, #163](https://github.com/Vintex-Ages/back-end/issues/163)) e estrutura Terraform ([VE-13, #164](https://github.com/Vintex-Ages/back-end/issues/164)) concluídas. As integrações LocalStack ([VE-20, #171](https://github.com/Vintex-Ages/back-end/issues/171)) e MiniStack ([VE-21, #172](https://github.com/Vintex-Ages/back-end/issues/172)) provisionam e testam os recursos sintéticos previstos nesta sprint. A interoperabilidade ([VE-22, #173](https://github.com/Vintex-Ages/back-end/issues/173)) cobre o fluxo local e o teardown. A rede e segurança ([VE-14, #165](https://github.com/Vintex-Ages/back-end/issues/165)) foi concluída na PR #192; a base PostgreSQL da VE-15 (#166) está sendo retomada.
 
-Em hold: os módulos de banco/pgvector, storage, mensageria, worker e computação, além dos gates de CI/promoção — ver a lista completa no épico VE-29.
+Em hold: a extensão pgvector ([VE-31, #185](https://github.com/Vintex-Ages/back-end/issues/185)) aguarda review da PR #188. Storage, mensageria, worker, computação e gates de CI/promoção também seguem no backlog do épico VE-29.

@@ -125,10 +125,10 @@ Alvos principais:
 | `make infra-qa` | Lint, format-check e `terraform fmt/init/validate`. Nunca executa `terraform apply`. |
 | `make infra-up` | Reconstrói a API, sobe o Compose `vintex-infra`, aplica migrations locais e prepara recursos sintéticos. |
 | `make infra-down` | Derruba somente os containers/redes/volumes do projeto `vintex-infra`. |
-| `make infra-local-test` | Roda os testes locais (unitários, Terraform mockado, LocalStack, MiniStack, interoperabilidade) sem derrubar o ambiente. |
+| `make infra-local-test` | Roda os testes locais (unitários, Terraform mockado, PostgreSQL, LocalStack, MiniStack, interoperabilidade) sem derrubar o ambiente. |
 | `make infra-complete` | QA + subida + testes + `infra-down`, sempre derrubando o ambiente no final (mesmo em falha), preservando o código de saída da primeira falha. |
 
-Alvos granulares para diagnóstico: `lint`, `format-check`, `terraform-init`, `terraform-fmt`, `terraform-validate`, `terraform-test`, `test-unit`, `test-localstack`, `test-ministack`, `test-interoperability`.
+Alvos granulares para diagnóstico: `lint`, `format-check`, `terraform-init`, `terraform-fmt`, `terraform-validate`, `terraform-test`, `test-unit`, `test-infra-postgres`, `test-localstack`, `test-ministack`, `test-interoperability`.
 
 `test-localstack`, `test-ministack` e `test-interoperability` executam testes reais dos emuladores e do fluxo local (VE-20/VE-21/VE-22). `infra-up` aplica as migrations ao Postgres local, e `test-unit` roda no container da API. A interoperabilidade usa um consumidor SQS sintético; o worker de produto pertence à VE-18 (#169), em hold. O módulo Terraform de VPC Link pertence à VE-19 (#170), também em hold.
 
