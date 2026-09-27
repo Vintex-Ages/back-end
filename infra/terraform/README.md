@@ -1,11 +1,12 @@
-# Terraform (VE-13/VE-14/VE-16)
+# Terraform (VE-13/VE-14/VE-16/VE-17)
 
 ```
 infra/terraform/
 ├── modules/
 │   ├── network/       # VPC, subnets, rota de saída e security groups (VE-14)
 │   ├── ecs_execution_role/ # papel mínimo de execução ECS (VE-14)
-│   └── media_storage/ # bucket privado e prefixos de mídia (VE-16)
+│   ├── media_storage/ # bucket privado e prefixos de mídia (VE-16)
+│   └── ai_messaging/  # fila de análise de imagens e DLQ (VE-17)
 └── envs/
     └── local/        # único env desta sprint — provider AWS -> LocalStack/MiniStack
         ├── versions.tf
@@ -15,7 +16,8 @@ infra/terraform/
         └── tests/
             ├── local.tftest.hcl
             ├── network.tftest.hcl
-            └── media_storage.tftest.hcl
+            ├── media_storage.tftest.hcl
+            └── ai_messaging.tftest.hcl
 ```
 
 Nenhum alvo do `Makefile` da raiz executa `terraform apply`. `make infra-qa` roda `fmt -check`, `init` e `validate`; `make infra-local-test` roda `terraform test` (mockado, via `mock_provider`, sem tocar LocalStack/MiniStack nem AWS real).
