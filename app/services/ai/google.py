@@ -48,6 +48,9 @@ Para cada campo que conseguir sugerir, dê um `value` e uma `confidence` \
 sugerir algo com razoável confiança — melhor um campo vazio que um chute.
 """
 
+# Teto para a chamada ao modelo (o SDK conta em milissegundos).
+_GOOGLE_TIMEOUT_MS = 30_000
+
 _IMAGE_DOWNLOAD_TIMEOUT_S = 10.0
 # Alguns hosts (ex.: Wikimedia) recusam requisições sem User-Agent de navegador.
 _IMAGE_DOWNLOAD_HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; VintexBot/1.0)"}
@@ -68,7 +71,14 @@ class GoogleAIProvider(AIProvider):
             raise AIProviderUnavailableError(
                 "GOOGLE_API_KEY não configurada para AI_PROVIDER=google."
             )
-        self._client = genai.Client(api_key=settings.GOOGLE_API_KEY)
+        # Sem `timeout`, o SDK passa `timeout=None` ao httpx, que significa
+        # esperar para sempre. A rota e sincrona: uma chamada pendurada segura
+        # uma thread do pool, e algumas delas derrubam a API inteira. A regra
+        # da #150 e que demora tambem nao pode travar o cadastro.
+        self._client = genai.Client(
+            api_key=settings.GOOGLE_API_KEY,
+            http_options=types.HttpOptions(timeout=_GOOGLE_TIMEOUT_MS),
+        )
 
     def analyze_image(self, image_urls: Sequence[str]) -> ImageAnalysisResult:
         if not image_urls:

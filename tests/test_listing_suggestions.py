@@ -93,6 +93,15 @@ def test_suggest_listing_falha_do_provider_devolve_vazio_sem_travar(
 # ---------------------------------------------------------------------------
 
 
+def _auth(client, email: str) -> dict[str, str]:
+    """Cabecalho de um vendedor logado: a rota exige `require_auth`."""
+    resposta = client.post(
+        "/api/auth/register",
+        json={"name": "Vendedora", "email": email, "password": "Senha123"},
+    )
+    return {"Authorization": f"Bearer {resposta.json()['access_token']}"}
+
+
 def test_rota_devolve_sugestoes_no_formato_esperado(client, monkeypatch) -> None:
     monkeypatch.setattr(
         assistant_controller, "get_ai_provider", lambda: _FakeOkProvider()
@@ -101,6 +110,7 @@ def test_rota_devolve_sugestoes_no_formato_esperado(client, monkeypatch) -> None
     response = client.post(
         "/api/ai/listing-suggestions",
         json={"image_urls": ["https://cdn.test/foto.jpg"]},
+        headers=_auth(client, "sugestoes-ok@example.com"),
     )
 
     assert response.status_code == 200
@@ -117,6 +127,7 @@ def test_rota_falha_do_provider_devolve_200_vazio_nao_500(client, monkeypatch) -
     response = client.post(
         "/api/ai/listing-suggestions",
         json={"image_urls": ["https://cdn.test/foto.jpg"]},
+        headers=_auth(client, "sugestoes-falha@example.com"),
     )
 
     assert response.status_code == 200
@@ -131,7 +142,11 @@ def test_rota_falha_do_provider_devolve_200_vazio_nao_500(client, monkeypatch) -
 
 
 def test_rota_sem_fotos_devolve_200_vazio(client) -> None:
-    response = client.post("/api/ai/listing-suggestions", json={"image_urls": []})
+    response = client.post(
+        "/api/ai/listing-suggestions",
+        json={"image_urls": []},
+        headers=_auth(client, "sugestoes-sem-foto@example.com"),
+    )
 
     assert response.status_code == 200
     assert all(value is None for value in response.json().values())
@@ -140,9 +155,23 @@ def test_rota_sem_fotos_devolve_200_vazio(client) -> None:
 def test_rota_rejeita_fotos_demais_com_422(client) -> None:
     urls = [f"https://cdn.test/foto-{i}.jpg" for i in range(9)]
 
-    response = client.post("/api/ai/listing-suggestions", json={"image_urls": urls})
+    response = client.post(
+        "/api/ai/listing-suggestions",
+        json={"image_urls": urls},
+        headers=_auth(client, "sugestoes-muitas-fotos@example.com"),
+    )
 
     assert response.status_code == 422
+
+
+def test_rota_sem_token_retorna_401(client) -> None:
+    response = client.post(
+        "/api/ai/listing-suggestions",
+        json={"image_urls": ["https://cdn.test/foto.jpg"]},
+    )
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "AUTH_REQUIRED"
 
 
 # ---------------------------------------------------------------------------
