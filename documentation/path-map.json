@@ -1,0 +1,10 @@
+{
+  "$schema": "Mapa versionado caminho -> pagina, usado por scripts/docs/generate_draft.py e pelo workflow documentation-draft.yml. Chaves sao padroes fnmatch relativos a raiz do repo; primeira que casar vence.",
+  "map": [
+    { "pattern": "app/core/**", "page": "arquitetura/fundacao-http" },
+    { "pattern": "app/services/ai/**", "page": "arquitetura/provedor-ia" },
+    { "pattern": "infra/**", "page": "infraestrutura/teste-local" },
+    { "pattern": "scripts/infra/**", "page": "infraestrutura/teste-local" },
+    { "pattern": "Makefile", "page": "infraestrutura/teste-local" }
+  ]
+}
