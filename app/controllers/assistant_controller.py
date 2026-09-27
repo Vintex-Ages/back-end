@@ -11,7 +11,7 @@ from app.repositories.product_repository import ProductRepository
 from app.schemas.chat_schema import ChatErrorEvent, ChatEvent, ChatProductsEvent
 from app.schemas.product_schema import ProductFeedItemResponse
 from app.services.ai import AIProviderError, get_ai_provider
-from app.services.ai.base import ChatTurn, SearchDone
+from app.services.ai.base import ChatTurn, ImageAnalysisResult, SearchDone
 
 logger = logging.getLogger("vintex.assistant")
 
@@ -24,6 +24,22 @@ _FALHA_PROVIDER = (
 class AssistantController:
     def __init__(self, db: Session):
         self.repository = ProductRepository(db)
+
+    def suggest_listing(self, image_urls: Sequence[str]) -> ImageAnalysisResult:
+        """Preenchimento automático do cadastro a partir da foto (back-end#150).
+
+        Falha ou indisponibilidade da IA nunca trava o cadastro: devolve um
+        resultado vazio (todo campo `None`) em vez de erro — o vendedor
+        preenche à mão (RN-57).
+        """
+        if not image_urls:
+            return ImageAnalysisResult()
+
+        try:
+            return get_ai_provider().analyze_image(image_urls)
+        except AIProviderError:
+            logger.exception("Falha ao analisar fotos para preenchimento automático")
+            return ImageAnalysisResult()
 
     async def chat(self, messages: Sequence[ChatTurn]) -> AsyncIterator[ChatEvent]:
         """Nunca inventa peça, preço ou loja (RN-65): só devolve o que `find_similar`

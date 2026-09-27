@@ -1,16 +1,17 @@
 """Provedor real do Google AI Studio (BE-US027-1, back-end#92).
 
 Primeira chamada real a uma API de IA no projeto — até aqui, `unavailable`
-era o único provider (VE-06). Cobre só `embed`: `analyze_image` (VS-014) e
-`stream_interpret_search` (VS-027) ainda não têm implementação real, então
-degradam como `UnavailableAIProvider` em vez de fingir suportar algo que
-não foi escrito.
+era o único provider (VE-06). Cobre `embed` e `analyze_image`;
+`stream_interpret_search` (VS-027, geração de texto conversacional) ainda
+não tem implementação real, então degrada como `UnavailableAIProvider` em
+vez de fingir suportar algo que não foi escrito.
 """
 
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Sequence
 
+import httpx
 from google import genai
 from google.genai import types
 
@@ -29,6 +30,28 @@ _NOT_IMPLEMENTED = (
     "GoogleAIProvider ainda não implementa este método (fora do escopo do back-end#92)."
 )
 
+_ANALYZE_IMAGE_PROMPT = """\
+Você está ajudando um vendedor de brechó a cadastrar uma peça de roupa a \
+partir das fotos dela. Analise as imagens e sugira, em português:
+
+- category: tipo da peça (ex.: "Jaqueta", "Vestido", "Tênis")
+- color: cor predominante
+- size: tamanho aparente pelo caimento/etiqueta, se visível
+- condition: estado de conservação aparente (ex.: "Bom", "Seminovo", "Usado")
+- description: uma frase curta descrevendo a peça
+- brand: a marca, APENAS se houver uma etiqueta ou logo legível na foto — \
+se não houver etiqueta visível ou não for possível ler com certeza, não \
+preencha este campo. Nunca chute a marca a partir do estilo da peça.
+
+Para cada campo que conseguir sugerir, dê um `value` e uma `confidence` \
+(0 a 1) de quão certo você está. Deixe o campo nulo se não conseguir \
+sugerir algo com razoável confiança — melhor um campo vazio que um chute.
+"""
+
+_IMAGE_DOWNLOAD_TIMEOUT_S = 10.0
+# Alguns hosts (ex.: Wikimedia) recusam requisições sem User-Agent de navegador.
+_IMAGE_DOWNLOAD_HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; VintexBot/1.0)"}
+
 
 class GoogleAIProvider(AIProvider):
     def __init__(self) -> None:
@@ -39,7 +62,49 @@ class GoogleAIProvider(AIProvider):
         self._client = genai.Client(api_key=settings.GOOGLE_API_KEY)
 
     def analyze_image(self, image_urls: Sequence[str]) -> ImageAnalysisResult:
-        raise AIProviderUnavailableError(_NOT_IMPLEMENTED)
+        if not image_urls:
+            return ImageAnalysisResult()
+
+        parts = [types.Part.from_text(text=_ANALYZE_IMAGE_PROMPT)]
+        try:
+            with httpx.Client(
+                timeout=_IMAGE_DOWNLOAD_TIMEOUT_S,
+                follow_redirects=True,
+                headers=_IMAGE_DOWNLOAD_HEADERS,
+            ) as client:
+                for url in image_urls:
+                    photo = client.get(url)
+                    photo.raise_for_status()
+                    mime_type = photo.headers.get("content-type", "image/jpeg")
+                    parts.append(
+                        types.Part.from_bytes(data=photo.content, mime_type=mime_type)
+                    )
+        except httpx.HTTPError as exc:
+            raise AIProviderError(f"Falha ao baixar foto da peça: {exc}") from exc
+
+        try:
+            result = self._client.models.generate_content(
+                model=settings.GOOGLE_VISION_MODEL,
+                contents=[types.Content(parts=parts)],
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=ImageAnalysisResult,
+                ),
+            )
+        except Exception as exc:  # SDK do Google não documenta uma exceção só
+            raise AIProviderError(f"Falha ao analisar as fotos: {exc}") from exc
+
+        parsed = result.parsed
+        if isinstance(parsed, ImageAnalysisResult):
+            return parsed
+        if result.text:
+            try:
+                return ImageAnalysisResult.model_validate_json(result.text)
+            except ValueError as exc:
+                raise AIProviderError(
+                    f"Resposta do provedor não bate com o formato esperado: {exc}"
+                ) from exc
+        raise AIProviderError("Provedor não devolveu uma análise para as fotos.")
 
     async def stream_interpret_search(
         self, query: str, history: Sequence[ChatTurn] = ()

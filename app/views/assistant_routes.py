@@ -7,12 +7,22 @@ from sqlalchemy.orm import Session
 from app.controllers.assistant_controller import AssistantController
 from app.database import get_db
 from app.schemas.chat_schema import ChatRequest
+from app.schemas.product_schema import ListingSuggestionsRequest
+from app.services.ai.base import ImageAnalysisResult
 
 router = APIRouter(prefix="/ai", tags=["Assistant"])
 
 
 def get_controller(db: Session = Depends(get_db)) -> AssistantController:
     return AssistantController(db)
+
+
+@router.post("/listing-suggestions", response_model=ImageAnalysisResult)
+def listing_suggestions(
+    body: ListingSuggestionsRequest,
+    controller: AssistantController = Depends(get_controller),
+) -> ImageAnalysisResult:
+    return controller.suggest_listing(body.image_urls)
 
 
 @router.post("/chat")

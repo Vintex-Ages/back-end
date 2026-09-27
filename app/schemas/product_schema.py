@@ -125,3 +125,9 @@ class ProductAIStatusResponse(BaseModel):
     status: ProductAIStatusValue
     error: str | None = None
     suggestions: ImageAnalysisResult | None = None
+
+
+class ListingSuggestionsRequest(BaseModel):
+    """`POST /api/ai/listing-suggestions` (BE-US014-2, back-end#150)."""
+
+    image_urls: list[str]
