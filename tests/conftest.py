@@ -17,6 +17,9 @@ os.environ.setdefault("DATABASE_URL", SQLALCHEMY_DATABASE_URL)
 RAIZ = Path(__file__).resolve().parents[1]
 
 TEST_POSTGRES_URL = os.environ.get("TEST_POSTGRES_URL")
+TEST_POSTGRES_REUSE_MIGRATED_DB = (
+    os.environ.get("TEST_POSTGRES_REUSE_MIGRATED_DB") == "1"
+)
 
 import app.models  # noqa: E402,F401 - ensures models register on Base.metadata
 from app.database import Base, get_db  # noqa: E402
@@ -88,18 +91,23 @@ def pg_engine() -> Iterator[Engine]:
     if not TEST_POSTGRES_URL:
         pytest.skip("exige PostgreSQL: defina TEST_POSTGRES_URL para rodar")
 
-    nome_do_banco = (make_url(TEST_POSTGRES_URL).database or "").lower()
-    if not nome_do_banco.endswith("_test"):
-        pytest.fail(
-            f"TEST_POSTGRES_URL aponta para o banco '{nome_do_banco}'. "
-            "Use um banco cujo nome termine em '_test': esta fixture apaga todas as tabelas."
-        )
+    if not TEST_POSTGRES_REUSE_MIGRATED_DB:
+        nome_do_banco = (make_url(TEST_POSTGRES_URL).database or "").lower()
+        if not nome_do_banco.endswith("_test"):
+            pytest.fail(
+                f"TEST_POSTGRES_URL aponta para o banco '{nome_do_banco}'. "
+                "Use um banco cujo nome termine em '_test': esta fixture apaga "
+                "todas as tabelas."
+            )
+        _rodar_alembic("upgrade", "head", TEST_POSTGRES_URL)
 
-    _rodar_alembic("upgrade", "head", TEST_POSTGRES_URL)
     pg = create_engine(TEST_POSTGRES_URL)
-    yield pg
-    pg.dispose()
-    _rodar_alembic("downgrade", "base", TEST_POSTGRES_URL)
+    try:
+        yield pg
+    finally:
+        pg.dispose()
+        if not TEST_POSTGRES_REUSE_MIGRATED_DB:
+            _rodar_alembic("downgrade", "base", TEST_POSTGRES_URL)
 
 
 @pytest.fixture
