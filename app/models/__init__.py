@@ -1,4 +1,5 @@
 from app.models.address import Address
+from app.models.cart import CartItem
 from app.models.product import Product
 from app.models.product_image import ProductImage
 from app.models.refresh_token import RefreshToken
@@ -9,6 +10,7 @@ from app.models.user_preference import UserPreference
 
 __all__ = [
     "Address",
+    "CartItem",
     "Product",
     "ProductImage",
     "RefreshToken",
