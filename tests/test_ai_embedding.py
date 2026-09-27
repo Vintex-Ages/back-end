@@ -77,14 +77,6 @@ def test_google_provider_sem_chave_levanta_na_instanciacao(monkeypatch) -> None:
         GoogleAIProvider()
 
 
-def test_google_provider_ainda_nao_implementa_analyze_image(monkeypatch) -> None:
-    monkeypatch.setattr("app.services.ai.google.settings.GOOGLE_API_KEY", "fake-key")
-    monkeypatch.setattr("app.services.ai.google.genai.Client", lambda **_: object())
-    provider = GoogleAIProvider()
-    with pytest.raises(AIProviderUnavailableError):
-        provider.analyze_image(["https://example.com/foto.jpg"])
-
-
 def test_fake_embedding_provider_devolve_um_vetor_por_texto() -> None:
     provider = _FakeEmbeddingProvider()
     vectors = provider.embed(["jaqueta azul", "tênis branco"])

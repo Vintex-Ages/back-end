@@ -1,16 +1,17 @@
 """Provedor real do Google AI Studio (BE-US027-1, back-end#92).
 
 Primeira chamada real a uma API de IA no projeto — até aqui, `unavailable`
-era o único provider (VE-06). Cobre só `embed`: `analyze_image` (VS-014) e
-`stream_interpret_search` (VS-027) ainda não têm implementação real, então
-degradam como `UnavailableAIProvider` em vez de fingir suportar algo que
-não foi escrito.
+era o único provider (VE-06). Cobre `embed` e `analyze_image`;
+`stream_interpret_search` (VS-027, geração de texto conversacional) ainda
+não tem implementação real, então degrada como `UnavailableAIProvider` em
+vez de fingir suportar algo que não foi escrito.
 """
 
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Sequence
 
+import httpx
 from google import genai
 from google.genai import types
 
@@ -29,6 +30,40 @@ _NOT_IMPLEMENTED = (
     "GoogleAIProvider ainda não implementa este método (fora do escopo do back-end#92)."
 )
 
+_ANALYZE_IMAGE_PROMPT = """\
+Você está ajudando um vendedor de brechó a cadastrar uma peça de roupa a \
+partir das fotos dela. Analise as imagens e sugira, em português:
+
+- category: tipo da peça (ex.: "Jaqueta", "Vestido", "Tênis")
+- color: cor predominante
+- size: tamanho aparente pelo caimento/etiqueta, se visível
+- condition: estado de conservação aparente (ex.: "Bom", "Seminovo", "Usado")
+- description: uma frase curta descrevendo a peça
+- brand: a marca, APENAS se houver uma etiqueta ou logo legível na foto — \
+se não houver etiqueta visível ou não for possível ler com certeza, não \
+preencha este campo. Nunca chute a marca a partir do estilo da peça.
+
+Para cada campo que conseguir sugerir, dê um `value` e uma `confidence` \
+(0 a 1) de quão certo você está. Deixe o campo nulo se não conseguir \
+sugerir algo com razoável confiança — melhor um campo vazio que um chute.
+"""
+
+# Teto para a chamada ao modelo (o SDK conta em milissegundos).
+_GOOGLE_TIMEOUT_MS = 30_000
+
+_IMAGE_DOWNLOAD_TIMEOUT_S = 10.0
+# Alguns hosts (ex.: Wikimedia) recusam requisições sem User-Agent de navegador.
+_IMAGE_DOWNLOAD_HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; VintexBot/1.0)"}
+
+# Sem isso, uma foto (ou uma lista delas) arbitrariamente grande é baixada
+# inteira em memória antes de qualquer verificação (revisão da Adrielle no
+# PR #200). A quantidade de fotos já é limitada no schema da requisição
+# (`ListingSuggestionsRequest`); aqui é o tamanho de cada uma.
+_MAX_IMAGE_BYTES = 8 * 1024 * 1024  # 8 MiB por foto
+_MAX_TOTAL_BYTES = 24 * 1024 * 1024  # 24 MiB somando todas as fotos da chamada
+_ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp", "image/heic"}
+_DOWNLOAD_CHUNK_SIZE = 64 * 1024
+
 
 class GoogleAIProvider(AIProvider):
     def __init__(self) -> None:
@@ -36,10 +71,78 @@ class GoogleAIProvider(AIProvider):
             raise AIProviderUnavailableError(
                 "GOOGLE_API_KEY não configurada para AI_PROVIDER=google."
             )
-        self._client = genai.Client(api_key=settings.GOOGLE_API_KEY)
+        # Sem `timeout`, o SDK passa `timeout=None` ao httpx, que significa
+        # esperar para sempre. A rota e sincrona: uma chamada pendurada segura
+        # uma thread do pool, e algumas delas derrubam a API inteira. A regra
+        # da #150 e que demora tambem nao pode travar o cadastro.
+        self._client = genai.Client(
+            api_key=settings.GOOGLE_API_KEY,
+            http_options=types.HttpOptions(timeout=_GOOGLE_TIMEOUT_MS),
+        )
 
     def analyze_image(self, image_urls: Sequence[str]) -> ImageAnalysisResult:
-        raise AIProviderUnavailableError(_NOT_IMPLEMENTED)
+        if not image_urls:
+            return ImageAnalysisResult()
+
+        parts = [types.Part.from_text(text=_ANALYZE_IMAGE_PROMPT)]
+        total_bytes = 0
+        try:
+            with httpx.Client(
+                timeout=_IMAGE_DOWNLOAD_TIMEOUT_S,
+                follow_redirects=True,
+                headers=_IMAGE_DOWNLOAD_HEADERS,
+            ) as client:
+                for url in image_urls:
+                    with client.stream("GET", url) as photo:
+                        photo.raise_for_status()
+                        mime_type = photo.headers.get("content-type", "").split(";")[0]
+                        if mime_type not in _ALLOWED_CONTENT_TYPES:
+                            raise AIProviderError(
+                                f"Tipo de arquivo não suportado para a foto: {mime_type or 'desconhecido'!r}."
+                            )
+
+                        chunks = bytearray()
+                        for chunk in photo.iter_bytes(_DOWNLOAD_CHUNK_SIZE):
+                            chunks += chunk
+                            total_bytes += len(chunk)
+                            if len(chunks) > _MAX_IMAGE_BYTES:
+                                raise AIProviderError(
+                                    f"Foto excede o tamanho máximo de {_MAX_IMAGE_BYTES // (1024 * 1024)}MiB."
+                                )
+                            if total_bytes > _MAX_TOTAL_BYTES:
+                                raise AIProviderError(
+                                    f"Fotos somadas excedem o tamanho máximo de {_MAX_TOTAL_BYTES // (1024 * 1024)}MiB."
+                                )
+
+                    parts.append(
+                        types.Part.from_bytes(data=bytes(chunks), mime_type=mime_type)
+                    )
+        except httpx.HTTPError as exc:
+            raise AIProviderError(f"Falha ao baixar foto da peça: {exc}") from exc
+
+        try:
+            result = self._client.models.generate_content(
+                model=settings.GOOGLE_VISION_MODEL,
+                contents=[types.Content(parts=parts)],
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=ImageAnalysisResult,
+                ),
+            )
+        except Exception as exc:  # SDK do Google não documenta uma exceção só
+            raise AIProviderError(f"Falha ao analisar as fotos: {exc}") from exc
+
+        parsed = result.parsed
+        if isinstance(parsed, ImageAnalysisResult):
+            return parsed
+        if result.text:
+            try:
+                return ImageAnalysisResult.model_validate_json(result.text)
+            except ValueError as exc:
+                raise AIProviderError(
+                    f"Resposta do provedor não bate com o formato esperado: {exc}"
+                ) from exc
+        raise AIProviderError("Provedor não devolveu uma análise para as fotos.")
 
     async def stream_interpret_search(
         self, query: str, history: Sequence[ChatTurn] = ()

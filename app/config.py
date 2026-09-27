@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     # AI_PROVIDER=google; a chave vem do Google AI Studio (camada gratuita).
     GOOGLE_API_KEY: str = ""
     GOOGLE_EMBEDDING_MODEL: str = "gemini-embedding-2"
+    # Preenchimento automático da peça a partir da foto (back-end#150) —
+    # modelo multimodal (lê imagem), diferente do de embedding.
+    GOOGLE_VISION_MODEL: str = "gemini-3.8-flash"
 
     # Storage de mídia (VE-16). Sem endpoint explícito, boto3 usa a AWS.
     AWS_REGION: str = "us-east-2"
