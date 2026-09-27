@@ -167,6 +167,19 @@ def test_comprovante_de_pagamento_nao_e_legivel_pela_rota_publica(
         controller.read_publico(key)
 
 
+def test_chave_com_salto_de_diretorio_e_recusada_pelo_prefixo(
+    controller: MediaController, storage: MediaStorage
+) -> None:
+    """Hoje o S3 já barraria (chave é string opaca); a regra é nossa de propósito."""
+    key = controller.upload("receipt", [_arquivo()]).items[0].key
+
+    with pytest.raises(NotFound):
+        controller.read_publico(f"products/photos/../../{key}")
+
+    with pytest.raises(NotFound):
+        controller.read_publico("/products/photos/qualquer")
+
+
 def test_chave_inexistente_responde_nao_encontrado(
     controller: MediaController,
 ) -> None:

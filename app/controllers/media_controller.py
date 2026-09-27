@@ -90,6 +90,14 @@ class MediaController:
 
     @staticmethod
     def _e_publica(key: str) -> bool:
+        # Chave de S3 é string opaca, então `products/photos/../../x` hoje é só
+        # outra chave que não existe, e não um caminho para fora do prefixo. A
+        # recusa está aqui para a garantia ser desta regra e não da semântica do
+        # provedor: se o storage um dia for sistema de arquivos, o prefixo
+        # sozinho deixaria de proteger.
+        if ".." in key or key.startswith("/"):
+            return False
+
         return any(
             key.startswith(MEDIA_PREFIXES[kind]) for kind in media_rules.PUBLIC_KINDS
         )
