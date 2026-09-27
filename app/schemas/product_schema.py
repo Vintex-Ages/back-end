@@ -24,6 +24,11 @@ class ProductFeedItemResponse(BaseModel):
     status: str
 
 
+class SuggestionsResponse(BaseModel):
+    reason: str
+    items: list[ProductFeedItemResponse]
+
+
 class FeedResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -31,6 +36,8 @@ class FeedResponse(BaseModel):
     page: int
     page_size: int
     total: int
+    match_type: Literal["exact", "fallback"] = "exact"
+    suggestions: SuggestionsResponse | None = None
 
 
 class ProductAIStatusResponse(BaseModel):
