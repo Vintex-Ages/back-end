@@ -102,7 +102,7 @@ def test_busca_sem_resultado_devolve_alternativas_e_motivo(
     corpo = resposta.json()
     assert corpo["match_type"] == "fallback"
     assert corpo["items"] == []
-    assert corpo["total"] == 0
+    assert corpo["total"] == 1
     assert "jaqueta xadrez" in corpo["suggestions"]["reason"]
     assert [item["name"] for item in corpo["suggestions"]["items"]] == [
         "Jaqueta Corta-Vento"

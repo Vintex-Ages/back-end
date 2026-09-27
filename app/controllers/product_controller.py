@@ -74,7 +74,11 @@ class ProductController:
             items=[],
             page=params.page,
             page_size=params.page_size,
-            total=0,
+            # `total` conta o que esta sendo mostrado. No fallback a lista
+            # exibida e `suggestions.items`, e o front faz `setTotal(total)`
+            # sem olhar o `match_type` — com zero aqui, a tela diz "0 pecas
+            # encontradas" em cima de uma grade cheia.
+            total=len(rows),
             applied_filters=filters.applied(),
             match_type="fallback",
             suggestions=SuggestionsResponse(
