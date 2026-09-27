@@ -72,6 +72,11 @@ class ProductFeedItemResponse(BaseModel):
         return float(price)
 
 
+class SuggestionsResponse(BaseModel):
+    reason: str
+    items: list[ProductFeedItemResponse]
+
+
 class FeedResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -80,6 +85,8 @@ class FeedResponse(BaseModel):
     page_size: int
     total: int
     applied_filters: dict[str, str | Decimal] = Field(default_factory=dict)
+    match_type: Literal["exact", "fallback"] = "exact"
+    suggestions: SuggestionsResponse | None = None
 
 
 class ProductMediaResponse(BaseModel):

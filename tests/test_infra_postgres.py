@@ -9,6 +9,7 @@ from alembic.config import Config
 from alembic.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from app.database import engine
+from tests.test_pgvector_postgres import assert_pgvector_roundtrip
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("VINTEX_INFRA_POSTGRES_TEST") != "1",
@@ -48,3 +49,5 @@ def test_postgres_migrado_aceita_gravacao_e_leitura() -> None:
             )
             == "vintex-infra-postgres"
         )
+
+        assert_pgvector_roundtrip(connection)

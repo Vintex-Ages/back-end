@@ -42,3 +42,4 @@ def downgrade() -> None:
     op.execute("DROP INDEX IF EXISTS ix_products_embedding")
     op.drop_column("products", "embedding_model")
     op.drop_column("products", "embedding")
+    op.execute("DROP EXTENSION IF EXISTS vector")
