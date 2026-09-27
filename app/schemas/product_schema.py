@@ -128,6 +128,11 @@ class ProductAIStatusResponse(BaseModel):
 
 
 class ListingSuggestionsRequest(BaseModel):
-    """`POST /api/ai/listing-suggestions` (BE-US014-2, back-end#150)."""
+    """`POST /api/ai/listing-suggestions` (BE-US014-2, back-end#150).
 
-    image_urls: list[str]
+    `max_length` no número de fotos: sem isso, nada impede uma lista enorme
+    de URLs — cada uma baixada e mandada pra API de IA (revisão da
+    Adrielle no PR #200).
+    """
+
+    image_urls: list[str] = Field(max_length=8)

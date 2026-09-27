@@ -137,33 +137,55 @@ def test_rota_sem_fotos_devolve_200_vazio(client) -> None:
     assert all(value is None for value in response.json().values())
 
 
+def test_rota_rejeita_fotos_demais_com_422(client) -> None:
+    urls = [f"https://cdn.test/foto-{i}.jpg" for i in range(9)]
+
+    response = client.post("/api/ai/listing-suggestions", json={"image_urls": urls})
+
+    assert response.status_code == 422
+
+
 # ---------------------------------------------------------------------------
 # GoogleAIProvider.analyze_image
 # ---------------------------------------------------------------------------
 
 
-class _FakeHttpResponse:
+class _FakeStreamResponse:
     def __init__(
-        self, content: bytes = b"fake-image-bytes", content_type: str = "image/jpeg"
+        self,
+        content: bytes = b"fake-image-bytes",
+        content_type: str = "image/jpeg",
+        fail: bool = False,
     ):
-        self.content = content
+        self._content = content
         self.headers = {"content-type": content_type}
+        self._fail = fail
 
     def raise_for_status(self) -> None:
-        return None
+        if self._fail:
+            import httpx
+
+            raise httpx.HTTPStatusError("404", request=None, response=None)
+
+    def iter_bytes(self, chunk_size: int):
+        for i in range(0, len(self._content), chunk_size):
+            yield self._content[i : i + chunk_size]
 
 
-class _FailingHttpResponse:
-    def raise_for_status(self) -> None:
-        import httpx
+class _FakeStreamContext:
+    def __init__(self, response: _FakeStreamResponse):
+        self._response = response
 
-        raise httpx.HTTPStatusError("404", request=None, response=None)
+    def __enter__(self):
+        return self._response
+
+    def __exit__(self, *exc):
+        return False
 
 
 class _FakeHttpClient:
-    def __init__(self, response=None, fail: bool = False):
-        self._response = response or _FakeHttpResponse()
-        self._fail = fail
+    def __init__(self, response: _FakeStreamResponse | None = None):
+        self._response = response or _FakeStreamResponse()
 
     def __enter__(self):
         return self
@@ -171,10 +193,8 @@ class _FakeHttpClient:
     def __exit__(self, *exc):
         return False
 
-    def get(self, url):
-        if self._fail:
-            return _FailingHttpResponse()
-        return self._response
+    def stream(self, method: str, url: str):
+        return _FakeStreamContext(self._response)
 
 
 class _FakeGenAIResponse:
@@ -261,11 +281,38 @@ def test_analyze_image_falha_no_download_levanta(monkeypatch) -> None:
     provider = _provider_with_fake_client(monkeypatch, models=_FakeGenAIModels(None))
     monkeypatch.setattr(
         "app.services.ai.google.httpx.Client",
-        lambda **_: _FakeHttpClient(fail=True),
+        lambda **_: _FakeHttpClient(_FakeStreamResponse(fail=True)),
     )
 
     with pytest.raises(AIProviderError):
         provider.analyze_image(["https://cdn.test/foto-quebrada.jpg"])
+
+
+def test_analyze_image_tipo_de_arquivo_nao_suportado_levanta(monkeypatch) -> None:
+    provider = _provider_with_fake_client(monkeypatch, models=_FakeGenAIModels(None))
+    monkeypatch.setattr(
+        "app.services.ai.google.httpx.Client",
+        lambda **_: _FakeHttpClient(
+            _FakeStreamResponse(content_type="application/pdf")
+        ),
+    )
+
+    with pytest.raises(AIProviderError):
+        provider.analyze_image(["https://cdn.test/nao-e-foto.pdf"])
+
+
+def test_analyze_image_foto_grande_demais_levanta(monkeypatch) -> None:
+    from app.services.ai import google as google_module
+
+    provider = _provider_with_fake_client(monkeypatch, models=_FakeGenAIModels(None))
+    conteudo_grande = b"x" * (google_module._MAX_IMAGE_BYTES + 1)
+    monkeypatch.setattr(
+        "app.services.ai.google.httpx.Client",
+        lambda **_: _FakeHttpClient(_FakeStreamResponse(content=conteudo_grande)),
+    )
+
+    with pytest.raises(AIProviderError):
+        provider.analyze_image(["https://cdn.test/foto-enorme.jpg"])
 
 
 def test_analyze_image_falha_do_sdk_levanta(monkeypatch) -> None:

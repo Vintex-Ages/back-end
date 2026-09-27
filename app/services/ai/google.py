@@ -52,6 +52,15 @@ _IMAGE_DOWNLOAD_TIMEOUT_S = 10.0
 # Alguns hosts (ex.: Wikimedia) recusam requisições sem User-Agent de navegador.
 _IMAGE_DOWNLOAD_HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; VintexBot/1.0)"}
 
+# Sem isso, uma foto (ou uma lista delas) arbitrariamente grande é baixada
+# inteira em memória antes de qualquer verificação (revisão da Adrielle no
+# PR #200). A quantidade de fotos já é limitada no schema da requisição
+# (`ListingSuggestionsRequest`); aqui é o tamanho de cada uma.
+_MAX_IMAGE_BYTES = 8 * 1024 * 1024  # 8 MiB por foto
+_MAX_TOTAL_BYTES = 24 * 1024 * 1024  # 24 MiB somando todas as fotos da chamada
+_ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp", "image/heic"}
+_DOWNLOAD_CHUNK_SIZE = 64 * 1024
+
 
 class GoogleAIProvider(AIProvider):
     def __init__(self) -> None:
@@ -66,6 +75,7 @@ class GoogleAIProvider(AIProvider):
             return ImageAnalysisResult()
 
         parts = [types.Part.from_text(text=_ANALYZE_IMAGE_PROMPT)]
+        total_bytes = 0
         try:
             with httpx.Client(
                 timeout=_IMAGE_DOWNLOAD_TIMEOUT_S,
@@ -73,11 +83,29 @@ class GoogleAIProvider(AIProvider):
                 headers=_IMAGE_DOWNLOAD_HEADERS,
             ) as client:
                 for url in image_urls:
-                    photo = client.get(url)
-                    photo.raise_for_status()
-                    mime_type = photo.headers.get("content-type", "image/jpeg")
+                    with client.stream("GET", url) as photo:
+                        photo.raise_for_status()
+                        mime_type = photo.headers.get("content-type", "").split(";")[0]
+                        if mime_type not in _ALLOWED_CONTENT_TYPES:
+                            raise AIProviderError(
+                                f"Tipo de arquivo não suportado para a foto: {mime_type or 'desconhecido'!r}."
+                            )
+
+                        chunks = bytearray()
+                        for chunk in photo.iter_bytes(_DOWNLOAD_CHUNK_SIZE):
+                            chunks += chunk
+                            total_bytes += len(chunk)
+                            if len(chunks) > _MAX_IMAGE_BYTES:
+                                raise AIProviderError(
+                                    f"Foto excede o tamanho máximo de {_MAX_IMAGE_BYTES // (1024 * 1024)}MiB."
+                                )
+                            if total_bytes > _MAX_TOTAL_BYTES:
+                                raise AIProviderError(
+                                    f"Fotos somadas excedem o tamanho máximo de {_MAX_TOTAL_BYTES // (1024 * 1024)}MiB."
+                                )
+
                     parts.append(
-                        types.Part.from_bytes(data=photo.content, mime_type=mime_type)
+                        types.Part.from_bytes(data=bytes(chunks), mime_type=mime_type)
                     )
         except httpx.HTTPError as exc:
             raise AIProviderError(f"Falha ao baixar foto da peça: {exc}") from exc
