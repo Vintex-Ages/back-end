@@ -26,14 +26,21 @@ class StoreRepository:
         )
 
     def get_metrics(self, store_id: int) -> StoreMetricsRow:
-        """Peças anunciadas (qualquer status) e vendidas, numa consulta agregada só."""
+        """Peças anunciadas e vendidas, numa consulta agregada só.
+
+        "Anunciada" exclui rascunho: uma peça só entra nessa contagem depois
+        de publicada (`ativo`/`vendido`/`despublicado`). O status `rascunho`
+        ainda não existe neste branch (vem da #159), mas a exclusão já fica
+        aqui para não contar peça não publicada como anunciada quando esse
+        status chegar.
+        """
         row = self.db.execute(
             select(
                 func.count(Product.id).label("products_listed"),
                 func.coalesce(
                     func.sum(case((Product.status == "vendido", 1), else_=0)), 0
                 ).label("products_sold"),
-            ).where(Product.store_id == store_id)
+            ).where(Product.store_id == store_id, Product.status != "rascunho")
         ).one()
         return StoreMetricsRow(
             products_listed=row.products_listed,
