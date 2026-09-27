@@ -89,12 +89,18 @@ class ProductController:
 
     @staticmethod
     def _palavras(q: str) -> list[str]:
-        """Palavras do termo com 3+ letras, so quando ha mais de uma.
+        """Palavras do termo com 3+ letras, exceto quando repete a consulta.
 
-        Com uma palavra so nao adianta repetir a consulta que ja falhou.
+        Quando so sobra uma palavra com 3+ letras e ela e o termo inteiro
+        (busca de uma palavra so), nao adianta repetir a consulta que ja
+        falhou. Mas um termo com duas ou mais palavras onde so uma tem 3+
+        letras (ex.: "jaqueta a") ainda vale tentar isoladamente, pois e
+        uma consulta diferente da original.
         """
         palavras = [p for p in q.split() if len(p) >= 3]
-        return palavras if len(palavras) > 1 else []
+        if len(palavras) == 1 and palavras[0].lower() == q.strip().lower():
+            return []
+        return palavras
 
     def get_detail(self, product_id: int) -> ProductDetailResponse:
         product = self.repository.get_detail_by_id(product_id)
