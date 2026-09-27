@@ -30,6 +30,7 @@ services:
       retries: 10
 
   api:
+    image: vintex-infra-api:local
     build:
       context: ../..
       dockerfile: Dockerfile
