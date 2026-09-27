@@ -1,5 +1,5 @@
 .PHONY: help infra-qa infra-up infra-down infra-local-test infra-complete \
-        lint format-check \
+        infra-api-image lint format-check \
         terraform-init terraform-fmt terraform-validate terraform-test \
         test-unit test-infra-postgres test-localstack test-media-storage test-ministack test-interoperability
 
@@ -9,6 +9,10 @@
 
 COMPOSE_FILE := infra/vintex-infra/docker-compose.yml
 COMPOSE := docker compose -f $(COMPOSE_FILE) --project-directory infra/vintex-infra
+API_IMAGE := vintex-infra-api:local
+QA_RUN := docker run --rm --network none \
+	--mount "type=bind,source=$(CURDIR),target=/app,readonly" \
+	--workdir /app $(API_IMAGE)
 TF_DIR := infra/terraform/envs/local
 TF := terraform -chdir=$(TF_DIR)
 
@@ -40,13 +44,17 @@ infra-complete:
 
 ## --- Alvos granulares (diagnóstico) ----------------------------------------
 
-## Executa a análise estática com Ruff.
-lint:
-	ruff check .
+## Constrói a imagem que fornece as ferramentas Python fixadas do projeto.
+infra-api-image:
+	$(COMPOSE) build api
 
-## Verifica a formatação do código com Black.
-format-check:
-	black --check .
+## Executa a análise estática com Ruff na imagem da API.
+lint: infra-api-image
+	$(QA_RUN) ruff check --no-cache .
+
+## Verifica a formatação com Black na imagem da API.
+format-check: infra-api-image
+	$(QA_RUN) black --check .
 
 ## Inicializa o Terraform do ambiente local.
 terraform-init:
@@ -72,6 +80,7 @@ test-unit:
 ## Verifica PostgreSQL, migrations e persistência no Compose vintex-infra (VE-15).
 test-infra-postgres:
 	$(COMPOSE) exec -T -e VINTEX_INFRA_POSTGRES_TEST=1 api pytest tests/test_infra_postgres.py -v
+	$(COMPOSE) exec -T api sh -c 'TEST_POSTGRES_URL="$$DATABASE_URL" TEST_POSTGRES_REUSE_MIGRATED_DB=1 pytest tests/ -v -m postgres'
 
 ## Verifica recursos e operações reais no LocalStack (VE-20).
 test-localstack:
