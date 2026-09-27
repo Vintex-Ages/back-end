@@ -12,6 +12,21 @@ from app.models.seller import Seller
 from app.models.store import Store
 from app.schemas.product_schema import ProductFilters
 
+# Mesma expressao do indice ix_products_search_trgm (migration 0f9a7f647244).
+# Se mudar aqui sem mudar la, o Postgres para de usar o indice e a busca vira
+# varredura da tabela inteira.
+TEXTO_BUSCAVEL = func.immutable_unaccent(
+    func.lower(
+        func.coalesce(Product.name, "")
+        + " "
+        + func.coalesce(Product.description, "")
+        + " "
+        + func.coalesce(Product.brand, "")
+        + " "
+        + func.coalesce(Product.category, "")
+    )
+)
+
 
 class ProductFeedRow(TypedDict):
     id: int
@@ -65,7 +80,7 @@ class ProductRepository:
         )
 
     def get_active_feed(
-        self, params: PageParams, filters: ProductFilters
+        self, params: PageParams, filters: ProductFilters, q: str | None = None
     ) -> tuple[list[ProductFeedRow], int]:
         conditions = [Product.status == "ativo"]
         filter_columns = {
@@ -95,6 +110,11 @@ class ProductRepository:
             .where(*conditions)
             .order_by(Product.created_at.desc(), Product.id.desc())
         )
+
+        if q:
+            stmt = stmt.where(
+                TEXTO_BUSCAVEL.contains(func.immutable_unaccent(func.lower(q)))
+            )
 
         count_stmt = select(func.count()).select_from(stmt.order_by(None).subquery())
         total = self.db.scalar(count_stmt) or 0
