@@ -87,3 +87,14 @@ def unpublish_product(
     return ProductManagementResponse.model_validate(
         controller.set_status(product_id, user_id, "despublicado")
     )
+
+
+@seller_router.post("/{product_id}/publish", response_model=ProductManagementResponse)
+def publish_product(
+    product_id: int,
+    user_id: int = Depends(get_current_user_id),
+    controller: ProductController = Depends(get_controller),
+) -> ProductManagementResponse:
+    return ProductManagementResponse.model_validate(
+        controller.set_status(product_id, user_id, "ativo")
+    )

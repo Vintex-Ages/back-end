@@ -147,4 +147,25 @@ def test_product_can_be_unpublished(client, db_session):
         f"/api/users/me/products/{product.id}/publish",
         headers={"X-User-Id": "40"},
     )
-    assert response.status_code == 404
+    assert response.status_code == 200
+    assert response.json()["status"] == "ativo"
+
+
+def test_sold_product_cannot_change_status(client, db_session):
+    store = make_store(db_session, 41, "Locked")
+    product = make_product(db_session, store, "Sold product", "vendido")
+    db_session.commit()
+
+    response = client.post(
+        f"/api/users/me/products/{product.id}/unpublish",
+        headers={"X-User-Id": "41"},
+    )
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "PRODUCT_SOLD"
+
+    response = client.post(
+        f"/api/users/me/products/{product.id}/publish",
+        headers={"X-User-Id": "41"},
+    )
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "PRODUCT_SOLD"

@@ -97,6 +97,5 @@ class ProductRepository:
         return self.db.execute(stmt).scalar_one_or_none()
 
     def save(self, product: Product) -> Product:
-        self.db.commit()
-        self.db.refresh(product)
+        self.db.flush()
         return product

@@ -22,6 +22,7 @@ from app.schemas.product_schema import (
 
 class ProductController:
     def __init__(self, db: Session):
+        self.db = db
         self.repository = ProductRepository(db)
 
     def get_feed(self, params: PageParams) -> FeedResponse:
@@ -99,7 +100,9 @@ class ProductController:
             )
         for field, value in data.model_dump(exclude_unset=True).items():
             setattr(product, field, value)
-        return self.repository.save(product)
+        product = self.repository.save(product)
+        self.db.commit()
+        return product
 
     def set_status(
         self,
@@ -115,7 +118,9 @@ class ProductController:
                 status_code=409,
             )
         product.status = target_status
-        return self.repository.save(product)
+        product = self.repository.save(product)
+        self.db.commit()
+        return product
 
     def _owned(self, product_id: int, user_id: int) -> Product:
         product = self.repository.get_for_seller(product_id, user_id)
