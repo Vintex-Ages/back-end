@@ -61,7 +61,9 @@ def product_filters(
 @router.get("", response_model=FeedResponse)
 def list_products(
     params: PageParams = Depends(page_params),
-    q: str | None = Query(None, description="Termo de busca; ignora acento e caixa."),
+    q: str | None = Query(
+        None, max_length=200, description="Termo de busca; ignora acento e caixa."
+    ),
     filters: ProductFilters = Depends(product_filters),
     sort: Literal["recent"] = Query(
         "recent", description="Ordenação do feed; atualmente apenas recentes."
