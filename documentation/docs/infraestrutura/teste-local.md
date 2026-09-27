@@ -6,6 +6,10 @@ sidebar_position: 1
 
 Terraform, Docker Compose, LocalStack e MiniStack — ferramentas de desenvolvimento e teste local da equipe, sem custo de AWS. Ver o épico [VE-29 (#180)](https://github.com/Vintex-Ages/back-end/issues/180) para o backlog completo.
 
+Docker e Terraform são os únicos pré-requisitos no host para os alvos desta
+página. Ruff e Black rodam na imagem da API com as versões fixadas em
+`requirements.txt`; não é necessário ativar uma virtualenv.
+
 ## Subir o ambiente
 
 ```bash
@@ -19,7 +23,7 @@ Sobe Postgres, API, LocalStack (`4566`) e MiniStack (`4567`) numa rede Docker pr
 
 | Alvo | O que faz |
 | --- | --- |
-| `make infra-qa` | Lint, format-check e `terraform fmt/init/validate`. Nunca executa `terraform apply`. |
+| `make infra-qa` | Lint e format-check na imagem da API, mais `terraform fmt/init/validate`. Nunca executa `terraform apply`. |
 | `make infra-up` | Reconstrói a imagem da API, sobe o Compose `vintex-infra`, aguarda os health checks, aplica migrations no Postgres e prepara recursos sintéticos. |
 | `make infra-down` | Derruba só os containers/rede/volume do projeto `vintex-infra`. |
 | `make infra-local-test` | Testes locais (unitários, Terraform mockado, PostgreSQL, LocalStack, mídia S3, MiniStack, interoperabilidade), sem derrubar o ambiente. |
@@ -34,11 +38,11 @@ O módulo de rede especifica VPC, duas subnets em zonas distintas e rota pelo In
 
 ## PostgreSQL (VE-15)
 
-O serviço `db` usa PostgreSQL 16, persiste no volume nomeado `vintex_infra_pgdata` e só fica saudável quando `pg_isready` responde. A API depende desse estado saudável; `make infra-up` aplica as migrations Alembic antes de preparar os recursos sintéticos. Para validar o banco após a subida, execute `make test-infra-postgres`: o teste confirma PostgreSQL ativo, todas as migrations no head atual, tabelas `products` e `users`, e uma gravação/leitura temporária.
+O serviço `db` usa `pgvector/pgvector:pg16`, persiste no volume nomeado `vintex_infra_pgdata` e só fica saudável quando `pg_isready` responde e a extensão `vector` está disponível na imagem. A API depende desse estado saudável; `make infra-up` aplica as migrations Alembic antes de preparar os recursos sintéticos. Para validar o banco após a subida, execute `make test-infra-postgres`: o alvo confirma PostgreSQL ativo, todas as migrations no head atual, tabelas `products` e `users`, a extensão `vector` instalada e gravações/leituras temporárias. Em seguida, executa os testes marcados `postgres` no mesmo banco `vintex_infra`; cada teste usa uma transação externa desfeita ao final, sem reaplicar ou reverter migrations e sem criar outro database.
 
 Para repetir o ciclo sobre uma base vazia, execute `make infra-down` e depois `make infra-up`; o `down` remove o volume dedicado do projeto. `make infra-complete` também testa e remove o ambiente ao final.
 
-A dimensão, índice e métrica vetorial seguem a proposta da PR #188 — 768 dimensões, IVFFlat e distância cosseno — ainda pendente de review. A imagem `pgvector/pgvector` e a migration da extensão `vector` pertencem à [subissue #185](https://github.com/Vintex-Ages/back-end/issues/185), mantida em hold para revisar junto com a [PR #188](https://github.com/Vintex-Ages/back-end/pull/188). Esta etapa testa o PostgreSQL base e não ativa busca semântica.
+A [PR #188](https://github.com/Vintex-Ages/back-end/pull/188) já incorporou a dimensão de 768, o índice IVFFlat, a distância cosseno e a migration que cria a extensão `vector`. A [subissue #185](https://github.com/Vintex-Ages/back-end/issues/185) completa o ambiente local com a imagem pgvector, a reversão da extensão no downgrade e os testes de disponibilidade e persistência vetorial. O health check verifica se a extensão está disponível antes da migration; o teste verifica se ela foi instalada depois. A busca semântica existente não é alterada por esta etapa.
 
 ## LocalStack (VE-20)
 
@@ -118,4 +122,4 @@ make infra-complete  # repetição confirma isolamento entre execuções
 
 Base local ([VE-12, #163](https://github.com/Vintex-Ages/back-end/issues/163)) e estrutura Terraform ([VE-13, #164](https://github.com/Vintex-Ages/back-end/issues/164)) concluídas. As integrações LocalStack ([VE-20, #171](https://github.com/Vintex-Ages/back-end/issues/171)) e MiniStack ([VE-21, #172](https://github.com/Vintex-Ages/back-end/issues/172)) provisionam e testam os recursos sintéticos previstos nesta sprint. A interoperabilidade ([VE-22, #173](https://github.com/Vintex-Ages/back-end/issues/173)) cobre o fluxo local e o teardown. A rede e segurança ([VE-14, #165](https://github.com/Vintex-Ages/back-end/issues/165)) foi concluída na PR #192; a base PostgreSQL da VE-15 (#166) foi concluída na PR #193. O storage de mídia da VE-16 (#167) é a etapa atual.
 
-Em hold: a extensão pgvector ([VE-31, #185](https://github.com/Vintex-Ages/back-end/issues/185)) aguarda review da PR #188. Mensageria, worker, computação e gates de CI/promoção seguem no backlog do épico VE-29.
+Em execução: a integração local do pgvector ([VE-31, #185](https://github.com/Vintex-Ages/back-end/issues/185)) complementa a PR #188 já incorporada. Mensageria, worker, computação e gates de CI/promoção seguem no backlog do épico VE-29.

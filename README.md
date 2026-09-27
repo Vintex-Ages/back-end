@@ -108,13 +108,19 @@ pytest tests/ -v
 ## Lint
 
 ```bash
-ruff check .
-black --check .
+make lint
+make format-check
 ```
+
+Esses alvos constroem a imagem local da API e executam as versões de Ruff e
+Black fixadas em `requirements.txt`, sem exigir uma virtualenv ativa no host.
 
 ## Infraestrutura de teste local
 
 Projeto Compose complementar (`vintex-infra`), isolado do compose de dev da raiz — sobe Postgres, API, LocalStack e MiniStack numa rede própria. Ver a issue [VE-29](https://github.com/Vintex-Ages/back-end/issues/180) para o desenho completo e o backlog relacionado.
+
+Os alvos completos exigem Docker e Terraform no host. As ferramentas Python de
+QA rodam na imagem da API.
 
 ```bash
 # Copiar as variáveis de ambiente do projeto de infra (sem segredos)
