@@ -1,8 +1,7 @@
-from pydantic import BaseModel
+"""Schemas do recurso do próprio usuário (`/api/users/me/*`)."""
+
+from app.schemas.auth_schema import UserIdentity
 
 
-class UserMeResponse(BaseModel):
-    id: int
-    name: str
-    email: str
+class MeResponse(UserIdentity):
     is_seller: bool

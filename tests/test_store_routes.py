@@ -1,6 +1,12 @@
+from app.core.security import create_access_token
 from app.models.seller import Seller
 from app.models.store import Store
 from tests.test_user import persist_user
+
+
+def _auth_header(user) -> dict[str, str]:
+    token = create_access_token(user.id, user.is_admin)
+    return {"Authorization": f"Bearer {token}"}
 
 
 def store_payload(document_type: str = "CPF") -> dict[str, str]:
@@ -34,7 +40,7 @@ def test_create_store_turns_user_into_seller_and_persists_terms(client, db_sessi
     assert db_session.query(Seller).filter_by(user_id=user.id).count() == 1
     assert db_session.query(Store).filter_by(seller_id=body["seller_id"]).count() == 1
 
-    me_response = client.get("/api/users/me", headers={"X-User-Id": str(user.id)})
+    me_response = client.get("/api/users/me", headers=_auth_header(user))
     assert me_response.status_code == 200
     assert me_response.json()["is_seller"] is True
 
@@ -50,6 +56,39 @@ def test_create_store_accepts_cnpj(client, db_session):
 
     assert response.status_code == 201
     assert response.json()["document_type"] == "CNPJ"
+
+
+def test_create_store_rejects_cpf_with_wrong_digit_count(client, db_session):
+    user = persist_user(db_session, email="bad-cpf@example.com")
+
+    response = client.post(
+        "/api/users/me/store",
+        headers={"X-User-Id": str(user.id)},
+        json={**store_payload(), "document_value": "123.456.789-0"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+def test_create_store_rejects_document_registered_by_another_seller(
+    client, db_session
+):
+    owner = persist_user(db_session, email="doc-owner@example.com")
+    client.post(
+        "/api/users/me/store", headers={"X-User-Id": str(owner.id)}, json=store_payload()
+    )
+
+    other_user = persist_user(db_session, email="doc-thief@example.com")
+    response = client.post(
+        "/api/users/me/store",
+        headers={"X-User-Id": str(other_user.id)},
+        json={**store_payload(), "name": "Outra loja"},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "DOCUMENT_ALREADY_REGISTERED"
+    assert db_session.query(Store).count() == 1
 
 
 def test_second_store_creation_returns_conflict_without_creating_store(
@@ -82,7 +121,7 @@ def test_get_own_store_returns_not_found_for_user_without_store(client, db_sessi
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "STORE_NOT_FOUND"
 
-    me_response = client.get("/api/users/me", headers={"X-User-Id": str(user.id)})
+    me_response = client.get("/api/users/me", headers=_auth_header(user))
     assert me_response.status_code == 200
     assert me_response.json()["is_seller"] is False
 

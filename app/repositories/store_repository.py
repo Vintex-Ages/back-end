@@ -19,6 +19,13 @@ class StoreRepository:
     def get_seller_by_user_id(self, user_id: int) -> Seller | None:
         return self.db.query(Seller).filter(Seller.user_id == user_id).first()
 
+    def get_seller_by_document_value(self, document_value: str) -> Seller | None:
+        return (
+            self.db.query(Seller)
+            .filter(Seller.document_value == document_value)
+            .first()
+        )
+
     def save(self, store: Store) -> Store:
         self.db.add(store)
         self.db.commit()

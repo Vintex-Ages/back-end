@@ -21,6 +21,15 @@ class StoreController:
                 "O usuário já possui uma loja.", code=ErrorCode.STORE_ALREADY_EXISTS
             )
 
+        document_owner = self.repository.get_seller_by_document_value(
+            data.document_value
+        )
+        if document_owner is not None and document_owner.user_id != user_id:
+            raise Conflict(
+                "Este documento já está cadastrado para outro vendedor.",
+                code=ErrorCode.DOCUMENT_ALREADY_REGISTERED,
+            )
+
         try:
             seller = self.repository.get_seller_by_user_id(user_id)
             if seller is None:
@@ -47,6 +56,10 @@ class StoreController:
             )
             saved_store = self.repository.save(store)
         except IntegrityError as error:
+            # Duplicidade de documento já foi excluída pelo pre-check acima;
+            # a causa restante aqui é uma corrida (duplo submit concorrente
+            # criando a mesma loja/seller), coberta pelo índice único de
+            # `stores.seller_id`.
             self.db.rollback()
             raise Conflict(
                 "Não foi possível criar a loja com os dados informados.",
