@@ -26,8 +26,9 @@ Use palavras minúsculas separadas por hífen. Todo trabalho deve possuir uma is
 - PRs de trabalho apontam para `develop`.
 - Somente `develop` promove para `main`.
 - Somente `main` promove para `deploy`.
-- Preencha o template inteiro e use `Closes #<issue>` para criar o vínculo na seção Development.
+- Preencha o template inteiro e use `Closes #<issue>` como referência primária lida pela automação.
 - A primeira issue vinculada deve ser a issue indicada na branch. Outras issues podem ser incluídas, desde que não tenham milestones conflitantes.
+- Como os PRs de trabalho apontam para `develop` e `main` é a branch padrão, o GitHub não cria o vínculo nativo em Development a partir da keyword. Para exibi-lo, vincule o PR manualmente na sidebar Development ou crie a branch pela própria issue antes de começar o trabalho.
 - Selecione exatamente um tipo de mudança.
 - Declare como IA foi utilizada ou informe explicitamente que não houve uso.
 - Assignees e labels são unidos a partir das issues; a milestone e os campos dos Projects vêm da issue primária.

@@ -1,0 +1,38 @@
+name: Link Backfill
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize]
+    branches: [develop, main]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "PR number to backfill the Development link for"
+        required: true
+      dry_run:
+        description: "Log the intended link without creating it"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  backfill:
+    if: |
+      vars.GPA_APP_CLIENT_ID != '' &&
+      (github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.GPA_APP_CLIENT_ID }}
+          private-key: ${{ secrets.GPA_APP_PRIVATE_KEY }}
+          owner: Vintex-Ages
+      - run: node .github/scripts/link-backfill.mjs
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER_OVERRIDE: ${{ github.event.inputs.pr_number }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run || 'false' }}
