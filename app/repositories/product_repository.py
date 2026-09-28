@@ -36,6 +36,7 @@ class ProductFeedRow(TypedDict):
     status: str
     store_id: int
     store_name: str
+    store_verified: bool
 
 
 def _feed_select() -> Select[tuple[object, ...]]:
@@ -49,6 +50,11 @@ def _feed_select() -> Select[tuple[object, ...]]:
         .limit(1)
         .scalar_subquery()
     )
+    # Selo "Confiável" (#143): subquery pelo `Store` que o chamador já juntou,
+    # para ninguém precisar lembrar de um join extra com `Seller`.
+    store_verified = (
+        select(Seller.verified).where(Seller.id == Store.seller_id).scalar_subquery()
+    )
     return select(
         Product.id,
         Product.name,
@@ -57,6 +63,7 @@ def _feed_select() -> Select[tuple[object, ...]]:
         Product.status,
         Store.id.label("store_id"),
         Store.name.label("store_name"),
+        store_verified.label("store_verified"),
     )
 
 

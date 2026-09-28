@@ -98,7 +98,11 @@ class CartController:
             group = groups.get(row["store_id"])
             if group is None:
                 group = CartStoreResponse(
-                    store=FeedStoreResponse(id=row["store_id"], name=row["store_name"]),
+                    store=FeedStoreResponse(
+                        id=row["store_id"],
+                        name=row["store_name"],
+                        verified=row["store_verified"],
+                    ),
                     items=[],
                     subtotal=Decimal("0"),
                 )
