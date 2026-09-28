@@ -1,7 +1,7 @@
 """add legal_documents (termos de uso e contrato de venda versionados)
 
 Revision ID: 953835818229
-Revises: a1c2d3e4f5a6
+Revises: 7c2b1e4a8d91
 Create Date: 2026-09-25 10:00:00.000000
 
 """
@@ -14,7 +14,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "953835818229"
-down_revision: Union[str, None] = "a1c2d3e4f5a6"
+down_revision: Union[str, None] = "7c2b1e4a8d91"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

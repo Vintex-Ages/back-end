@@ -9,9 +9,9 @@ apenas `api_router`.
 
 from fastapi import APIRouter
 
-from app.views.legal_routes import router as legal_router
 from app.views.assistant_routes import router as assistant_router
 from app.views.auth_routes import router as auth_router
+from app.views.legal_routes import router as legal_router
 from app.views.media_routes import me_router as media_me_router
 from app.views.media_routes import public_router as media_public_router
 from app.views.product_routes import me_router as product_me_router
@@ -27,6 +27,7 @@ api_router = APIRouter(prefix="/api")
 # conforme as issues de rota forem entregues.
 api_router.include_router(assistant_router)
 api_router.include_router(auth_router)
+api_router.include_router(legal_router)
 api_router.include_router(media_me_router)
 api_router.include_router(media_public_router)
 api_router.include_router(product_router)
@@ -34,5 +35,4 @@ api_router.include_router(product_me_router)
 api_router.include_router(store_router)
 api_router.include_router(store_me_router)
 api_router.include_router(styles_router)
-api_router.include_router(legal_router)
 api_router.include_router(users_router)
