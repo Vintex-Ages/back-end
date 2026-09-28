@@ -6,6 +6,7 @@ import pytest
 
 from app.controllers import assistant_controller
 from app.controllers.assistant_controller import AssistantController
+from app.core.errors import ServiceUnavailable
 from app.services.ai.base import (
     AIProvider,
     AIProviderError,
@@ -31,6 +32,20 @@ class _FakeOkProvider(AIProvider):
         yield  # pragma: no cover
 
     def embed(self, texts):
+        raise NotImplementedError
+
+
+class _FakeEmptyProvider(AIProvider):
+    """Responde, mas nao reconhece nada na foto."""
+
+    def analyze_image(self, image_urls):  # noqa: ANN001, ANN201
+        return ImageAnalysisResult()
+
+    async def stream_interpret_search(self, query, history=()):  # noqa: ANN001, ANN201
+        raise NotImplementedError
+        yield  # pragma: no cover
+
+    def embed(self, texts):  # noqa: ANN001, ANN201
         raise NotImplementedError
 
 
@@ -75,17 +90,21 @@ def test_suggest_listing_sem_fotos_nao_chama_provider(monkeypatch, db_session) -
     assert result == ImageAnalysisResult()
 
 
-def test_suggest_listing_falha_do_provider_devolve_vazio_sem_travar(
+def test_suggest_listing_falha_do_provider_sobe_como_indisponivel(
     monkeypatch, db_session
 ) -> None:
+    """Falha da IA e foto ilegivel sao coisas diferentes.
+
+    Antes as duas devolviam `ImageAnalysisResult()` vazio, e o vendedor lia
+    "nao identificamos nada nas fotos" enquanto o provedor estava fora do ar.
+    """
     monkeypatch.setattr(
         assistant_controller, "get_ai_provider", lambda: _FakeFailingProvider()
     )
     controller = AssistantController(db_session)
 
-    result = controller.suggest_listing(["https://cdn.test/foto.jpg"])
-
-    assert result == ImageAnalysisResult()
+    with pytest.raises(ServiceUnavailable):
+        controller.suggest_listing(["https://cdn.test/foto.jpg"])
 
 
 # ---------------------------------------------------------------------------
@@ -119,7 +138,11 @@ def test_rota_devolve_sugestoes_no_formato_esperado(client, monkeypatch) -> None
     assert body["brand"] is None
 
 
-def test_rota_falha_do_provider_devolve_200_vazio_nao_500(client, monkeypatch) -> None:
+def test_rota_falha_do_provider_devolve_503_e_nao_200_vazio(
+    client, monkeypatch
+) -> None:
+    """O front precisa poder dizer "a IA esta fora do ar" em vez de culpar a
+    foto do vendedor. Com 200 vazio ele nao tinha como saber a diferenca."""
     monkeypatch.setattr(
         assistant_controller, "get_ai_provider", lambda: _FakeFailingProvider()
     )
@@ -128,6 +151,23 @@ def test_rota_falha_do_provider_devolve_200_vazio_nao_500(client, monkeypatch) -
         "/api/ai/listing-suggestions",
         json={"image_urls": ["https://cdn.test/foto.jpg"]},
         headers=_auth(client, "sugestoes-falha@example.com"),
+    )
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "AI_UNAVAILABLE"
+
+
+def test_rota_sem_reconhecer_nada_segue_200_vazio(client, monkeypatch) -> None:
+    """O outro lado da mesma moeda: a IA respondeu e nao viu nada. Isso nao e
+    falha, e resultado — e tem que continuar diferente do 503."""
+    monkeypatch.setattr(
+        assistant_controller, "get_ai_provider", lambda: _FakeEmptyProvider()
+    )
+
+    response = client.post(
+        "/api/ai/listing-suggestions",
+        json={"image_urls": ["https://cdn.test/foto.jpg"]},
+        headers=_auth(client, "sugestoes-vazio@example.com"),
     )
 
     assert response.status_code == 200
