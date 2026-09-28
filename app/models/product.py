@@ -13,9 +13,12 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.constants.embedding import EMBEDDING_DIM
 from app.models.base_model import BaseModel
+from app.models.types import EmbeddingVector
 
 if TYPE_CHECKING:
+    from app.models.product_ai_correction import ProductAiCorrection
     from app.models.product_image import ProductImage
     from app.models.store import Store
 
@@ -27,7 +30,7 @@ class Product(BaseModel):
     __table_args__ = (
         CheckConstraint("quantity = 1", name="ck_products_quantity"),
         CheckConstraint(
-            "status IN ('ativo', 'vendido', 'despublicado')",
+            "status IN ('rascunho', 'ativo', 'vendido', 'despublicado')",
             name="ck_products_status",
         ),
         CheckConstraint(
@@ -68,9 +71,21 @@ class Product(BaseModel):
     ai_suggestions: Mapped[dict | None] = mapped_column(JSON)
     ai_error: Mapped[str | None] = mapped_column(Text)
 
+    # Embedding do catálogo (BE-US027-1, back-end#92) — alimenta busca por
+    # similaridade (VS-027). `embedding_model` registra qual modelo gerou a
+    # posição, para saber o que está desatualizado quando o modelo mudar.
+    embedding: Mapped[list[float] | None] = mapped_column(
+        EmbeddingVector(EMBEDDING_DIM)
+    )
+    embedding_model: Mapped[str | None] = mapped_column(String(60))
+
     store: Mapped["Store"] = relationship(back_populates="products")
     images: Mapped[list["ProductImage"]] = relationship(
         back_populates="product",
-        order_by="ProductImage.position",
+        order_by="(ProductImage.position, ProductImage.id)",
+        cascade="all, delete-orphan",
+    )
+    ai_corrections: Mapped[list["ProductAiCorrection"]] = relationship(
+        back_populates="product",
         cascade="all, delete-orphan",
     )
