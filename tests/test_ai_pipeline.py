@@ -26,6 +26,9 @@ class _StubOkProvider(AIProvider):
         raise NotImplementedError
         yield  # pragma: no cover
 
+    def embed(self, texts):
+        raise NotImplementedError
+
 
 class _StubFailingProvider(AIProvider):
     def analyze_image(self, image_urls):
@@ -34,6 +37,9 @@ class _StubFailingProvider(AIProvider):
     async def stream_interpret_search(self, query, history=()):
         raise NotImplementedError
         yield  # pragma: no cover
+
+    def embed(self, texts):
+        raise NotImplementedError
 
 
 class _StubCrashingProvider(AIProvider):
@@ -45,6 +51,9 @@ class _StubCrashingProvider(AIProvider):
     async def stream_interpret_search(self, query, history=()):
         raise NotImplementedError
         yield  # pragma: no cover
+
+    def embed(self, texts):
+        raise NotImplementedError
 
 
 def make_product(db_session) -> Product:

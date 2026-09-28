@@ -1,0 +1,185 @@
+"""Provedor real do Google AI Studio (BE-US027-1, back-end#92).
+
+Primeira chamada real a uma API de IA no projeto — até aqui, `unavailable`
+era o único provider (VE-06). Cobre `embed` e `analyze_image`;
+`stream_interpret_search` (VS-027, geração de texto conversacional) ainda
+não tem implementação real, então degrada como `UnavailableAIProvider` em
+vez de fingir suportar algo que não foi escrito.
+"""
+
+from __future__ import annotations
+
+from collections.abc import AsyncIterator, Sequence
+
+import httpx
+from google import genai
+from google.genai import types
+
+from app.config import settings
+from app.constants.embedding import EMBEDDING_DIM
+from app.services.ai.base import (
+    AIProvider,
+    AIProviderError,
+    AIProviderUnavailableError,
+    ChatTurn,
+    ImageAnalysisResult,
+    SearchStreamEvent,
+)
+
+_NOT_IMPLEMENTED = (
+    "GoogleAIProvider ainda não implementa este método (fora do escopo do back-end#92)."
+)
+
+_ANALYZE_IMAGE_PROMPT = """\
+Você está ajudando um vendedor de brechó a cadastrar uma peça de roupa a \
+partir das fotos dela. Analise as imagens e sugira, em português:
+
+- category: tipo da peça (ex.: "Jaqueta", "Vestido", "Tênis")
+- color: cor predominante
+- size: tamanho aparente pelo caimento/etiqueta, se visível
+- condition: estado de conservação aparente (ex.: "Bom", "Seminovo", "Usado")
+- description: uma frase curta descrevendo a peça
+- brand: a marca, APENAS se houver uma etiqueta ou logo legível na foto — \
+se não houver etiqueta visível ou não for possível ler com certeza, não \
+preencha este campo. Nunca chute a marca a partir do estilo da peça.
+
+Para cada campo que conseguir sugerir, dê um `value` e uma `confidence` \
+(0 a 1) de quão certo você está. Deixe o campo nulo se não conseguir \
+sugerir algo com razoável confiança — melhor um campo vazio que um chute.
+"""
+
+# Teto para a chamada ao modelo (o SDK conta em milissegundos).
+_GOOGLE_TIMEOUT_MS = 30_000
+
+_IMAGE_DOWNLOAD_TIMEOUT_S = 10.0
+# Alguns hosts (ex.: Wikimedia) recusam requisições sem User-Agent de navegador.
+_IMAGE_DOWNLOAD_HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; VintexBot/1.0)"}
+
+# Sem isso, uma foto (ou uma lista delas) arbitrariamente grande é baixada
+# inteira em memória antes de qualquer verificação (revisão da Adrielle no
+# PR #200). A quantidade de fotos já é limitada no schema da requisição
+# (`ListingSuggestionsRequest`); aqui é o tamanho de cada uma.
+_MAX_IMAGE_BYTES = 8 * 1024 * 1024  # 8 MiB por foto
+_MAX_TOTAL_BYTES = 24 * 1024 * 1024  # 24 MiB somando todas as fotos da chamada
+_ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp", "image/heic"}
+_DOWNLOAD_CHUNK_SIZE = 64 * 1024
+
+
+class GoogleAIProvider(AIProvider):
+    def __init__(self) -> None:
+        if not settings.GOOGLE_API_KEY:
+            raise AIProviderUnavailableError(
+                "GOOGLE_API_KEY não configurada para AI_PROVIDER=google."
+            )
+        # Sem `timeout`, o SDK passa `timeout=None` ao httpx, que significa
+        # esperar para sempre. A rota e sincrona: uma chamada pendurada segura
+        # uma thread do pool, e algumas delas derrubam a API inteira. A regra
+        # da #150 e que demora tambem nao pode travar o cadastro.
+        self._client = genai.Client(
+            api_key=settings.GOOGLE_API_KEY,
+            http_options=types.HttpOptions(timeout=_GOOGLE_TIMEOUT_MS),
+        )
+
+    def analyze_image(self, image_urls: Sequence[str]) -> ImageAnalysisResult:
+        if not image_urls:
+            return ImageAnalysisResult()
+
+        parts = [types.Part.from_text(text=_ANALYZE_IMAGE_PROMPT)]
+        total_bytes = 0
+        try:
+            with httpx.Client(
+                timeout=_IMAGE_DOWNLOAD_TIMEOUT_S,
+                follow_redirects=True,
+                headers=_IMAGE_DOWNLOAD_HEADERS,
+            ) as client:
+                for url in image_urls:
+                    with client.stream("GET", url) as photo:
+                        photo.raise_for_status()
+                        mime_type = photo.headers.get("content-type", "").split(";")[0]
+                        if mime_type not in _ALLOWED_CONTENT_TYPES:
+                            raise AIProviderError(
+                                f"Tipo de arquivo não suportado para a foto: {mime_type or 'desconhecido'!r}."
+                            )
+
+                        chunks = bytearray()
+                        for chunk in photo.iter_bytes(_DOWNLOAD_CHUNK_SIZE):
+                            chunks += chunk
+                            total_bytes += len(chunk)
+                            if len(chunks) > _MAX_IMAGE_BYTES:
+                                raise AIProviderError(
+                                    f"Foto excede o tamanho máximo de {_MAX_IMAGE_BYTES // (1024 * 1024)}MiB."
+                                )
+                            if total_bytes > _MAX_TOTAL_BYTES:
+                                raise AIProviderError(
+                                    f"Fotos somadas excedem o tamanho máximo de {_MAX_TOTAL_BYTES // (1024 * 1024)}MiB."
+                                )
+
+                    parts.append(
+                        types.Part.from_bytes(data=bytes(chunks), mime_type=mime_type)
+                    )
+        except httpx.HTTPError as exc:
+            raise AIProviderError(f"Falha ao baixar foto da peça: {exc}") from exc
+
+        try:
+            result = self._client.models.generate_content(
+                model=settings.GOOGLE_VISION_MODEL,
+                contents=[types.Content(parts=parts)],
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=ImageAnalysisResult,
+                ),
+            )
+        except Exception as exc:  # SDK do Google não documenta uma exceção só
+            raise AIProviderError(f"Falha ao analisar as fotos: {exc}") from exc
+
+        parsed = result.parsed
+        if isinstance(parsed, ImageAnalysisResult):
+            return parsed
+        if result.text:
+            try:
+                return ImageAnalysisResult.model_validate_json(result.text)
+            except ValueError as exc:
+                raise AIProviderError(
+                    f"Resposta do provedor não bate com o formato esperado: {exc}"
+                ) from exc
+        raise AIProviderError("Provedor não devolveu uma análise para as fotos.")
+
+    async def stream_interpret_search(
+        self, query: str, history: Sequence[ChatTurn] = ()
+    ) -> AsyncIterator[SearchStreamEvent]:
+        raise AIProviderUnavailableError(_NOT_IMPLEMENTED)
+        yield  # pragma: no cover - nunca alcançado; mantém a função geradora
+
+    def embed(self, texts: Sequence[str]) -> list[list[float]]:
+        if not texts:
+            return []
+        # Um `types.Content` por texto: `contents=list(texts)` (strings soltas)
+        # faz o SDK tratar a lista inteira como as partes de UM conteúdo só,
+        # devolvendo um único vetor para todos os textos juntos — não um por
+        # texto. Encapsular cada texto no seu próprio `Content` é o que faz o
+        # batch devolver um vetor por entrada, na mesma ordem.
+        contents = [types.Content(parts=[types.Part(text=text)]) for text in texts]
+        try:
+            response = self._client.models.embed_content(
+                model=settings.GOOGLE_EMBEDDING_MODEL,
+                contents=contents,
+                config=types.EmbedContentConfig(output_dimensionality=EMBEDDING_DIM),
+            )
+        except Exception as exc:  # SDK do Google não documenta uma exceção só
+            raise AIProviderError(f"Falha ao gerar embedding: {exc}") from exc
+
+        if response.embeddings is None or len(response.embeddings) != len(texts):
+            raise AIProviderError(
+                "Resposta de embedding do Google não tem um vetor por texto enviado."
+            )
+
+        vectors = [list(item.values or []) for item in response.embeddings]
+        if any(len(vector) != EMBEDDING_DIM for vector in vectors):
+            # Sem isso, um vetor vazio (`values=None`) ou de dimensão errada
+            # (ex.: o modelo trocou o padrão) é gravado como se fosse válido —
+            # e como o backfill é idempotente por `embedding IS NOT NULL`, a
+            # peça nunca mais seria reprocessada, mesmo com o provedor bom.
+            raise AIProviderError(
+                f"Provedor devolveu vetor com dimensão diferente de {EMBEDDING_DIM}."
+            )
+        return vectors
