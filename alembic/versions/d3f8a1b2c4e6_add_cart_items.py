@@ -1,7 +1,7 @@
 """add cart_items (#147)
 
 Revision ID: d3f8a1b2c4e6
-Revises: b7e1f2a3c4d5
+Revises: 7c2b1e4a8d91
 Create Date: 2026-09-27 10:00:00.000000
 
 """
@@ -14,7 +14,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "d3f8a1b2c4e6"
-down_revision: Union[str, None] = "b7e1f2a3c4d5"
+down_revision: Union[str, None] = "7c2b1e4a8d91"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
