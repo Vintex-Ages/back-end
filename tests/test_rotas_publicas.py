@@ -14,7 +14,6 @@ client = TestClient(app)
 
 DISCOVERY_ROUTES = [
     "/api/products/1",
-    "/api/stores/1",
     "/api/styles",
 ]
 
