@@ -13,7 +13,10 @@ if TYPE_CHECKING:
 
 class Store(BaseModel):
     __tablename__ = "stores"
-    __table_args__ = (Index("ix_stores_name", "name"),)
+    __table_args__ = (
+        Index("ix_stores_name", "name"),
+        Index("uq_stores_seller_id", "seller_id", unique=True),
+    )
 
     seller_id: Mapped[int] = mapped_column(ForeignKey("sellers.id"), nullable=False)
     address_id: Mapped[int | None] = mapped_column(ForeignKey("addresses.id"))

@@ -1,12 +1,20 @@
 services:
   db:
-    image: postgres:16-alpine
+    # pgvector/pgvector:pg16 = postgres:16 + extensão `vector` (BE-US027-1,
+    # back-end#92) já habilitada na imagem. `CREATE EXTENSION vector` falha
+    # em cima de um postgres:16-alpine puro.
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: vintex
     ports:
-      - "5433:5432"
+      # Porta do host configurável (DB_HOST_PORT) — 5433 já foi escolhido para
+      # fugir do 5432 padrão, mas nada garante que esteja livre em toda
+      # máquina (ex.: um Postgres nativo instalado como serviço Windows).
+      # Se a sua colidir, rode com `DB_HOST_PORT=5434 docker compose up -d db`
+      # (ou exporte a variável) e ajuste DATABASE_URL no seu .env.
+      - "${DB_HOST_PORT:-5433}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
 

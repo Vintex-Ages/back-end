@@ -144,7 +144,7 @@ def test_product_can_be_unpublished(client, db_session):
     assert response.status_code == 405
 
     response = client.post(
-        f"/api/users/me/products/{product.id}/publish",
+        f"/api/users/me/products/{product.id}/republish",
         headers={"X-User-Id": "40"},
     )
     assert response.status_code == 200
@@ -164,7 +164,7 @@ def test_sold_product_cannot_change_status(client, db_session):
     assert response.json()["error"]["code"] == "PRODUCT_SOLD"
 
     response = client.post(
-        f"/api/users/me/products/{product.id}/publish",
+        f"/api/users/me/products/{product.id}/republish",
         headers={"X-User-Id": "41"},
     )
     assert response.status_code == 409
