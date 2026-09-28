@@ -12,6 +12,8 @@ email-validator==2.2.0
 pgvector==0.3.6
 google-genai==2.24.0
 boto3==1.43.64
+# Upload multipart das rotas de midia (back-end#73).
+python-multipart==0.0.31
 
 # Dev / Test
 pytest==9.0.3
