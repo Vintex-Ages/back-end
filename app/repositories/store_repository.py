@@ -1,3 +1,6 @@
+"""Consultas da loja: as publicas (back-end#142) e as do proprio vendedor
+(back-end#141). Um vendedor tem uma loja (decisao de modelagem 1:1)."""
+
 from typing import TypedDict
 
 from sqlalchemy import case, func, select
@@ -5,6 +8,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.pagination import PageParams
 from app.models.product import Product
+from app.models.seller import Seller
 from app.models.store import Store
 
 
@@ -66,3 +70,27 @@ class StoreRepository:
         total = self.db.scalar(count_stmt) or 0
         rows = self.db.scalars(stmt.offset(params.offset).limit(params.limit)).all()
         return list(rows), total
+
+    def get_by_user_id(self, user_id: int) -> Store | None:
+        return (
+            self.db.query(Store)
+            .join(Seller, Store.seller_id == Seller.id)
+            .filter(Seller.user_id == user_id)
+            .first()
+        )
+
+    def get_seller_by_user_id(self, user_id: int) -> Seller | None:
+        return self.db.query(Seller).filter(Seller.user_id == user_id).first()
+
+    def get_seller_by_document_value(self, document_value: str) -> Seller | None:
+        return (
+            self.db.query(Seller)
+            .filter(Seller.document_value == document_value)
+            .first()
+        )
+
+    def save(self, store: Store) -> Store:
+        self.db.add(store)
+        self.db.commit()
+        self.db.refresh(store)
+        return store
