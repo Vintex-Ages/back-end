@@ -69,11 +69,29 @@ sugerir algo com razoável confiança — melhor um campo vazio que um chute.
 _GOOGLE_TIMEOUT_MS = 30_000
 
 
+def _lista(valor: str) -> list[str]:
+    nomes = [n.strip() for n in valor.split(",")]
+    return [n for n in nomes if n]
+
+
 def modelos_de_visao() -> list[str]:
     """`GOOGLE_VISION_MODEL` como lista, aceitando um nome só ou vários
     separados por vírgula."""
-    nomes = [n.strip() for n in settings.GOOGLE_VISION_MODEL.split(",")]
-    return [n for n in nomes if n]
+    return _lista(settings.GOOGLE_VISION_MODEL)
+
+
+def modelos_de_embedding() -> list[str]:
+    """`GOOGLE_EMBEDDING_MODEL` como lista, mesmo formato do de visão.
+
+    Era o primeiro critério da `#209` e ficou de fora quando o `#210` entregou
+    só o lado da visão (back-end#220). **Cada mensagem da conversa com a
+    Vintex chama `embed()`** para vetorizar a pergunta, então um 503 aqui
+    derruba a conversa e a busca por similaridade inteiras — e a capacidade do
+    provedor oscila por modelo: medido em 27/09, 4 falhas em 5 chamadas num
+    intervalo de vinte minutos, com outros modelos respondendo no mesmo
+    período.
+    """
+    return _lista(settings.GOOGLE_EMBEDDING_MODEL)
 
 
 def _e_indisponibilidade(exc: Exception) -> bool:
@@ -186,6 +204,12 @@ class GoogleAIProvider(AIProvider):
         tentar outro só esconderia a causa.
         """
         modelos = modelos_de_visao()
+        if not modelos:
+            # Sem isto, lista vazia caía no `raise` do fim com `ultimo = None` e
+            # produzia "Falha ao analisar as fotos: None", que não diz nada.
+            raise AIProviderError(
+                "GOOGLE_VISION_MODEL está vazio: nenhum modelo para tentar."
+            )
         ultimo: Exception | None = None
 
         for indice, modelo in enumerate(modelos):
@@ -211,6 +235,44 @@ class GoogleAIProvider(AIProvider):
 
         raise AIProviderError(f"Falha ao analisar as fotos: {ultimo}")
 
+    def _embed_com_fallback(
+        self, contents: list[types.Content]
+    ) -> types.EmbedContentResponse:
+        """Mesma regra do `_gerar_com_fallback`, para o embedding.
+
+        Só o 503 faz seguir para o próximo modelo: é falta de capacidade do
+        provedor. 404 (nome que não existe para a chave) e 400 (entrada
+        recusada) são erro nosso, e tentar outro esconderia a causa.
+        """
+        modelos = modelos_de_embedding()
+        if not modelos:
+            raise AIProviderError(
+                "GOOGLE_EMBEDDING_MODEL está vazio: nenhum modelo para tentar."
+            )
+        ultimo: Exception | None = None
+
+        for indice, modelo in enumerate(modelos):
+            try:
+                return self._client.models.embed_content(
+                    model=modelo,
+                    contents=contents,
+                    config=types.EmbedContentConfig(
+                        output_dimensionality=EMBEDDING_DIM
+                    ),
+                )
+            except Exception as exc:  # SDK do Google não documenta uma exceção só
+                ultimo = exc
+                if not _e_indisponibilidade(exc) or indice == len(modelos) - 1:
+                    raise AIProviderError(f"Falha ao gerar embedding: {exc}") from exc
+
+                logger.warning(
+                    "Modelo de embedding %s indisponível (503); tentando %s",
+                    modelo,
+                    modelos[indice + 1],
+                )
+
+        raise AIProviderError(f"Falha ao gerar embedding: {ultimo}")
+
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
         if not texts:
             return []
@@ -220,14 +282,7 @@ class GoogleAIProvider(AIProvider):
         # texto. Encapsular cada texto no seu próprio `Content` é o que faz o
         # batch devolver um vetor por entrada, na mesma ordem.
         contents = [types.Content(parts=[types.Part(text=text)]) for text in texts]
-        try:
-            response = self._client.models.embed_content(
-                model=settings.GOOGLE_EMBEDDING_MODEL,
-                contents=contents,
-                config=types.EmbedContentConfig(output_dimensionality=EMBEDDING_DIM),
-            )
-        except Exception as exc:  # SDK do Google não documenta uma exceção só
-            raise AIProviderError(f"Falha ao gerar embedding: {exc}") from exc
+        response = self._embed_com_fallback(contents)
 
         if response.embeddings is None or len(response.embeddings) != len(texts):
             raise AIProviderError(
