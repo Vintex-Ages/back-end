@@ -8,10 +8,7 @@ from app.models.product import Product
 from app.models.product_ai_correction import ProductAiCorrection
 from app.models.product_image import ProductImage
 from app.repositories.product_repository import ProductFeedRow, ProductRepository
-from app.schemas.product_management_schema import (
-    ProductManagementPage,
-    ProductUpdate,
-)
+from app.schemas.product_management_schema import ProductManagementPage
 from app.schemas.product_schema import (
     AiCorrectionResponse,
     FeedResponse,
@@ -33,7 +30,6 @@ from app.services.ai.base import ImageAnalysisResult
 
 class ProductController:
     def __init__(self, db: Session):
-        self.db = db
         self.repository = ProductRepository(db)
 
     def get_feed(
@@ -190,10 +186,23 @@ class ProductController:
         self.repository.commit()
         return self._to_response(product)
 
-    def update_draft(
+    def update(
         self, user_id: int, product_id: int, data: ProductDraftUpdate
     ) -> ProductDraftResponse:
-        product = self._get_owned_draft(user_id, product_id)
+        """Edita rascunho ou peça publicada/despublicada; vendida é imutável."""
+        product = self._get_owned(user_id, product_id)
+        if product.status == "vendido":
+            raise AppError(
+                "Peça vendida não pode ser editada.",
+                code=ErrorCode.PRODUCT_SOLD,
+                status_code=409,
+            )
+        if product.status != "rascunho" and data.images == []:
+            # Publicar exige foto (`publish`); editar não pode desfazer isso.
+            raise ValidationError(
+                "Peça publicada precisa de ao menos uma foto.",
+                fields={"images": "Mantenha ao menos uma foto."},
+            )
 
         updates = data.model_dump(
             exclude_unset=True, exclude={"images", "ai_corrections"}
@@ -233,6 +242,12 @@ class ProductController:
         return self._to_response(product)
 
     def _get_owned_draft(self, user_id: int, product_id: int) -> Product:
+        product = self._get_owned(user_id, product_id)
+        if product.status != "rascunho":
+            raise Conflict("Esta peça não está em rascunho.")
+        return product
+
+    def _get_owned(self, user_id: int, product_id: int) -> Product:
         product = self.repository.get_by_id(product_id)
         if product is None:
             raise NotFound("Peça não encontrada.", code=ErrorCode.PRODUCT_NOT_FOUND)
@@ -241,8 +256,6 @@ class ProductController:
             # peça de outro vendedor responde igual a peça inexistente. Um 403
             # confirma que aquele id existe, e rascunho alheio não é público.
             raise NotFound("Peça não encontrada.", code=ErrorCode.PRODUCT_NOT_FOUND)
-        if product.status != "rascunho":
-            raise Conflict("Esta peça não está em rascunho.")
         return product
 
     def _to_response(self, product: Product) -> ProductDraftResponse:
@@ -305,27 +318,13 @@ class ProductController:
             total=page.total,
         )
 
-    def update(self, product_id: int, user_id: int, data: ProductUpdate) -> Product:
-        product = self._owned(product_id, user_id)
-        if product.status == "vendido":
-            raise AppError(
-                "Peça vendida não pode ser editada.",
-                code=ErrorCode.PRODUCT_SOLD,
-                status_code=409,
-            )
-        for field, value in data.model_dump(exclude_unset=True).items():
-            setattr(product, field, value)
-        product = self.repository.save(product)
-        self.db.commit()
-        return product
-
     def set_status(
         self,
         product_id: int,
         user_id: int,
         target_status: Literal["ativo", "despublicado"],
     ) -> Product:
-        product = self._owned(product_id, user_id)
+        product = self._get_owned(user_id, product_id)
         if product.status == "vendido":
             raise AppError(
                 "Peça vendida não pode mudar de situação.",
@@ -343,12 +342,5 @@ class ProductController:
                 status_code=409,
             )
         product.status = target_status
-        product = self.repository.save(product)
-        self.db.commit()
-        return product
-
-    def _owned(self, product_id: int, user_id: int) -> Product:
-        product = self.repository.get_for_seller(product_id, user_id)
-        if product is None:
-            raise NotFound("Peça não encontrada.", code=ErrorCode.PRODUCT_NOT_FOUND)
+        self.repository.commit()
         return product

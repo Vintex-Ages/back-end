@@ -193,10 +193,6 @@ class ProductRepository:
         )
         return self.db.execute(stmt).scalar_one_or_none()
 
-    def save(self, product: Product) -> Product:
-        self.db.flush()
-        return product
-
     def get_by_id(self, product_id: int) -> Product | None:
         """Como `get_detail_by_id`, mas com `ai_corrections` — usado pelo
         fluxo de rascunho (`_get_owned_draft`), que devolve o histórico de

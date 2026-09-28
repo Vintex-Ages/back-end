@@ -13,7 +13,6 @@ from app.database import get_db
 from app.schemas.product_management_schema import (
     ProductManagementPage,
     ProductManagementResponse,
-    ProductUpdate,
 )
 from app.schemas.product_schema import (
     FeedResponse,
@@ -100,16 +99,14 @@ def get_product_detail(
     return controller.get_detail(product_id)
 
 
-@me_router.patch("/{product_id}", response_model=ProductManagementResponse)
+@me_router.patch("/{product_id}", response_model=ProductDraftResponse)
 def update_product(
     product_id: int,
-    data: ProductUpdate,
+    data: ProductDraftUpdate,
     user_id: int = Depends(get_current_user_id),
     controller: ProductController = Depends(get_controller),
-) -> ProductManagementResponse:
-    return ProductManagementResponse.model_validate(
-        controller.update(product_id, user_id, data)
-    )
+) -> ProductDraftResponse:
+    return controller.update(user_id, product_id, data)
 
 
 @me_router.post("/{product_id}/unpublish", response_model=ProductManagementResponse)
@@ -135,16 +132,6 @@ def republish_product(
     return ProductManagementResponse.model_validate(
         controller.set_status(product_id, user_id, "ativo")
     )
-
-
-@router.patch("/{product_id}", response_model=ProductDraftResponse)
-def update_draft(
-    product_id: int,
-    data: ProductDraftUpdate,
-    user_id: int = Depends(get_current_user_id),
-    controller: ProductController = Depends(get_controller),
-) -> ProductDraftResponse:
-    return controller.update_draft(user_id, product_id, data)
 
 
 @me_router.post(
