@@ -46,7 +46,7 @@ def _feed() -> ProductFeedItemResponse:
         name="Jaqueta",
         price=Decimal("99.90"),
         cover_image_url=None,
-        store=FeedStoreResponse(id=7, name="Aurora"),
+        store=FeedStoreResponse(id=7, name="Aurora", verified=False),
         status="ativo",
     )
 
