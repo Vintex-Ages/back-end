@@ -3,7 +3,10 @@ from datetime import datetime
 import pytest
 from sqlalchemy.exc import IntegrityError
 
+from app.controllers.seller_controller import SellerController
+from app.core.errors import NotFound, ValidationError
 from app.models.seller import Seller
+from app.repositories.seller_repository import SellerRepository
 from tests.test_user import persist_user
 
 
@@ -110,3 +113,59 @@ def test_seller_can_store_terms_metadata(db_session):
 
     assert seller.terms_version == "v2026.09"
     assert seller.terms_accepted_at == accepted_at
+
+
+def test_get_by_user_id_devolve_vendedor_do_usuario(db_session):
+    seller = persist_seller(db_session)
+
+    encontrado = SellerRepository(db_session).get_by_user_id(seller.user_id)
+
+    assert encontrado is not None
+    assert encontrado.id == seller.id
+
+
+def test_get_by_user_id_devolve_none_para_usuario_sem_loja(db_session):
+    user = persist_user(db_session, email="sem-loja@example.com")
+
+    encontrado = SellerRepository(db_session).get_by_user_id(user.id)
+
+    assert encontrado is None
+
+
+def test_verify_store_muda_pendente_para_confiavel(db_session):
+    seller = persist_seller(
+        db_session, document_type="CPF", document_value="123.456.789-00"
+    )
+
+    resultado = SellerController(db_session).verify_store(seller.user_id)
+
+    assert resultado.verified is True
+    db_session.refresh(seller)
+    assert seller.verified is True
+
+
+def test_verify_store_e_idempotente(db_session):
+    seller = persist_seller(db_session, verified=True)
+
+    resultado = SellerController(db_session).verify_store(seller.user_id)
+
+    assert resultado.verified is True
+
+
+def test_verify_store_404_quando_usuario_nao_e_vendedor(db_session):
+    user = persist_user(db_session, email="comprador@example.com")
+
+    with pytest.raises(NotFound):
+        SellerController(db_session).verify_store(user.id)
+
+
+def test_verify_store_422_quando_documento_nao_bate_com_o_tipo(db_session):
+    seller = persist_seller(
+        db_session, document_type="CNPJ", document_value="123.456.789-00"
+    )
+
+    with pytest.raises(ValidationError):
+        SellerController(db_session).verify_store(seller.user_id)
+
+    db_session.refresh(seller)
+    assert seller.verified is False

@@ -56,6 +56,9 @@ class ImageAnalysisResult(BaseModel):
     size: SuggestedField | None = None
     condition: SuggestedField | None = None
     description: SuggestedField | None = None
+    # Só preenchida quando a etiqueta/marca está legível na foto (RN-58,
+    # back-end#150) — sem isso, fica `None`. A IA não chuta marca.
+    brand: SuggestedField | None = None
 
 
 class ChatTurn(BaseModel):
@@ -115,4 +118,14 @@ class AIProvider(ABC):
         peças: quem busca no catálogo real é o controller, usando
         `InterpretedQuery.filters`/`similarity` (RN-65 — a IA não inventa
         peça, preço ou loja).
+        """
+
+    @abstractmethod
+    def embed(self, texts: Sequence[str]) -> list[list[float]]:
+        """Gera um vetor por texto de entrada (BE-US027-1, back-end#92).
+
+        Base da busca por similaridade (VS-027): cada peça vira uma posição
+        num espaço vetorial, e "achar parecido" vira uma consulta de
+        distância nesse espaço (`Product.embedding`). Devolve um vetor por
+        texto, na mesma ordem de `texts`.
         """

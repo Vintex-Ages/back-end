@@ -16,6 +16,8 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
+from app.constants.catalog import COLORS as CATALOGO_CORES
+from app.constants.catalog import CONDITIONS as CATALOGO_CONSERVACAO
 from app.database import SessionLocal
 from app.models import Product, ProductImage, Store
 
@@ -46,8 +48,10 @@ BRANDS = [
     "Farm",
     "Osklen",
 ]
-COLORS = ["Preto", "Branco", "Bege", "Vermelho", "Azul", "Verde", "Estampado"]
-CONDITIONS = ["Novo com etiqueta", "Seminovo", "Usado", "Marcas de uso"]
+# Vindas de `app/constants/catalog.py`: sao o vocabulario que os filtros
+# comparam por igualdade e que o prompt da IA cita. Duas copias divergiriam.
+COLORS = list(CATALOGO_CORES)
+CONDITIONS = list(CATALOGO_CONSERVACAO)
 STYLES = [
     "vintage-80-90",
     "streetwear",

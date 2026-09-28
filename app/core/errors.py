@@ -33,9 +33,15 @@ class ErrorCode:
     NOT_FOUND = "NOT_FOUND"
     EMAIL_TAKEN = "EMAIL_TAKEN"
     PRODUCT_NOT_FOUND = "PRODUCT_NOT_FOUND"
+    PRODUCT_UNAVAILABLE = "PRODUCT_UNAVAILABLE"
+    CART_ITEM_NOT_FOUND = "CART_ITEM_NOT_FOUND"
     STORE_NOT_FOUND = "STORE_NOT_FOUND"
+    LEGAL_DOCUMENT_NOT_FOUND = "LEGAL_DOCUMENT_NOT_FOUND"
+    STORE_ALREADY_EXISTS = "STORE_ALREADY_EXISTS"
+    DOCUMENT_ALREADY_REGISTERED = "DOCUMENT_ALREADY_REGISTERED"
     METHOD_NOT_ALLOWED = "METHOD_NOT_ALLOWED"
     INTERNAL_ERROR = "INTERNAL_ERROR"
+    AI_UNAVAILABLE = "AI_UNAVAILABLE"
 
 
 def error_body(
@@ -104,6 +110,15 @@ class Forbidden(AppError):
 class ValidationError(AppError):
     status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
     code = ErrorCode.VALIDATION_ERROR
+
+
+class ServiceUnavailable(AppError):
+    """Dependência externa fora do ar — a falha é nossa de reportar, não do
+    usuário de adivinhar. Quem chama deve poder distinguir isto de "não
+    encontrei nada"."""
+
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    code = ErrorCode.AI_UNAVAILABLE
 
 
 _HTTP_STATUS_CODE: dict[int, str] = {
