@@ -13,7 +13,7 @@ run "environment_e_endpoints_default_corretos" {
   }
 
   assert {
-    condition     = output.aws_region == "us-east-1"
+    condition     = output.aws_region == "us-east-2"
     error_message = "Região default inesperada."
   }
 
