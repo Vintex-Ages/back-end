@@ -72,7 +72,11 @@ class ProductFeedItemResponse(BaseModel):
             price=row["price"],
             cover_image_url=row["cover_image_url"],
             status=row["status"],
-            store=FeedStoreResponse(id=row["store_id"], name=row["store_name"]),
+            store=FeedStoreResponse(
+                id=row["store_id"],
+                name=row["store_name"],
+                verified=row["store_verified"],
+            ),
         )
 
     @field_serializer("price")
