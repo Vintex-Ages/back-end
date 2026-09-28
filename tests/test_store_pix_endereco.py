@@ -166,3 +166,69 @@ def test_chave_pix_nao_aparece_no_retrato_publico(client: TestClient) -> None:
     publico = client.get(f"/api/stores/{loja_id}").json()
 
     assert "pix_key" not in publico
+
+
+# --------------------------------------------- dois consertos vindos da #220
+def test_erro_de_digitos_cai_no_campo_e_nao_em_body(client: TestClient) -> None:
+    """O ADR 0001 secao 2 fixa `fields` como campo -> motivo. A regra era um
+    `model_validator(mode="after")`, que nao tem campo associado, e o erro saia
+    como `fields: {"body": ...}` -- o front nao conseguia destacar o input."""
+    h = _registrar(client, "digitos@vintex.com")
+
+    r = client.post(
+        "/api/users/me/store",
+        json=_loja(document_type="CNPJ", document_value="529"),
+        headers=h,
+    )
+
+    assert r.status_code == 422, r.text
+    campos = r.json()["error"]["fields"]
+    assert "document_value" in campos, campos
+    assert "body" not in campos, campos
+    assert "14" in campos["document_value"]
+
+
+def test_documento_e_gravado_so_com_digitos(client: TestClient) -> None:
+    h = _registrar(client, "pontuacao@vintex.com")
+
+    r = client.post(
+        "/api/users/me/store",
+        json=_loja(document_value="529.982.247-25"),
+        headers=h,
+    )
+
+    assert r.status_code == 201, r.text
+    assert r.json()["document_value"] == "52998224725"
+
+
+def test_mesmo_cpf_com_e_sem_pontuacao_nao_cria_dois_vendedores(
+    client: TestClient,
+) -> None:
+    """O indice unico de `Seller.document_value` e o pre-check do controller
+    comparam string literal. Gravando cru, `52998224725` e `529.982.247-25`
+    passavam os dois.
+
+    O `X-User-Id` explicito aqui nao e preferencia: as rotas de loja resolvem
+    identidade por esse cabeçalho (`app/core/current_user.py`, placeholder da
+    `#151`), e sem ele os dois cadastros seriam o mesmo usuario 1 -- batendo em
+    "ja possui uma loja" antes de chegar na unicidade do documento. Quando a
+    `#151` ligar o `require_auth`, este teste passa a usar dois tokens.
+    """
+    _registrar(client, "cru@vintex.com")
+    _registrar(client, "pontuado@vintex.com")
+
+    primeiro = client.post(
+        "/api/users/me/store",
+        json=_loja(document_value="52998224725"),
+        headers={"X-User-Id": "1"},
+    )
+    assert primeiro.status_code == 201, primeiro.text
+
+    segundo = client.post(
+        "/api/users/me/store",
+        json=_loja(document_value="529.982.247-25"),
+        headers={"X-User-Id": "2"},
+    )
+
+    assert segundo.status_code == 409, segundo.text
+    assert segundo.json()["error"]["code"] == "DOCUMENT_ALREADY_REGISTERED"

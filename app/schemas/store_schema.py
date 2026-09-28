@@ -11,7 +11,14 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    AnyHttpUrl,
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationInfo,
+    field_validator,
+)
 
 _DOCUMENT_DIGIT_LENGTH = {"CPF": 11, "CNPJ": 14}
 
@@ -99,16 +106,37 @@ class StoreCreate(BaseModel):
     # aceite que ninguem deu. NULL e a verdade.
     terms_version: str | None = Field(default=None, max_length=20)
 
-    @model_validator(mode="after")
-    def check_document_value_length(self) -> "StoreCreate":
-        digits = "".join(c for c in self.document_value if c.isdigit())
-        expected = _DOCUMENT_DIGIT_LENGTH[self.document_type]
-        if len(digits) != expected:
+    @field_validator("document_value")
+    @classmethod
+    def normalizar_documento(cls, valor: str, info: ValidationInfo) -> str:
+        """Confere a quantidade de dígitos e **devolve só os dígitos**.
+
+        Duas coisas que estavam erradas (back-end#220, migradas para cá porque
+        mexem nesta mesma função):
+
+        1. A regra era um `model_validator(mode="after")`, que não tem campo
+           associado, então o erro saía como `fields: {"body": ...}`. O
+           ADR 0001 §2 fixa `fields` como campo → motivo, e com `"body"` o
+           front não consegue destacar o input. Como `field_validator` de
+           `document_value` o erro cai no campo certo — e funciona porque
+           `document_type` é declarado antes e já está em `info.data`.
+        2. O valor era gravado cru, então `52998224725` e `529.982.247-25`
+           criavam dois vendedores com o mesmo CPF: o índice único de
+           `Seller.document_value` e o pre-check do controller comparam string
+           literal. A normalização já era feita para contar os dígitos, e era
+           descartada em vez de gravada.
+        """
+        tipo = info.data.get("document_type")
+        digitos = "".join(c for c in valor if c.isdigit())
+        if tipo is None:
+            # `document_type` já falhou a validação; não há o que conferir aqui.
+            return digitos
+        esperado = _DOCUMENT_DIGIT_LENGTH[tipo]
+        if len(digitos) != esperado:
             raise ValueError(
-                f"{self.document_type} deve ter {expected} dígitos "
-                f"(recebeu {len(digits)})."
+                f"{tipo} deve ter {esperado} dígitos (recebeu {len(digitos)})."
             )
-        return self
+        return digitos
 
 
 class StoreResponse(BaseModel):
