@@ -1,17 +1,25 @@
 from sqlalchemy.orm import Session
 
-from app.core.errors import ErrorCode, NotFound
+from app.core.errors import Conflict, ErrorCode, NotFound, ValidationError
 from app.core.pagination import PageParams
+from app.models.product import Product
+from app.models.product_ai_correction import ProductAiCorrection
+from app.models.product_image import ProductImage
 from app.repositories.product_repository import ProductFeedRow, ProductRepository
 from app.schemas.product_schema import (
+    AiCorrectionResponse,
     FeedResponse,
     ProductAIStatusResponse,
     ProductAIStatusValue,
     ProductDetailResponse,
     ProductDetailStoreResponse,
+    ProductDraftCreate,
+    ProductDraftResponse,
+    ProductDraftUpdate,
     ProductFeedItemResponse,
     ProductFilters,
     ProductMediaResponse,
+    ProductStoreResponse,
     SuggestionsResponse,
 )
 from app.services.ai.base import ImageAnalysisResult
@@ -89,12 +97,18 @@ class ProductController:
 
     @staticmethod
     def _palavras(q: str) -> list[str]:
-        """Palavras do termo com 3+ letras, so quando ha mais de uma.
+        """Palavras do termo com 3+ letras, exceto quando repete a consulta.
 
-        Com uma palavra so nao adianta repetir a consulta que ja falhou.
+        Quando so sobra uma palavra com 3+ letras e ela e o termo inteiro
+        (busca de uma palavra so), nao adianta repetir a consulta que ja
+        falhou. Mas um termo com duas ou mais palavras onde so uma tem 3+
+        letras (ex.: "jaqueta a") ainda vale tentar isoladamente, pois e
+        uma consulta diferente da original.
         """
         palavras = [p for p in q.split() if len(p) >= 3]
-        return palavras if len(palavras) > 1 else []
+        if len(palavras) == 1 and palavras[0].lower() == q.strip().lower():
+            return []
+        return palavras
 
     def get_detail(self, product_id: int) -> ProductDetailResponse:
         product = self.repository.get_detail_by_id(product_id)
@@ -128,6 +142,131 @@ class ProductController:
                 logo_url=product.store.logo_url,
                 verified=product.store.seller.verified,
             ),
+        )
+
+    def create_draft(
+        self, user_id: int, data: ProductDraftCreate
+    ) -> ProductDraftResponse:
+        store = self.repository.get_store_for_user(user_id)
+        if store is None:
+            raise NotFound(
+                "Você ainda não tem uma loja cadastrada.",
+                code=ErrorCode.STORE_NOT_FOUND,
+            )
+
+        product = Product(
+            store=store,
+            name=data.name,
+            description=data.description,
+            category=data.category,
+            style=data.style,
+            brand=data.brand,
+            color=data.color,
+            size=data.size,
+            condition=data.condition,
+            price=data.price,
+            status="rascunho",
+            images=[
+                ProductImage(image_url=url, position=position)
+                for position, url in enumerate(data.images)
+            ],
+            ai_corrections=[
+                ProductAiCorrection(
+                    field=correction.field,
+                    suggested=correction.suggested,
+                    final=correction.final,
+                )
+                for correction in data.ai_corrections
+            ],
+        )
+        self.repository.create(product)
+        self.repository.commit()
+        return self._to_response(product)
+
+    def update_draft(
+        self, user_id: int, product_id: int, data: ProductDraftUpdate
+    ) -> ProductDraftResponse:
+        product = self._get_owned_draft(user_id, product_id)
+
+        updates = data.model_dump(
+            exclude_unset=True, exclude={"images", "ai_corrections"}
+        )
+        for field, value in updates.items():
+            setattr(product, field, value)
+
+        if data.images is not None:
+            product.images = [
+                ProductImage(image_url=url, position=position)
+                for position, url in enumerate(data.images)
+            ]
+
+        for correction in data.ai_corrections:
+            product.ai_corrections.append(
+                ProductAiCorrection(
+                    field=correction.field,
+                    suggested=correction.suggested,
+                    final=correction.final,
+                )
+            )
+
+        self.repository.commit()
+        return self._to_response(product)
+
+    def publish(self, user_id: int, product_id: int) -> ProductDraftResponse:
+        product = self._get_owned_draft(user_id, product_id)
+
+        if not product.images:
+            raise ValidationError(
+                "Publicar exige ao menos uma foto.",
+                fields={"images": "Adicione ao menos uma foto antes de publicar."},
+            )
+
+        product.status = "ativo"
+        self.repository.commit()
+        return self._to_response(product)
+
+    def _get_owned_draft(self, user_id: int, product_id: int) -> Product:
+        product = self.repository.get_by_id(product_id)
+        if product is None:
+            raise NotFound("Peça não encontrada.", code=ErrorCode.PRODUCT_NOT_FOUND)
+        if product.store.seller.user_id != user_id:
+            # 404 e não 403, pela mesma regra que `get_for_seller` documenta:
+            # peça de outro vendedor responde igual a peça inexistente. Um 403
+            # confirma que aquele id existe, e rascunho alheio não é público.
+            raise NotFound("Peça não encontrada.", code=ErrorCode.PRODUCT_NOT_FOUND)
+        if product.status != "rascunho":
+            raise Conflict("Esta peça não está em rascunho.")
+        return product
+
+    def _to_response(self, product: Product) -> ProductDraftResponse:
+        store = product.store
+        return ProductDraftResponse(
+            id=product.id,
+            name=product.name,
+            description=product.description,
+            category=product.category,
+            style=product.style,
+            brand=product.brand,
+            color=product.color,
+            size=product.size,
+            condition=product.condition,
+            price=product.price,
+            quantity=product.quantity,
+            status=product.status,
+            store=ProductStoreResponse(
+                id=store.id,
+                name=store.name,
+                city=store.address.city if store.address else None,
+            ),
+            images=[image.image_url for image in product.images],
+            ai_corrections=[
+                AiCorrectionResponse(
+                    field=correction.field,
+                    suggested=correction.suggested,
+                    final=correction.final,
+                )
+                for correction in product.ai_corrections
+            ],
         )
 
     def get_ai_status(self, product_id: int, user_id: int) -> ProductAIStatusResponse:

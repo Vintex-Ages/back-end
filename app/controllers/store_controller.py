@@ -1,19 +1,34 @@
+"""Controller da loja.
+
+Junta os dois lados que nasceram em issues separadas: a loja publica
+(back-end#142) e a loja do proprio vendedor (back-end#141). Ficam na mesma
+classe porque operam a mesma entidade e o mesmo repositorio.
+"""
+
 from datetime import datetime, timezone
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.errors import Conflict, ErrorCode, NotFound
+from app.core.pagination import Page, PageParams
 from app.models.seller import Seller
 from app.models.store import Store
 from app.repositories.store_repository import StoreRepository
-from app.schemas.store_schema import StoreCreate, StoreResponse
+from app.schemas.store_schema import (
+    StoreAddressResponse,
+    StoreCreate,
+    StoreDetailResponse,
+    StoreMetricsResponse,
+    StoreProductItemResponse,
+    StoreResponse,
+)
 
 
 class StoreController:
     def __init__(self, db: Session):
-        self.repository = StoreRepository(db)
         self.db = db
+        self.repository = StoreRepository(db)
 
     def create(self, user_id: int, data: StoreCreate) -> StoreResponse:
         if self.repository.get_by_user_id(user_id) is not None:
@@ -52,7 +67,7 @@ class StoreController:
                 seller_id=seller.id,
                 name=data.name,
                 description=data.description,
-                logo_url=str(data.logo_url),
+                logo_url=str(data.logo_url) if data.logo_url else None,
             )
             saved_store = self.repository.save(store)
         except IntegrityError as error:
@@ -73,6 +88,59 @@ class StoreController:
             raise NotFound("Loja não encontrada.", code=ErrorCode.STORE_NOT_FOUND)
         return self._to_response(store)
 
+    def get_store(self, store_id: int) -> StoreDetailResponse:
+        store = self._get_or_404(store_id)
+        metrics = self.repository.get_metrics(store_id)
+
+        address = store.address
+        return StoreDetailResponse(
+            id=store.id,
+            name=store.name,
+            description=store.description,
+            logo_url=store.logo_url,
+            verified=store.seller.verified,
+            address=(
+                StoreAddressResponse(
+                    street=address.street,
+                    number=address.number,
+                    complement=address.complement,
+                    neighborhood=address.neighborhood,
+                    city=address.city,
+                    state=address.state,
+                    zip_code=address.zip_code,
+                )
+                if address is not None
+                else None
+            ),
+            metrics=StoreMetricsResponse(
+                created_at=store.created_at,
+                products_listed=metrics["products_listed"],
+                products_sold=metrics["products_sold"],
+            ),
+        )
+
+    def list_products(
+        self, store_id: int, params: PageParams
+    ) -> Page[StoreProductItemResponse]:
+        self._get_or_404(store_id)
+
+        products, total = self.repository.get_active_products(store_id, params)
+        items = [
+            StoreProductItemResponse(
+                id=product.id,
+                name=product.name,
+                price=product.price,
+                cover_image_url=(
+                    product.images[0].image_url if product.images else None
+                ),
+                status=product.status,
+            )
+            for product in products
+        ]
+        return Page[StoreProductItemResponse](
+            items=items, page=params.page, page_size=params.page_size, total=total
+        )
+
     @staticmethod
     def _to_response(store: Store) -> StoreResponse:
         return StoreResponse(
@@ -86,3 +154,9 @@ class StoreController:
             terms_version=store.seller.terms_version,
             terms_accepted_at=store.seller.terms_accepted_at,
         )
+
+    def _get_or_404(self, store_id: int) -> Store:
+        store = self.repository.get_by_id(store_id)
+        if store is None:
+            raise NotFound("Loja não encontrada.", code=ErrorCode.STORE_NOT_FOUND)
+        return store

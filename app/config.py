@@ -29,8 +29,17 @@ class Settings(BaseSettings):
     # AI_PROVIDER=google; a chave vem do Google AI Studio (camada gratuita).
     GOOGLE_API_KEY: str = ""
     GOOGLE_EMBEDDING_MODEL: str = "gemini-embedding-2"
+    # Preenchimento automático da peça a partir da foto (back-end#150) —
+    # modelo multimodal (lê imagem), diferente do de embedding.
+    GOOGLE_VISION_MODEL: str = "gemini-3.8-flash"
 
     # Storage de mídia (VE-16). Sem endpoint explícito, boto3 usa a AWS.
+    # Base publica da propria API, usada para montar a URL da midia. Fica
+    # configuravel porque a URL precisa ser alcancavel pelo servidor: e ele
+    # que baixa a foto para mandar ao modelo multimodal. Vazio usa a base da
+    # requisicao, que serve para desenvolvimento.
+    PUBLIC_BASE_URL: str = ""
+
     AWS_REGION: str = "us-east-2"
     S3_ENDPOINT_URL: str | None = None
     MEDIA_BUCKET: str | None = None

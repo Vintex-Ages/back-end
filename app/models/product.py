@@ -18,6 +18,7 @@ from app.models.base_model import BaseModel
 from app.models.types import EmbeddingVector
 
 if TYPE_CHECKING:
+    from app.models.product_ai_correction import ProductAiCorrection
     from app.models.product_image import ProductImage
     from app.models.store import Store
 
@@ -29,7 +30,7 @@ class Product(BaseModel):
     __table_args__ = (
         CheckConstraint("quantity = 1", name="ck_products_quantity"),
         CheckConstraint(
-            "status IN ('ativo', 'vendido', 'despublicado')",
+            "status IN ('rascunho', 'ativo', 'vendido', 'despublicado')",
             name="ck_products_status",
         ),
         CheckConstraint(
@@ -82,5 +83,9 @@ class Product(BaseModel):
     images: Mapped[list["ProductImage"]] = relationship(
         back_populates="product",
         order_by="(ProductImage.position, ProductImage.id)",
+        cascade="all, delete-orphan",
+    )
+    ai_corrections: Mapped[list["ProductAiCorrection"]] = relationship(
+        back_populates="product",
         cascade="all, delete-orphan",
     )

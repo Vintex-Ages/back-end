@@ -155,6 +155,23 @@ def test_feed_sem_termo_mantem_o_contrato_anterior(
     assert corpo["page_size"] == 20
 
 
+def test_busca_com_duas_palavras_tenta_a_unica_relevante(
+    pg_client: TestClient, pg_session: Session
+) -> None:
+    loja = criar_loja(pg_session, "Brechó Alternativa")
+    criar_peca(pg_session, loja, "Jaqueta Corta-Vento", categoria="Jaquetas")
+    pg_session.commit()
+
+    resposta = pg_client.get("/api/products", params={"q": "jaqueta xy"})
+
+    assert resposta.status_code == 200
+    corpo = resposta.json()
+    assert corpo["match_type"] == "fallback"
+    assert [item["name"] for item in corpo["suggestions"]["items"]] == [
+        "Jaqueta Corta-Vento"
+    ]
+
+
 def test_peca_vendida_nao_aparece_na_busca(
     pg_client: TestClient, pg_session: Session
 ) -> None:
