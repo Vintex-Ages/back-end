@@ -16,6 +16,7 @@ from google import genai
 from google.genai import types
 
 from app.config import settings
+from app.constants.catalog import CATEGORIES, COLORS, CONDITIONS, SIZES, lista
 from app.constants.embedding import EMBEDDING_DIM
 from app.services.ai.base import (
     AIProvider,
@@ -30,18 +31,33 @@ _NOT_IMPLEMENTED = (
     "GoogleAIProvider ainda não implementa este método (fora do escopo do back-end#92)."
 )
 
-_ANALYZE_IMAGE_PROMPT = """\
+# Os quatro campos de lista fechada citam o vocabulário do catálogo
+# (`app/constants/catalog.py`). Sem isso o modelo responde texto livre —
+# "Camiseta" para categoria, "Branco e preto" para cor — e o formulário
+# descarta, porque nenhum dos dois existe nas opções da tela. Dar a lista
+# muda o preenchimento de 2 campos para 5.
+_ANALYZE_IMAGE_PROMPT = f"""\
 Você está ajudando um vendedor de brechó a cadastrar uma peça de roupa a \
 partir das fotos dela. Analise as imagens e sugira, em português:
 
-- category: tipo da peça (ex.: "Jaqueta", "Vestido", "Tênis")
-- color: cor predominante
-- size: tamanho aparente pelo caimento/etiqueta, se visível
-- condition: estado de conservação aparente (ex.: "Bom", "Seminovo", "Usado")
-- description: uma frase curta descrevendo a peça
+- category: escolha UM valor exato desta lista: {lista(CATEGORIES)}. \
+É a família da peça no catálogo, não o tipo dela: uma camiseta é "Roupas", \
+um tênis é "Sapatos", uma bolsa é "Acessórios".
+- color: escolha UM valor exato desta lista: {lista(COLORS)}. \
+Se a peça tiver mais de uma cor, escolha a predominante; use "Estampado" \
+quando não houver uma cor dominante.
+- size: escolha UM valor exato desta lista: {lista(SIZES)}, e só se o \
+tamanho estiver legível numa etiqueta na foto. Não estime pelo caimento.
+- condition: escolha UM valor exato desta lista: {lista(CONDITIONS)}.
+- description: uma frase curta descrevendo a peça. Texto livre.
 - brand: a marca, APENAS se houver uma etiqueta ou logo legível na foto — \
 se não houver etiqueta visível ou não for possível ler com certeza, não \
 preencha este campo. Nunca chute a marca a partir do estilo da peça.
+
+Nos quatro campos de lista, responda com o valor exato como está escrito \
+acima, com acento e maiúscula. Se nenhum valor da lista servir, deixe o \
+campo nulo — é melhor vazio que aproximado, porque o vendedor corrige um \
+campo vazio mas não percebe um valor errado.
 
 Para cada campo que conseguir sugerir, dê um `value` e uma `confidence` \
 (0 a 1) de quão certo você está. Deixe o campo nulo se não conseguir \
