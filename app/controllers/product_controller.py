@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 
-from app.core.errors import Conflict, ErrorCode, Forbidden, NotFound, ValidationError
+from app.core.errors import Conflict, ErrorCode, NotFound, ValidationError
 from app.core.pagination import PageParams
 from app.models.product import Product
 from app.models.product_ai_correction import ProductAiCorrection
@@ -230,7 +230,10 @@ class ProductController:
         if product is None:
             raise NotFound("Peça não encontrada.", code=ErrorCode.PRODUCT_NOT_FOUND)
         if product.store.seller.user_id != user_id:
-            raise Forbidden("Esta peça não pertence à sua loja.")
+            # 404 e não 403, pela mesma regra que `get_for_seller` documenta:
+            # peça de outro vendedor responde igual a peça inexistente. Um 403
+            # confirma que aquele id existe, e rascunho alheio não é público.
+            raise NotFound("Peça não encontrada.", code=ErrorCode.PRODUCT_NOT_FOUND)
         if product.status != "rascunho":
             raise Conflict("Esta peça não está em rascunho.")
         return product

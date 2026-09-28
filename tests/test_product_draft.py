@@ -161,7 +161,8 @@ def test_update_draft_rejects_other_sellers_product(client, db_session):
         headers={"X-User-Id": str(intruder.id)},
     )
 
-    assert resp.status_code == 403
+    # 404 e não 403: a resposta não pode confirmar que a peça existe.
+    assert resp.status_code == 404
 
 
 def test_update_draft_rejects_already_published_product(client, db_session):
