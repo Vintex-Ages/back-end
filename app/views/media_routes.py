@@ -62,10 +62,17 @@ def get_media(
     controller: MediaController = Depends(get_controller),
 ) -> Response:
     conteudo, content_type = controller.read_publico(key)
-    # `immutable`: a chave é um uuid novo a cada upload, então o conteúdo de uma
-    # chave nunca muda.
     return Response(
         content=conteudo,
         media_type=content_type,
-        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+        headers={
+            # `immutable`: a chave é um uuid novo a cada upload, então o
+            # conteúdo de uma chave nunca muda.
+            "Cache-Control": "public, max-age=31536000, immutable",
+            # O `Content-Type` é o que o cliente declarou no upload; os bytes
+            # nunca são inspecionados. Sem `nosniff`, o navegador pode farejar
+            # o conteúdo e renderizar como HTML um arquivo enviado como imagem,
+            # servido da nossa origem — que é XSS armazenado.
+            "X-Content-Type-Options": "nosniff",
+        },
     )

@@ -207,6 +207,18 @@ def test_rota_sobe_e_serve_a_foto(client) -> None:  # noqa: ANN001
     assert servida.headers["content-type"] == "image/jpeg"
 
 
+def test_rota_de_leitura_manda_nosniff(
+    client, controller: MediaController
+) -> None:  # noqa: ANN001
+    """O tipo vem do que o cliente declarou; sem `nosniff` o navegador pode
+    farejar os bytes e renderizar como HTML."""
+    key = controller.upload("photo", [_arquivo()]).items[0].key
+
+    r = client.get(f"/api/media/{key}")
+
+    assert r.headers["x-content-type-options"] == "nosniff"
+
+
 def test_rota_recusa_pdf_com_422_e_envelope_de_erro(client) -> None:  # noqa: ANN001
     r = client.post(
         "/api/users/me/media",
