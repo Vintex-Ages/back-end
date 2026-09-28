@@ -9,6 +9,7 @@ vez de fingir suportar algo que não foi escrito.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator, Sequence
 
 import httpx
@@ -16,6 +17,7 @@ from google import genai
 from google.genai import types
 
 from app.config import settings
+from app.constants.catalog import CATEGORIES, COLORS, CONDITIONS, SIZES, lista
 from app.constants.embedding import EMBEDDING_DIM
 from app.services.ai.base import (
     AIProvider,
@@ -30,18 +32,33 @@ _NOT_IMPLEMENTED = (
     "GoogleAIProvider ainda não implementa este método (fora do escopo do back-end#92)."
 )
 
-_ANALYZE_IMAGE_PROMPT = """\
+# Os quatro campos de lista fechada citam o vocabulário do catálogo
+# (`app/constants/catalog.py`). Sem isso o modelo responde texto livre —
+# "Camiseta" para categoria, "Branco e preto" para cor — e o formulário
+# descarta, porque nenhum dos dois existe nas opções da tela. Dar a lista
+# muda o preenchimento de 2 campos para 5.
+_ANALYZE_IMAGE_PROMPT = f"""\
 Você está ajudando um vendedor de brechó a cadastrar uma peça de roupa a \
 partir das fotos dela. Analise as imagens e sugira, em português:
 
-- category: tipo da peça (ex.: "Jaqueta", "Vestido", "Tênis")
-- color: cor predominante
-- size: tamanho aparente pelo caimento/etiqueta, se visível
-- condition: estado de conservação aparente (ex.: "Bom", "Seminovo", "Usado")
-- description: uma frase curta descrevendo a peça
+- category: escolha UM valor exato desta lista: {lista(CATEGORIES)}. \
+É a família da peça no catálogo, não o tipo dela: uma camiseta é "Roupas", \
+um tênis é "Sapatos", uma bolsa é "Acessórios".
+- color: escolha UM valor exato desta lista: {lista(COLORS)}. \
+Se a peça tiver mais de uma cor, escolha a predominante; use "Estampado" \
+quando não houver uma cor dominante.
+- size: escolha UM valor exato desta lista: {lista(SIZES)}, e só se o \
+tamanho estiver legível numa etiqueta na foto. Não estime pelo caimento.
+- condition: escolha UM valor exato desta lista: {lista(CONDITIONS)}.
+- description: uma frase curta descrevendo a peça. Texto livre.
 - brand: a marca, APENAS se houver uma etiqueta ou logo legível na foto — \
 se não houver etiqueta visível ou não for possível ler com certeza, não \
 preencha este campo. Nunca chute a marca a partir do estilo da peça.
+
+Nos quatro campos de lista, responda com o valor exato como está escrito \
+acima, com acento e maiúscula. Se nenhum valor da lista servir, deixe o \
+campo nulo — é melhor vazio que aproximado, porque o vendedor corrige um \
+campo vazio mas não percebe um valor errado.
 
 Para cada campo que conseguir sugerir, dê um `value` e uma `confidence` \
 (0 a 1) de quão certo você está. Deixe o campo nulo se não conseguir \
@@ -50,6 +67,24 @@ sugerir algo com razoável confiança — melhor um campo vazio que um chute.
 
 # Teto para a chamada ao modelo (o SDK conta em milissegundos).
 _GOOGLE_TIMEOUT_MS = 30_000
+
+
+def modelos_de_visao() -> list[str]:
+    """`GOOGLE_VISION_MODEL` como lista, aceitando um nome só ou vários
+    separados por vírgula."""
+    nomes = [n.strip() for n in settings.GOOGLE_VISION_MODEL.split(",")]
+    return [n for n in nomes if n]
+
+
+def _e_indisponibilidade(exc: Exception) -> bool:
+    """503 do provedor, pelo código do SDK ou pela mensagem."""
+    codigo = getattr(exc, "code", None) or getattr(exc, "status_code", None)
+    if codigo == 503:
+        return True
+    return "503" in str(exc) and "UNAVAILABLE" in str(exc).upper()
+
+
+logger = logging.getLogger(__name__)
 
 _IMAGE_DOWNLOAD_TIMEOUT_S = 10.0
 # Alguns hosts (ex.: Wikimedia) recusam requisições sem User-Agent de navegador.
@@ -120,17 +155,7 @@ class GoogleAIProvider(AIProvider):
         except httpx.HTTPError as exc:
             raise AIProviderError(f"Falha ao baixar foto da peça: {exc}") from exc
 
-        try:
-            result = self._client.models.generate_content(
-                model=settings.GOOGLE_VISION_MODEL,
-                contents=[types.Content(parts=parts)],
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=ImageAnalysisResult,
-                ),
-            )
-        except Exception as exc:  # SDK do Google não documenta uma exceção só
-            raise AIProviderError(f"Falha ao analisar as fotos: {exc}") from exc
+        result = self._gerar_com_fallback(parts)
 
         parsed = result.parsed
         if isinstance(parsed, ImageAnalysisResult):
@@ -149,6 +174,42 @@ class GoogleAIProvider(AIProvider):
     ) -> AsyncIterator[SearchStreamEvent]:
         raise AIProviderUnavailableError(_NOT_IMPLEMENTED)
         yield  # pragma: no cover - nunca alcançado; mantém a função geradora
+
+    def _gerar_com_fallback(
+        self, parts: list[types.Part]
+    ) -> types.GenerateContentResponse:
+        """Tenta os modelos configurados em ordem, pulando os que dão 503.
+
+        Só o 503 faz seguir para o próximo: é falta de capacidade do provedor,
+        e outro modelo costuma estar de pé no mesmo instante. 404 (nome que
+        não existe para a chave) e 400 (entrada recusada) são erro nosso, e
+        tentar outro só esconderia a causa.
+        """
+        modelos = modelos_de_visao()
+        ultimo: Exception | None = None
+
+        for indice, modelo in enumerate(modelos):
+            try:
+                return self._client.models.generate_content(
+                    model=modelo,
+                    contents=[types.Content(parts=parts)],
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        response_schema=ImageAnalysisResult,
+                    ),
+                )
+            except Exception as exc:  # SDK do Google não documenta uma exceção só
+                ultimo = exc
+                if not _e_indisponibilidade(exc) or indice == len(modelos) - 1:
+                    raise AIProviderError(f"Falha ao analisar as fotos: {exc}") from exc
+
+                logger.warning(
+                    "Modelo %s indisponível (503); tentando %s",
+                    modelo,
+                    modelos[indice + 1],
+                )
+
+        raise AIProviderError(f"Falha ao analisar as fotos: {ultimo}")
 
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
         if not texts:
