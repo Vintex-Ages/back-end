@@ -16,6 +16,7 @@ from fastapi.responses import Response
 
 from app.config import settings
 from app.controllers.media_controller import ArquivoRecebido, MediaController
+from app.core.errors import ServiceUnavailable
 from app.core.security import require_auth
 from app.models.user import User
 from app.schemas.media_schema import MediaUploadResponse
@@ -33,7 +34,17 @@ def get_controller(request: Request) -> MediaController:
     navegador usa não é o que o servidor usa, `PUBLIC_BASE_URL` resolve.
     """
     base = settings.PUBLIC_BASE_URL or str(request.base_url)
-    return MediaController(MediaStorage.from_settings(), base)
+    try:
+        storage = MediaStorage.from_settings()
+    except ValueError as exc:
+        # Sem `MEDIA_BUCKET` o `from_settings` levantava `ValueError` dentro da
+        # dependency, e toda requisição virava 500 `INTERNAL_ERROR` — inclusive
+        # a leitura pública de foto, que é o caminho do feed (back-end#220).
+        # Falta de configuração é indisponibilidade declarada, não erro interno.
+        raise ServiceUnavailable(
+            "O armazenamento de mídia não está configurado neste ambiente."
+        ) from exc
+    return MediaController(storage, base)
 
 
 @me_router.post(
