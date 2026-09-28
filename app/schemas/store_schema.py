@@ -53,16 +53,51 @@ class StoreProductItemResponse(BaseModel):
     status: str
 
 
+class StoreAddressCreate(BaseModel):
+    """Endereco da loja no cadastro (back-end#216).
+
+    Espelha o `StoreAddressResponse` de proposito: o que entra e o que sai tem
+    o mesmo nome de campo. `zip_code` e `neighborhood`, e nao `cep`/`district`,
+    porque e assim que a resposta publica ja devolve e assim que a modelagem
+    (`vintex-modelagem-1.md` secao 1.3) nomeia as colunas.
+    """
+
+    street: str = Field(min_length=1, max_length=150)
+    number: str = Field(min_length=1, max_length=20)
+    complement: str | None = Field(default=None, max_length=100)
+    neighborhood: str | None = Field(default=None, max_length=100)
+    city: str = Field(min_length=1, max_length=100)
+    state: str = Field(min_length=2, max_length=2)
+    zip_code: str = Field(min_length=1, max_length=10)
+
+
 class StoreCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
-    description: str = Field(min_length=1)
-    # Opcional: `Store.logo_url` e anulavel no modelo, e um brecho sem logo
-    # ainda e um brecho. Exigir aqui impedia abrir loja, porque nao ha tela de
-    # upload de logo (front-end#212 nao existe).
+    # Opcionais porque a modelagem decide assim: na secao 1.4 de
+    # `vintex-modelagem-1.md`, com a legenda "NN = not null (obrigatorio)", so
+    # `seller_id` e `name` tem NN. `description`, `logo_url`, `pix_key` e
+    # `address_id` nao tem -- e o model implementa assim
+    # (`Mapped[str | None]`), e o `StoreResponse` devolve assim.
+    #
+    # A `description` exigia `min_length=1` desde a #141, contra as tres
+    # fontes acima e contra a propria tela, que rotula "Descricao (opcional)".
+    description: str | None = None
     logo_url: AnyHttpUrl | None = None
+    # RN-18, Firme: "No cadastro do vendedor, registra-se sua chave Pix para
+    # recebimento." A coluna existe desde a migration base; o cadastro nunca a
+    # aceitou, e o formulario do `front-end#212` pede o campo e perdia o valor.
+    pix_key: str | None = Field(default=None, max_length=255)
+    # `VS-006` em Gherkin: "informo CPF ou CNPJ, endereco e chave Pix".
+    address: StoreAddressCreate | None = None
     document_type: Literal["CPF", "CNPJ"]
     document_value: str = Field(min_length=1, max_length=18)
-    terms_version: str = Field(min_length=1, max_length=20)
+    # Opcional ate a tela de aceite do contrato existir (`front-end#215`,
+    # Should, sem PR). Exigir aqui fazia um Should nao construido bloquear o
+    # `front-end#212`, que e Must e esta pronto -- e o front nao tem de onde
+    # tirar a versao: `legal_documents` nasce vazia e `GET /api/legal/terms`
+    # devolve 404 sem rodar o seed. Gravar versao chumbada seria registrar um
+    # aceite que ninguem deu. NULL e a verdade.
+    terms_version: str | None = Field(default=None, max_length=20)
 
     @model_validator(mode="after")
     def check_document_value_length(self) -> "StoreCreate":
@@ -84,7 +119,12 @@ class StoreResponse(BaseModel):
     name: str
     description: str | None
     logo_url: str | None
+    # A loja precisa conseguir ler a propria chave, senao o vendedor nao tem
+    # como conferir onde vai cair o dinheiro. Nao entra no retrato publico
+    # (`StoreDetailResponse`): e dado do vendedor, nao da vitrine.
+    pix_key: str | None
     document_type: str
     document_value: str
     terms_version: str | None
     terms_accepted_at: datetime | None
+    address: StoreAddressResponse | None
