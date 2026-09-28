@@ -3,7 +3,14 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import TYPE_CHECKING, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_serializer,
+    field_validator,
+    model_validator,
+)
 
 from app.services.ai.base import ImageAnalysisResult
 
@@ -72,6 +79,11 @@ class ProductFeedItemResponse(BaseModel):
         return float(price)
 
 
+class SuggestionsResponse(BaseModel):
+    reason: str
+    items: list[ProductFeedItemResponse]
+
+
 class FeedResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -80,6 +92,8 @@ class FeedResponse(BaseModel):
     page_size: int
     total: int
     applied_filters: dict[str, str | Decimal] = Field(default_factory=dict)
+    match_type: Literal["exact", "fallback"] = "exact"
+    suggestions: SuggestionsResponse | None = None
 
 
 class ProductMediaResponse(BaseModel):
@@ -115,6 +129,88 @@ class ProductDetailResponse(BaseModel):
         return float(price)
 
 
+class AiCorrectionInput(BaseModel):
+    """Uma correção do vendedor sobre uma sugestão da IA, enviada pelo front."""
+
+    field: str
+    suggested: str | None = None
+    final: str
+
+
+class AiCorrectionResponse(BaseModel):
+    field: str
+    suggested: str | None
+    final: str
+
+
+class ProductDraftCreate(BaseModel):
+    """Corpo de `POST /api/products`. Não tem `store_id` nem `quantity`:
+    a loja vem de quem está criando, a quantidade é sempre 1."""
+
+    name: str
+    description: str | None = None
+    category: str | None = None
+    style: str | None = None
+    brand: str | None = None
+    color: str | None = None
+    size: str | None = None
+    condition: str | None = None
+    price: Decimal
+    images: list[str] = Field(default_factory=list)
+    ai_corrections: list[AiCorrectionInput] = Field(default_factory=list)
+
+
+class ProductDraftUpdate(BaseModel):
+    """Corpo de `PATCH /api/products/{id}`. Todo campo é opcional — só o que
+    for enviado é alterado (ver `exclude_unset` no controller)."""
+
+    name: str | None = None
+    description: str | None = None
+    category: str | None = None
+    style: str | None = None
+    brand: str | None = None
+    color: str | None = None
+    size: str | None = None
+    condition: str | None = None
+    price: Decimal | None = None
+    images: list[str] | None = None
+    ai_corrections: list[AiCorrectionInput] = Field(default_factory=list)
+
+    @field_validator("name", "price")
+    @classmethod
+    def _reject_explicit_null(cls, value: object) -> object:
+        """`name`/`price` são NOT NULL no banco: aceitamos o campo ausente
+        (não altera nada), mas não `null` explícito (limparia um campo
+        obrigatório e quebraria no commit)."""
+        if value is None:
+            raise ValueError("Este campo não pode ser definido como nulo.")
+        return value
+
+
+class ProductStoreResponse(BaseModel):
+    id: int
+    name: str
+    city: str | None
+
+
+class ProductDraftResponse(BaseModel):
+    id: int
+    name: str
+    description: str | None
+    category: str | None
+    style: str | None
+    brand: str | None
+    color: str | None
+    size: str | None
+    condition: str | None
+    price: Decimal
+    quantity: int
+    status: str
+    store: ProductStoreResponse
+    images: list[str]
+    ai_corrections: list[AiCorrectionResponse]
+
+
 class ProductAIStatusResponse(BaseModel):
     """Status da análise de IA da peça (VE-05, back-end#62).
 
@@ -125,3 +221,14 @@ class ProductAIStatusResponse(BaseModel):
     status: ProductAIStatusValue
     error: str | None = None
     suggestions: ImageAnalysisResult | None = None
+
+
+class ListingSuggestionsRequest(BaseModel):
+    """`POST /api/ai/listing-suggestions` (BE-US014-2, back-end#150).
+
+    `max_length` no número de fotos: sem isso, nada impede uma lista enorme
+    de URLs — cada uma baixada e mandada pra API de IA (revisão da
+    Adrielle no PR #200).
+    """
+
+    image_urls: list[str] = Field(max_length=8)

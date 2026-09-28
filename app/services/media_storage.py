@@ -54,5 +54,15 @@ class MediaStorage:
     def read(self, key: str) -> bytes:
         return self.client.get_object(Bucket=self.bucket, Key=key)["Body"].read()
 
+    def read_with_type(self, key: str) -> tuple[bytes, str]:
+        """Bytes e `Content-Type` gravado no upload.
+
+        A chave e um uuid sem extensao, entao quem serve o arquivo depois nao
+        tem como adivinhar o tipo pelo nome: ele vem do objeto.
+        """
+        objeto = self.client.get_object(Bucket=self.bucket, Key=key)
+        content_type = objeto.get("ContentType") or "application/octet-stream"
+        return objeto["Body"].read(), content_type
+
     def delete(self, key: str) -> None:
         self.client.delete_object(Bucket=self.bucket, Key=key)

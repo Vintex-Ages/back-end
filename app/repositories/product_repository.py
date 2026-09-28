@@ -12,6 +12,21 @@ from app.models.seller import Seller
 from app.models.store import Store
 from app.schemas.product_schema import ProductFilters
 
+# Mesma expressao do indice ix_products_search_trgm (migration 0f9a7f647244).
+# Se mudar aqui sem mudar la, o Postgres para de usar o indice e a busca vira
+# varredura da tabela inteira.
+TEXTO_BUSCAVEL = func.immutable_unaccent(
+    func.lower(
+        func.coalesce(Product.name, "")
+        + " "
+        + func.coalesce(Product.description, "")
+        + " "
+        + func.coalesce(Product.brand, "")
+        + " "
+        + func.coalesce(Product.category, "")
+    )
+)
+
 
 class ProductFeedRow(TypedDict):
     id: int
@@ -65,7 +80,7 @@ class ProductRepository:
         )
 
     def get_active_feed(
-        self, params: PageParams, filters: ProductFilters
+        self, params: PageParams, filters: ProductFilters, q: str | None = None
     ) -> tuple[list[ProductFeedRow], int]:
         conditions = [Product.status == "ativo"]
         filter_columns = {
@@ -96,6 +111,11 @@ class ProductRepository:
             .order_by(Product.created_at.desc(), Product.id.desc())
         )
 
+        if q:
+            stmt = stmt.where(
+                TEXTO_BUSCAVEL.contains(func.immutable_unaccent(func.lower(q)))
+            )
+
         count_stmt = select(func.count()).select_from(stmt.order_by(None).subquery())
         total = self.db.scalar(count_stmt) or 0
         rows = (
@@ -104,6 +124,15 @@ class ProductRepository:
             .all()
         )
         return [cast(ProductFeedRow, dict(row)) for row in rows], total
+
+    def get_store_for_user(self, user_id: int) -> Store | None:
+        """Loja de quem está criando/editando — um vendedor, uma loja."""
+        stmt = (
+            select(Store)
+            .join(Seller, Seller.id == Store.seller_id)
+            .where(Seller.user_id == user_id)
+        )
+        return self.db.scalars(stmt).first()
 
     def find_similar(
         self, query_embedding: Sequence[float], limit: int = 5
@@ -136,3 +165,27 @@ class ProductRepository:
             .where(Product.id == product_id)
         )
         return self.db.execute(stmt).scalar_one_or_none()
+
+    def get_by_id(self, product_id: int) -> Product | None:
+        """Como `get_detail_by_id`, mas com `ai_corrections` — usado pelo
+        fluxo de rascunho (`_get_owned_draft`), que devolve o histórico de
+        correções da IA junto com a peça."""
+        stmt = (
+            select(Product)
+            .options(
+                joinedload(Product.store).joinedload(Store.address),
+                joinedload(Product.store).joinedload(Store.seller),
+                selectinload(Product.images),
+                selectinload(Product.ai_corrections),
+            )
+            .where(Product.id == product_id)
+        )
+        return self.db.scalars(stmt).one_or_none()
+
+    def create(self, product: Product) -> Product:
+        self.db.add(product)
+        self.db.flush()
+        return product
+
+    def commit(self) -> None:
+        self.db.commit()
