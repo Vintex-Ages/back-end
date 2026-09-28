@@ -169,3 +169,36 @@ def test_sold_product_cannot_change_status(client, db_session):
     )
     assert response.status_code == 409
     assert response.json()["error"]["code"] == "PRODUCT_SOLD"
+
+
+def test_draft_cannot_be_republished_without_publish_flow(client, db_session):
+    store = make_store(db_session, 42, "DraftGuard")
+    product = make_product(db_session, store, "Draft product", "rascunho")
+    db_session.commit()
+
+    response = client.post(
+        f"/api/users/me/products/{product.id}/republish",
+        headers={"X-User-Id": "42"},
+    )
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "PRODUCT_NOT_EDITABLE"
+
+    response = client.post(
+        f"/api/users/me/products/{product.id}/unpublish",
+        headers={"X-User-Id": "42"},
+    )
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "PRODUCT_NOT_EDITABLE"
+
+
+def test_unpublished_product_cannot_be_unpublished_again(client, db_session):
+    store = make_store(db_session, 43, "Twice")
+    product = make_product(db_session, store, "Off product", "despublicado")
+    db_session.commit()
+
+    response = client.post(
+        f"/api/users/me/products/{product.id}/unpublish",
+        headers={"X-User-Id": "43"},
+    )
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "PRODUCT_NOT_EDITABLE"

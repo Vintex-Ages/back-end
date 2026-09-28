@@ -3,7 +3,7 @@ from typing import Literal
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError, Conflict, ErrorCode, NotFound, ValidationError
-from app.core.pagination import Page, PageParams
+from app.core.pagination import PageParams
 from app.models.product import Product
 from app.models.product_ai_correction import ProductAiCorrection
 from app.models.product_image import ProductImage
@@ -297,7 +297,7 @@ class ProductController:
     def list_for_seller(
         self, user_id: int, params: PageParams, status: str | None
     ) -> ProductManagementPage:
-        page: Page[object] = self.repository.list_for_seller(user_id, params, status)
+        page = self.repository.list_for_seller(user_id, params, status)
         return ProductManagementPage(
             items=page.items,
             page=page.page,
@@ -330,6 +330,16 @@ class ProductController:
             raise AppError(
                 "Peça vendida não pode mudar de situação.",
                 code=ErrorCode.PRODUCT_SOLD,
+                status_code=409,
+            )
+        # Só alterna entre publicada e despublicada. Rascunho vira ativo pelo
+        # `publish` (#144), que exige foto — aceitá-lo aqui pularia essa regra.
+        source_status = "despublicado" if target_status == "ativo" else "ativo"
+        if product.status != source_status:
+            raise AppError(
+                f"Só peça com situação '{source_status}' pode ir para "
+                f"'{target_status}'.",
+                code=ErrorCode.PRODUCT_NOT_EDITABLE,
                 status_code=409,
             )
         product.status = target_status

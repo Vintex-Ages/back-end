@@ -26,11 +26,8 @@ from app.schemas.product_schema import (
 )
 
 router = APIRouter(prefix="/products", tags=["Products"])
-seller_router = APIRouter(prefix="/users/me/products", tags=["Seller products"])
 
-# Recurso do usuário logado (ADR 0001 §4). Só create/publish moraram aqui;
-# o PATCH de edição continua em /products/{id} até a #157 entrar — ela leva
-# esse PATCH pra cá cobrindo rascunho e publicada com um if no status.
+# Recurso do usuário logado (ADR 0001 §4): peças do próprio vendedor.
 me_router = APIRouter(prefix="/users/me/products", tags=["Products"])
 
 
@@ -80,6 +77,7 @@ def list_products(
     return controller.get_feed(params, filters, q=q)
 
 
+@me_router.get("", response_model=ProductManagementPage)
 def list_seller_products(
     status: Literal["ativo", "vendido", "despublicado"] | None = Query(None),
     params: PageParams = Depends(page_params),
@@ -87,14 +85,6 @@ def list_seller_products(
     controller: ProductController = Depends(get_controller),
 ) -> ProductManagementPage:
     return controller.list_for_seller(user_id, params, status)
-
-
-seller_router.add_api_route(
-    "",
-    list_seller_products,
-    methods=["GET"],
-    response_model=ProductManagementPage,
-)
 
 
 @router.get(
@@ -110,10 +100,7 @@ def get_product_detail(
     return controller.get_detail(product_id)
 
 
-@seller_router.patch(
-    "/{product_id}",
-    response_model=ProductManagementResponse,
-)
+@me_router.patch("/{product_id}", response_model=ProductManagementResponse)
 def update_product(
     product_id: int,
     data: ProductUpdate,
@@ -125,7 +112,7 @@ def update_product(
     )
 
 
-@seller_router.post("/{product_id}/unpublish", response_model=ProductManagementResponse)
+@me_router.post("/{product_id}/unpublish", response_model=ProductManagementResponse)
 def unpublish_product(
     product_id: int,
     user_id: int = Depends(get_current_user_id),
@@ -136,13 +123,10 @@ def unpublish_product(
     )
 
 
-# Rota distinta de `POST /users/me/products/{id}/publish` (#159, `me_router`
-# abaixo): aquela publica um rascunho pela primeira vez (exige foto); esta
-# reativa uma peça já publicada antes e despublicada depois — sem a checagem
-# de foto, que não faz sentido pra quem já foi ativa. Nomes diferentes até as
-# duas PRs decidirem, juntas, se faz sentido unificar num só fluxo com `if`
-# no status.
-@seller_router.post("/{product_id}/republish", response_model=ProductManagementResponse)
+# Rota distinta de `POST /users/me/products/{id}/publish` (#159): aquela
+# publica um rascunho pela primeira vez (exige foto); esta só reativa uma peça
+# despublicada — o controller recusa rascunho aqui.
+@me_router.post("/{product_id}/republish", response_model=ProductManagementResponse)
 def republish_product(
     product_id: int,
     user_id: int = Depends(get_current_user_id),

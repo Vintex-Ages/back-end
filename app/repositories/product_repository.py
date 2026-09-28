@@ -135,7 +135,7 @@ class ProductRepository:
 
     def list_for_seller(
         self, user_id: int, params: PageParams, status: str | None = None
-    ) -> Page[object]:
+    ) -> Page[ProductManagementResponse]:
         stmt = (
             select(Product)
             .join(Store, Store.id == Product.store_id)
