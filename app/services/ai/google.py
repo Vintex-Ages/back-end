@@ -9,6 +9,7 @@ vez de fingir suportar algo que não foi escrito.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator, Sequence
 
 import httpx
@@ -66,6 +67,24 @@ sugerir algo com razoável confiança — melhor um campo vazio que um chute.
 
 # Teto para a chamada ao modelo (o SDK conta em milissegundos).
 _GOOGLE_TIMEOUT_MS = 30_000
+
+
+def modelos_de_visao() -> list[str]:
+    """`GOOGLE_VISION_MODEL` como lista, aceitando um nome só ou vários
+    separados por vírgula."""
+    nomes = [n.strip() for n in settings.GOOGLE_VISION_MODEL.split(",")]
+    return [n for n in nomes if n]
+
+
+def _e_indisponibilidade(exc: Exception) -> bool:
+    """503 do provedor, pelo código do SDK ou pela mensagem."""
+    codigo = getattr(exc, "code", None) or getattr(exc, "status_code", None)
+    if codigo == 503:
+        return True
+    return "503" in str(exc) and "UNAVAILABLE" in str(exc).upper()
+
+
+logger = logging.getLogger(__name__)
 
 _IMAGE_DOWNLOAD_TIMEOUT_S = 10.0
 # Alguns hosts (ex.: Wikimedia) recusam requisições sem User-Agent de navegador.
@@ -136,17 +155,7 @@ class GoogleAIProvider(AIProvider):
         except httpx.HTTPError as exc:
             raise AIProviderError(f"Falha ao baixar foto da peça: {exc}") from exc
 
-        try:
-            result = self._client.models.generate_content(
-                model=settings.GOOGLE_VISION_MODEL,
-                contents=[types.Content(parts=parts)],
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=ImageAnalysisResult,
-                ),
-            )
-        except Exception as exc:  # SDK do Google não documenta uma exceção só
-            raise AIProviderError(f"Falha ao analisar as fotos: {exc}") from exc
+        result = self._gerar_com_fallback(parts)
 
         parsed = result.parsed
         if isinstance(parsed, ImageAnalysisResult):
@@ -165,6 +174,42 @@ class GoogleAIProvider(AIProvider):
     ) -> AsyncIterator[SearchStreamEvent]:
         raise AIProviderUnavailableError(_NOT_IMPLEMENTED)
         yield  # pragma: no cover - nunca alcançado; mantém a função geradora
+
+    def _gerar_com_fallback(
+        self, parts: list[types.Part]
+    ) -> types.GenerateContentResponse:
+        """Tenta os modelos configurados em ordem, pulando os que dão 503.
+
+        Só o 503 faz seguir para o próximo: é falta de capacidade do provedor,
+        e outro modelo costuma estar de pé no mesmo instante. 404 (nome que
+        não existe para a chave) e 400 (entrada recusada) são erro nosso, e
+        tentar outro só esconderia a causa.
+        """
+        modelos = modelos_de_visao()
+        ultimo: Exception | None = None
+
+        for indice, modelo in enumerate(modelos):
+            try:
+                return self._client.models.generate_content(
+                    model=modelo,
+                    contents=[types.Content(parts=parts)],
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        response_schema=ImageAnalysisResult,
+                    ),
+                )
+            except Exception as exc:  # SDK do Google não documenta uma exceção só
+                ultimo = exc
+                if not _e_indisponibilidade(exc) or indice == len(modelos) - 1:
+                    raise AIProviderError(f"Falha ao analisar as fotos: {exc}") from exc
+
+                logger.warning(
+                    "Modelo %s indisponível (503); tentando %s",
+                    modelo,
+                    modelos[indice + 1],
+                )
+
+        raise AIProviderError(f"Falha ao analisar as fotos: {ultimo}")
 
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
         if not texts:

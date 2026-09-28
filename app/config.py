@@ -31,7 +31,12 @@ class Settings(BaseSettings):
     GOOGLE_EMBEDDING_MODEL: str = "gemini-embedding-2"
     # Preenchimento automático da peça a partir da foto (back-end#150) —
     # modelo multimodal (lê imagem), diferente do de embedding.
-    GOOGLE_VISION_MODEL: str = "gemini-3.8-flash"
+    #
+    # Aceita vários nomes separados por vírgula (back-end#209): um 503 no
+    # primeiro faz tentar o próximo. A capacidade do provedor oscila por
+    # modelo — medido em 27/09, 4 falhas em 5 chamadas num intervalo de vinte
+    # minutos, com seis outros modelos respondendo no mesmo período.
+    GOOGLE_VISION_MODEL: str = "gemini-3.1-flash-lite,gemini-3.8-flash,gemini-3.7-flash"
 
     # Storage de mídia (VE-16). Sem endpoint explícito, boto3 usa a AWS.
     # Base publica da propria API, usada para montar a URL da midia. Fica
