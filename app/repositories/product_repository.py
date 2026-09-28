@@ -125,6 +125,15 @@ class ProductRepository:
         )
         return [cast(ProductFeedRow, dict(row)) for row in rows], total
 
+    def get_store_for_user(self, user_id: int) -> Store | None:
+        """Loja de quem está criando/editando — um vendedor, uma loja."""
+        stmt = (
+            select(Store)
+            .join(Seller, Seller.id == Store.seller_id)
+            .where(Seller.user_id == user_id)
+        )
+        return self.db.scalars(stmt).first()
+
     def find_similar(
         self, query_embedding: Sequence[float], limit: int = 5
     ) -> list[ProductFeedRow]:
@@ -156,3 +165,27 @@ class ProductRepository:
             .where(Product.id == product_id)
         )
         return self.db.execute(stmt).scalar_one_or_none()
+
+    def get_by_id(self, product_id: int) -> Product | None:
+        """Como `get_detail_by_id`, mas com `ai_corrections` — usado pelo
+        fluxo de rascunho (`_get_owned_draft`), que devolve o histórico de
+        correções da IA junto com a peça."""
+        stmt = (
+            select(Product)
+            .options(
+                joinedload(Product.store).joinedload(Store.address),
+                joinedload(Product.store).joinedload(Store.seller),
+                selectinload(Product.images),
+                selectinload(Product.ai_corrections),
+            )
+            .where(Product.id == product_id)
+        )
+        return self.db.scalars(stmt).one_or_none()
+
+    def create(self, product: Product) -> Product:
+        self.db.add(product)
+        self.db.flush()
+        return product
+
+    def commit(self) -> None:
+        self.db.commit()
