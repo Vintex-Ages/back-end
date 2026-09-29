@@ -16,7 +16,9 @@ class MediaItemResponse(BaseModel):
     """
 
     key: str
-    url: str
+    # `None` para tipo nao publico (comprovante): a rota de leitura
+    # recusa esses prefixos, entao devolver endereco seria mentir.
+    url: str | None
     content_type: str
     size: int
 

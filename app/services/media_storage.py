@@ -11,11 +11,17 @@ from botocore.config import Config
 
 from app.config import Settings, settings
 
-MediaKind = Literal["photo", "video", "receipt"]
+# `logo` existe para a imagem da loja nao morar em `products/photos/`
+# (back-end#220). O `front-end#212` sobe a logo por esta rota e manda a URL em
+# `POST /api/users/me/store`; sem um prefixo proprio, logo de brecho e foto de
+# peca ficariam misturadas no bucket para sempre, e qualquer limpeza de fotos
+# de peca apagada levaria logo junto.
+MediaKind = Literal["photo", "video", "receipt", "logo"]
 MEDIA_PREFIXES: dict[MediaKind, str] = {
     "photo": "products/photos/",
     "video": "products/videos/",
     "receipt": "payments/receipts/",
+    "logo": "stores/logos/",
 }
 
 

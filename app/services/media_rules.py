@@ -30,13 +30,16 @@ _ALLOWED_BY_KIND: dict[MediaKind, frozenset[str]] = {
     "photo": ALLOWED_PHOTO_TYPES,
     "video": ALLOWED_VIDEO_TYPES,
     "receipt": ALLOWED_PHOTO_TYPES,
+    "logo": ALLOWED_PHOTO_TYPES,
 }
 
 # Prefixos que a rota pública de leitura pode servir. `payments/receipts/` fica
 # fora: comprovante de PIX é documento de uma transação entre duas pessoas, e
 # uma chave sorteada não é controle de acesso. Quando houver tela de pedido,
 # entra por rota autenticada.
-PUBLIC_KINDS: frozenset[MediaKind] = frozenset({"photo", "video"})
+# `logo` entra: a imagem da loja aparece na vitrine pública, igual a foto de
+# peça. `payments/receipts/` continua fora.
+PUBLIC_KINDS: frozenset[MediaKind] = frozenset({"photo", "video", "logo"})
 
 
 def validar_tipo(kind: MediaKind, content_type: str | None) -> str:

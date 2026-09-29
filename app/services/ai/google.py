@@ -69,11 +69,39 @@ sugerir algo com razoável confiança — melhor um campo vazio que um chute.
 _GOOGLE_TIMEOUT_MS = 30_000
 
 
+def _lista(valor: str) -> list[str]:
+    nomes = [n.strip() for n in valor.split(",")]
+    return [n for n in nomes if n]
+
+
 def modelos_de_visao() -> list[str]:
     """`GOOGLE_VISION_MODEL` como lista, aceitando um nome só ou vários
     separados por vírgula."""
-    nomes = [n.strip() for n in settings.GOOGLE_VISION_MODEL.split(",")]
-    return [n for n in nomes if n]
+    return _lista(settings.GOOGLE_VISION_MODEL)
+
+
+# Não existe `modelos_de_embedding()`, e é decisão, não esquecimento.
+#
+# O primeiro critério da `#209` pedia lista de modelos para visão **e** para
+# embedding. O `#224` implementou o de embedding e foi revertido no `#227`,
+# porque o critério estava errado quando eu o escrevi:
+#
+#   1. `find_similar` não filtra por `embedding_model`. Se o fallback
+#      disparasse, o vetor da pergunta viria de um modelo e os do catálogo de
+#      outro — e distância entre espaços vetoriais diferentes é ruído
+#      apresentado como resultado. Um 503 é melhor: falha alto, o front mostra
+#      "indisponível", e ninguém recebe resposta errada com cara de certa.
+#   2. `scripts/backfill_embeddings.py` lê `GOOGLE_EMBEDDING_MODEL` cru para
+#      gravar em `Product.embedding_model` (`String(60)`) e para decidir o que
+#      reprocessar. Com lista, gravaria a lista inteira e reprocessaria o
+#      catálogo a cada mudança de ordem.
+#
+# Fallback de visão é diferente e continua: cada `analyze_image` é
+# independente, não há vetor guardado com que o resultado precise ser
+# comparável.
+#
+# Tornar isto seguro é a `#228`: registrar o modelo que gerou cada vetor,
+# filtrar a busca por ele, e o backfill usar um nome só.
 
 
 def _e_indisponibilidade(exc: Exception) -> bool:
@@ -186,6 +214,12 @@ class GoogleAIProvider(AIProvider):
         tentar outro só esconderia a causa.
         """
         modelos = modelos_de_visao()
+        if not modelos:
+            # Sem isto, lista vazia caía no `raise` do fim com `ultimo = None` e
+            # produzia "Falha ao analisar as fotos: None", que não diz nada.
+            raise AIProviderError(
+                "GOOGLE_VISION_MODEL está vazio: nenhum modelo para tentar."
+            )
         ultimo: Exception | None = None
 
         for indice, modelo in enumerate(modelos):
@@ -220,6 +254,8 @@ class GoogleAIProvider(AIProvider):
         # texto. Encapsular cada texto no seu próprio `Content` é o que faz o
         # batch devolver um vetor por entrada, na mesma ordem.
         contents = [types.Content(parts=[types.Part(text=text)]) for text in texts]
+        # Um nome de modelo só, de propósito — o bloco de comentário no topo
+        # deste arquivo explica por que não há fallback aqui.
         try:
             response = self._client.models.embed_content(
                 model=settings.GOOGLE_EMBEDDING_MODEL,

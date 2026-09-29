@@ -7,7 +7,7 @@ from collections.abc import AsyncIterator, Sequence
 
 from sqlalchemy.orm import Session
 
-from app.core.errors import ServiceUnavailable
+from app.core.errors import ErrorCode, ServiceUnavailable
 from app.repositories.product_repository import ProductRepository
 from app.schemas.chat_schema import ChatErrorEvent, ChatEvent, ChatProductsEvent
 from app.schemas.product_schema import ProductFeedItemResponse
@@ -50,7 +50,8 @@ class AssistantController:
             logger.exception("Falha ao analisar fotos para preenchimento automático")
             raise ServiceUnavailable(
                 "A análise de fotos está indisponível agora. Tente de novo em "
-                "instantes ou preencha os campos à mão."
+                "instantes ou preencha os campos à mão.",
+                code=ErrorCode.AI_UNAVAILABLE,
             ) from exc
 
     async def chat(self, messages: Sequence[ChatTurn]) -> AsyncIterator[ChatEvent]:

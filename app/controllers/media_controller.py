@@ -61,7 +61,15 @@ class MediaController:
             itens.append(
                 MediaItemResponse(
                     key=key,
-                    url=self.url_publica(key),
+                    # Só tipo público ganha URL. Comprovante recebia uma URL
+                    # absoluta que a própria rota de leitura recusa: 201 no
+                    # upload e 404 na leitura (back-end#220). A API não entrega
+                    # endereço que ela mesma nega.
+                    url=(
+                        self.url_publica(key)
+                        if kind in media_rules.PUBLIC_KINDS
+                        else None
+                    ),
                     content_type=arquivo.content_type,
                     size=len(arquivo.conteudo),
                 )
