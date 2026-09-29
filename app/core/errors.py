@@ -42,6 +42,11 @@ class ErrorCode:
     METHOD_NOT_ALLOWED = "METHOD_NOT_ALLOWED"
     INTERNAL_ERROR = "INTERNAL_ERROR"
     AI_UNAVAILABLE = "AI_UNAVAILABLE"
+    # Serviço indisponível que não é a camada de IA. O front despacha pelo
+    # `code`, então uma foto que não carrega não pode chegar lá rotulada como
+    # falha da IA — foi o que acontecia quando o `ServiceUnavailable` era
+    # levantado sem `code` e herdava o default da classe.
+    SERVICE_UNAVAILABLE = "SERVICE_UNAVAILABLE"
 
 
 def error_body(
@@ -115,10 +120,16 @@ class ValidationError(AppError):
 class ServiceUnavailable(AppError):
     """Dependência externa fora do ar — a falha é nossa de reportar, não do
     usuário de adivinhar. Quem chama deve poder distinguir isto de "não
-    encontrei nada"."""
+    encontrei nada".
+
+    O default é o código genérico. Era `AI_UNAVAILABLE`, e a rota de mídia que
+    levantava esta exceção sem `code=` respondia falha de configuração de
+    storage com rótulo da camada de IA. Quem é a camada de IA passa o código
+    explicitamente.
+    """
 
     status_code = status.HTTP_503_SERVICE_UNAVAILABLE
-    code = ErrorCode.AI_UNAVAILABLE
+    code = ErrorCode.SERVICE_UNAVAILABLE
 
 
 _HTTP_STATUS_CODE: dict[int, str] = {

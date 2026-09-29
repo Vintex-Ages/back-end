@@ -80,18 +80,28 @@ def modelos_de_visao() -> list[str]:
     return _lista(settings.GOOGLE_VISION_MODEL)
 
 
-def modelos_de_embedding() -> list[str]:
-    """`GOOGLE_EMBEDDING_MODEL` como lista, mesmo formato do de visão.
-
-    Era o primeiro critério da `#209` e ficou de fora quando o `#210` entregou
-    só o lado da visão (back-end#220). **Cada mensagem da conversa com a
-    Vintex chama `embed()`** para vetorizar a pergunta, então um 503 aqui
-    derruba a conversa e a busca por similaridade inteiras — e a capacidade do
-    provedor oscila por modelo: medido em 27/09, 4 falhas em 5 chamadas num
-    intervalo de vinte minutos, com outros modelos respondendo no mesmo
-    período.
-    """
-    return _lista(settings.GOOGLE_EMBEDDING_MODEL)
+# Não existe `modelos_de_embedding()`, e é decisão, não esquecimento.
+#
+# O primeiro critério da `#209` pedia lista de modelos para visão **e** para
+# embedding. O `#224` implementou o de embedding e foi revertido no `#227`,
+# porque o critério estava errado quando eu o escrevi:
+#
+#   1. `find_similar` não filtra por `embedding_model`. Se o fallback
+#      disparasse, o vetor da pergunta viria de um modelo e os do catálogo de
+#      outro — e distância entre espaços vetoriais diferentes é ruído
+#      apresentado como resultado. Um 503 é melhor: falha alto, o front mostra
+#      "indisponível", e ninguém recebe resposta errada com cara de certa.
+#   2. `scripts/backfill_embeddings.py` lê `GOOGLE_EMBEDDING_MODEL` cru para
+#      gravar em `Product.embedding_model` (`String(60)`) e para decidir o que
+#      reprocessar. Com lista, gravaria a lista inteira e reprocessaria o
+#      catálogo a cada mudança de ordem.
+#
+# Fallback de visão é diferente e continua: cada `analyze_image` é
+# independente, não há vetor guardado com que o resultado precise ser
+# comparável.
+#
+# Tornar isto seguro é a `#228`: registrar o modelo que gerou cada vetor,
+# filtrar a busca por ele, e o backfill usar um nome só.
 
 
 def _e_indisponibilidade(exc: Exception) -> bool:
@@ -235,44 +245,6 @@ class GoogleAIProvider(AIProvider):
 
         raise AIProviderError(f"Falha ao analisar as fotos: {ultimo}")
 
-    def _embed_com_fallback(
-        self, contents: list[types.Content]
-    ) -> types.EmbedContentResponse:
-        """Mesma regra do `_gerar_com_fallback`, para o embedding.
-
-        Só o 503 faz seguir para o próximo modelo: é falta de capacidade do
-        provedor. 404 (nome que não existe para a chave) e 400 (entrada
-        recusada) são erro nosso, e tentar outro esconderia a causa.
-        """
-        modelos = modelos_de_embedding()
-        if not modelos:
-            raise AIProviderError(
-                "GOOGLE_EMBEDDING_MODEL está vazio: nenhum modelo para tentar."
-            )
-        ultimo: Exception | None = None
-
-        for indice, modelo in enumerate(modelos):
-            try:
-                return self._client.models.embed_content(
-                    model=modelo,
-                    contents=contents,
-                    config=types.EmbedContentConfig(
-                        output_dimensionality=EMBEDDING_DIM
-                    ),
-                )
-            except Exception as exc:  # SDK do Google não documenta uma exceção só
-                ultimo = exc
-                if not _e_indisponibilidade(exc) or indice == len(modelos) - 1:
-                    raise AIProviderError(f"Falha ao gerar embedding: {exc}") from exc
-
-                logger.warning(
-                    "Modelo de embedding %s indisponível (503); tentando %s",
-                    modelo,
-                    modelos[indice + 1],
-                )
-
-        raise AIProviderError(f"Falha ao gerar embedding: {ultimo}")
-
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
         if not texts:
             return []
@@ -282,7 +254,16 @@ class GoogleAIProvider(AIProvider):
         # texto. Encapsular cada texto no seu próprio `Content` é o que faz o
         # batch devolver um vetor por entrada, na mesma ordem.
         contents = [types.Content(parts=[types.Part(text=text)]) for text in texts]
-        response = self._embed_com_fallback(contents)
+        # Um nome de modelo só, de propósito — o bloco de comentário no topo
+        # deste arquivo explica por que não há fallback aqui.
+        try:
+            response = self._client.models.embed_content(
+                model=settings.GOOGLE_EMBEDDING_MODEL,
+                contents=contents,
+                config=types.EmbedContentConfig(output_dimensionality=EMBEDDING_DIM),
+            )
+        except Exception as exc:  # SDK do Google não documenta uma exceção só
+            raise AIProviderError(f"Falha ao gerar embedding: {exc}") from exc
 
         if response.embeddings is None or len(response.embeddings) != len(texts):
             raise AIProviderError(

@@ -46,6 +46,13 @@ class StoreController:
                 code=ErrorCode.DOCUMENT_ALREADY_REGISTERED,
             )
 
+        # Data de aceite só existe se houve aceite. A #216 tornou
+        # `terms_version` opcional com o argumento de que gravar versão
+        # chumbada registraria um aceite que ninguém deu — e deixou o carimbo
+        # de data saindo do mesmo jeito, que é a mesma mentira pelo outro lado:
+        # um campo jurídico com a data de um aceite sem versão.
+        aceito_em = datetime.now(timezone.utc) if data.terms_version else None
+
         try:
             seller = self.repository.get_seller_by_user_id(user_id)
             if seller is None:
@@ -54,15 +61,18 @@ class StoreController:
                     document_type=data.document_type,
                     document_value=data.document_value,
                     terms_version=data.terms_version,
-                    terms_accepted_at=datetime.now(timezone.utc),
+                    terms_accepted_at=aceito_em,
                 )
                 self.db.add(seller)
                 self.db.flush()
             else:
                 seller.document_type = data.document_type
                 seller.document_value = data.document_value
-                seller.terms_version = data.terms_version
-                seller.terms_accepted_at = datetime.now(timezone.utc)
+                # Vendedor que já aceitou não perde o registro por reenviar o
+                # cadastro sem a versão: só sobrescreve quando vem aceite novo.
+                if data.terms_version:
+                    seller.terms_version = data.terms_version
+                    seller.terms_accepted_at = aceito_em
 
             # O endereco e opcional (modelagem secao 1.4: `address_id` sem NN),
             # mas quando vem tem que virar linha em `addresses` -- senao o

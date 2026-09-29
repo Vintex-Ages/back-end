@@ -75,70 +75,59 @@ def _provider(monkeypatch, modelos: str, respostas: dict[str, Any]) -> tuple:
     return p, duble
 
 
-def test_lista_de_embedding_separada_por_virgula(monkeypatch) -> None:
-    monkeypatch.setattr(settings, "GOOGLE_EMBEDDING_MODEL", " a , b ,, c ")
-    assert mod.modelos_de_embedding() == ["a", "b", "c"]
+def test_embedding_nao_tem_fallback_de_modelo(monkeypatch) -> None:
+    """Um 503 no embedding falha, e nao tenta outro modelo (back-end#227).
 
-
-def test_um_nome_so_de_embedding_continua_funcionando(monkeypatch) -> None:
-    monkeypatch.setattr(settings, "GOOGLE_EMBEDDING_MODEL", "gemini-embedding-2")
-    assert mod.modelos_de_embedding() == ["gemini-embedding-2"]
-
-
-def test_503_no_embedding_cai_para_o_proximo_modelo(monkeypatch) -> None:
+    O `#224` tinha implementado o fallback, e foi revertido: `find_similar` nao
+    filtra por `embedding_model`, entao o vetor da pergunta vindo de um modelo
+    e os do catalogo de outro produziriam distancia entre espacos vetoriais
+    diferentes -- ruido com cara de resultado. Um 503 e melhor: falha alto e o
+    front mostra "indisponivel".
+    """
     p, duble = _provider(
         monkeypatch,
-        "primeiro,segundo",
-        {
-            "primeiro": _Erro(503, "UNAVAILABLE. high demand"),
-            "segundo": _Vetores(1),
-        },
-    )
-
-    assert p.embed(["camiseta preta"]) == [[0.0] * 768]
-    assert duble.chamados == ["primeiro", "segundo"]
-
-
-def test_404_no_embedding_nao_tenta_o_proximo(monkeypatch) -> None:
-    """Nome que nao existe para a chave e erro de configuracao. Tentar outro
-    esconderia a causa."""
-    p, duble = _provider(
-        monkeypatch,
-        "primeiro,segundo",
-        {"primeiro": _Erro(404, "NOT_FOUND"), "segundo": _Vetores(1)},
-    )
-
-    with pytest.raises(AIProviderError):
-        p.embed(["camiseta"])
-
-    assert duble.chamados == ["primeiro"]
-
-
-def test_todos_os_modelos_de_embedding_indisponiveis(monkeypatch) -> None:
-    p, duble = _provider(
-        monkeypatch, "a,b", {n: _Erro(503, "UNAVAILABLE") for n in ("a", "b")}
+        "gemini-embedding-2",
+        {"gemini-embedding-2": _Erro(503, "UNAVAILABLE. high demand")},
     )
 
     with pytest.raises(AIProviderError, match="Falha ao gerar embedding"):
-        p.embed(["camiseta"])
+        p.embed(["camiseta preta"])
 
-    assert duble.chamados == ["a", "b"]
+    assert duble.chamados == ["gemini-embedding-2"]
 
 
-@pytest.mark.parametrize("variavel", ["GOOGLE_VISION_MODEL", "GOOGLE_EMBEDDING_MODEL"])
-def test_lista_vazia_diz_o_que_esta_errado(monkeypatch, variavel: str) -> None:
+def test_embedding_nao_aceita_lista_de_modelos(monkeypatch) -> None:
+    """Lista aqui seria armadilha: o `backfill_embeddings.py` le esta variavel
+    crua para gravar em `Product.embedding_model` (`String(60)`) e para decidir
+    o que reprocessar. Com lista, gravaria a lista inteira."""
+    p, duble = _provider(monkeypatch, "a,b", {"a,b": _Vetores(1)})
+
+    p.embed(["camiseta"])
+
+    # O nome vai inteiro para o SDK, sem ser partido: quem configurar lista
+    # recebe 404 do provedor, que e melhor que fallback silencioso.
+    assert duble.chamados == ["a,b"]
+
+
+def test_embedding_funciona_com_um_nome_so(monkeypatch) -> None:
+    p, duble = _provider(
+        monkeypatch, "gemini-embedding-2", {"gemini-embedding-2": _Vetores(2)}
+    )
+
+    assert p.embed(["a", "b"]) == [[0.0] * 768, [0.0] * 768]
+    assert duble.chamados == ["gemini-embedding-2"]
+
+
+def test_lista_de_visao_vazia_diz_o_que_esta_errado(monkeypatch) -> None:
     """Antes, lista vazia caia no `raise` do fim com `ultimo = None` e produzia
     "Falha ao analisar as fotos: None", que nao diz nada."""
-    monkeypatch.setattr(settings, variavel, "  ,  ")
+    monkeypatch.setattr(settings, "GOOGLE_VISION_MODEL", "  ,  ")
     monkeypatch.setattr(settings, "GOOGLE_API_KEY", "chave-de-teste")
     p = mod.GoogleAIProvider()
     p._client = type("C", (), {"models": _Modelos({})})()
 
     with pytest.raises(AIProviderError, match="vazio"):
-        if variavel == "GOOGLE_EMBEDDING_MODEL":
-            p.embed(["x"])
-        else:
-            p._gerar_com_fallback([])
+        p._gerar_com_fallback([])
 
 
 # ------------------------------------------------------------- 2. kind de logo
@@ -219,6 +208,32 @@ def test_tipo_publico_recebe_url_que_a_leitura_aceita(
 
 
 # ------------------------------------------- 4. MEDIA_BUCKET ausente vira 503
+def test_falha_de_configuracao_de_midia_nao_sai_rotulada_como_IA(monkeypatch) -> None:
+    """`ServiceUnavailable` tinha `AI_UNAVAILABLE` como default da classe, e a
+    rota de midia levantava sem `code=` -- falha de storage respondia com rotulo
+    da camada de IA (back-end#227). O front despacha pelo status, entao nao
+    mudava comportamento; mudava o diagnostico de quem le o payload."""
+    monkeypatch.setattr(settings, "MEDIA_BUCKET", None)
+    app.dependency_overrides[require_auth] = lambda: User(id=1, email="v@x.test")
+    try:
+        with TestClient(app) as c:
+            r = c.get("/api/media/products/photos/qualquer")
+            assert r.status_code == 503, r.text
+            assert r.json()["error"]["code"] == "SERVICE_UNAVAILABLE", r.text
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_a_camada_de_IA_continua_com_o_proprio_codigo(monkeypatch) -> None:
+    """Quem e a camada de IA passa `AI_UNAVAILABLE` explicitamente, para o
+    `#268` do front continuar distinguindo 'provedor fora' de 'foto ruim'."""
+    from app.core.errors import ErrorCode, ServiceUnavailable
+
+    erro = ServiceUnavailable("x", code=ErrorCode.AI_UNAVAILABLE)
+    assert erro.code == "AI_UNAVAILABLE"
+    assert ServiceUnavailable("y").code == "SERVICE_UNAVAILABLE"
+
+
 def test_sem_bucket_configurado_responde_503_e_nao_500(monkeypatch) -> None:
     """Falta de configuracao e indisponibilidade declarada. E nao pode derrubar
     a leitura publica de foto, que e o caminho do feed.
