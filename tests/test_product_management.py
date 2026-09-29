@@ -323,3 +323,24 @@ def test_as_tres_transicoes_devolvem_o_mesmo_contrato(client, db_session):
         assert isinstance(
             corpo["price"], float
         ), f"{rota}: price veio {type(corpo['price']).__name__}, esperado float"
+
+
+def test_publish_recusa_peca_de_outro_vendedor(client, db_session):
+    """404 e nao 403, pela mesma regra que `_get_owned` documenta: peca de outro
+    vendedor responde igual a peca inexistente. A `#230` alargou os estados que
+    o `publish` aceita, e essa fronteira nao tinha teste nesta rota."""
+    dono = make_store(db_session, 65, "Dono")
+    make_store(db_session, 66, "Intruso")
+    product = com_foto(
+        db_session, make_product(db_session, dono, "Peca do dono", "despublicado")
+    )
+    db_session.commit()
+
+    response = client.post(
+        f"/api/users/me/products/{product.id}/publish",
+        headers={"X-User-Id": "66"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "PRODUCT_NOT_FOUND"
+    assert db_session.get(Product, product.id).status == "despublicado"
