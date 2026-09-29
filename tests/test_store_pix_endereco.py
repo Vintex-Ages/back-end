@@ -232,3 +232,28 @@ def test_mesmo_cpf_com_e_sem_pontuacao_nao_cria_dois_vendedores(
 
     assert segundo.status_code == 409, segundo.text
     assert segundo.json()["error"]["code"] == "DOCUMENT_ALREADY_REGISTERED"
+
+
+# ------------------------------- defeitos introduzidos no #223 (back-end#227)
+def test_sem_versao_de_contrato_nao_grava_data_de_aceite(client: TestClient) -> None:
+    """A #216 tornou `terms_version` opcional argumentando que gravar versao
+    chumbada registraria um aceite que ninguem deu -- e deixou o carimbo de data
+    saindo do mesmo jeito. Campo juridico com a data de um aceite sem versao e a
+    mesma mentira pelo outro lado."""
+    h = _registrar(client, "semaceite@vintex.com")
+
+    r = client.post("/api/users/me/store", json=_loja(), headers=h)
+
+    assert r.status_code == 201, r.text
+    assert r.json()["terms_version"] is None
+    assert r.json()["terms_accepted_at"] is None
+
+
+def test_com_versao_de_contrato_grava_os_dois(client: TestClient) -> None:
+    h = _registrar(client, "comaceite@vintex.com")
+
+    r = client.post("/api/users/me/store", json=_loja(terms_version="v0"), headers=h)
+
+    assert r.status_code == 201, r.text
+    assert r.json()["terms_version"] == "v0"
+    assert r.json()["terms_accepted_at"] is not None
