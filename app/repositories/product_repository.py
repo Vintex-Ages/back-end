@@ -5,11 +5,12 @@ from typing import TypedDict, cast
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
-from app.core.pagination import PageParams
+from app.core.pagination import Page, PageParams, paginate
 from app.models.product import Product
 from app.models.product_image import ProductImage
 from app.models.seller import Seller
 from app.models.store import Store
+from app.schemas.product_management_schema import ProductManagementResponse
 from app.schemas.product_schema import ProductFilters
 
 # Mesma expressao do indice ix_products_search_trgm (migration 0f9a7f647244).
@@ -131,6 +132,25 @@ class ProductRepository:
             .all()
         )
         return [cast(ProductFeedRow, dict(row)) for row in rows], total
+
+    def list_for_seller(
+        self, user_id: int, params: PageParams, status: str | None = None
+    ) -> Page[ProductManagementResponse]:
+        stmt = (
+            select(Product)
+            .join(Store, Store.id == Product.store_id)
+            .join(Seller, Seller.id == Store.seller_id)
+            .where(Seller.user_id == user_id)
+            .order_by(Product.created_at.desc(), Product.id.desc())
+        )
+        if status is not None:
+            stmt = stmt.where(Product.status == status)
+        return paginate(
+            self.db,
+            stmt,
+            params,
+            item_schema=ProductManagementResponse,
+        )
 
     def get_store_for_user(self, user_id: int) -> Store | None:
         """Loja de quem está criando/editando — um vendedor, uma loja."""

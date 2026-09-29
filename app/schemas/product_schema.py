@@ -166,18 +166,19 @@ class ProductDraftCreate(BaseModel):
 
 
 class ProductDraftUpdate(BaseModel):
-    """Corpo de `PATCH /api/products/{id}`. Todo campo é opcional — só o que
-    for enviado é alterado (ver `exclude_unset` no controller)."""
+    """Corpo de `PATCH /api/users/me/products/{id}` — edita rascunho e peça
+    publicada. Todo campo é opcional — só o que for enviado é alterado (ver
+    `exclude_unset` no controller). Limites espelham as colunas de `products`."""
 
-    name: str | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=150)
     description: str | None = None
-    category: str | None = None
-    style: str | None = None
-    brand: str | None = None
-    color: str | None = None
-    size: str | None = None
-    condition: str | None = None
-    price: Decimal | None = None
+    category: str | None = Field(default=None, max_length=80)
+    style: str | None = Field(default=None, max_length=80)
+    brand: str | None = Field(default=None, max_length=80)
+    color: str | None = Field(default=None, max_length=50)
+    size: str | None = Field(default=None, max_length=30)
+    condition: str | None = Field(default=None, max_length=50)
+    price: Decimal | None = Field(default=None, gt=0, decimal_places=2)
     images: list[str] | None = None
     ai_corrections: list[AiCorrectionInput] = Field(default_factory=list)
 

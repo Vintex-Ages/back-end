@@ -10,6 +10,10 @@ from app.core.current_user import get_current_user_id
 from app.core.errors import ValidationError
 from app.core.pagination import PageParams, page_params
 from app.database import get_db
+from app.schemas.product_management_schema import (
+    ProductManagementPage,
+    ProductManagementResponse,
+)
 from app.schemas.product_schema import (
     FeedResponse,
     ProductAIStatusResponse,
@@ -22,9 +26,7 @@ from app.schemas.product_schema import (
 
 router = APIRouter(prefix="/products", tags=["Products"])
 
-# Recurso do usuário logado (ADR 0001 §4). Só create/publish moraram aqui;
-# o PATCH de edição continua em /products/{id} até a #157 entrar — ela leva
-# esse PATCH pra cá cobrindo rascunho e publicada com um if no status.
+# Recurso do usuário logado (ADR 0001 §4): peças do próprio vendedor.
 me_router = APIRouter(prefix="/users/me/products", tags=["Products"])
 
 
@@ -74,6 +76,16 @@ def list_products(
     return controller.get_feed(params, filters, q=q)
 
 
+@me_router.get("", response_model=ProductManagementPage)
+def list_seller_products(
+    status: Literal["ativo", "vendido", "despublicado"] | None = Query(None),
+    params: PageParams = Depends(page_params),
+    user_id: int = Depends(get_current_user_id),
+    controller: ProductController = Depends(get_controller),
+) -> ProductManagementPage:
+    return controller.list_for_seller(user_id, params, status)
+
+
 @router.get(
     "/{product_id}",
     response_model=ProductDetailResponse,
@@ -87,14 +99,39 @@ def get_product_detail(
     return controller.get_detail(product_id)
 
 
-@router.patch("/{product_id}", response_model=ProductDraftResponse)
-def update_draft(
+@me_router.patch("/{product_id}", response_model=ProductDraftResponse)
+def update_product(
     product_id: int,
     data: ProductDraftUpdate,
     user_id: int = Depends(get_current_user_id),
     controller: ProductController = Depends(get_controller),
 ) -> ProductDraftResponse:
-    return controller.update_draft(user_id, product_id, data)
+    return controller.update(user_id, product_id, data)
+
+
+@me_router.post("/{product_id}/unpublish", response_model=ProductManagementResponse)
+def unpublish_product(
+    product_id: int,
+    user_id: int = Depends(get_current_user_id),
+    controller: ProductController = Depends(get_controller),
+) -> ProductManagementResponse:
+    return ProductManagementResponse.model_validate(
+        controller.set_status(product_id, user_id, "despublicado")
+    )
+
+
+# Rota distinta de `POST /users/me/products/{id}/publish` (#159): aquela
+# publica um rascunho pela primeira vez (exige foto); esta só reativa uma peça
+# despublicada — o controller recusa rascunho aqui.
+@me_router.post("/{product_id}/republish", response_model=ProductManagementResponse)
+def republish_product(
+    product_id: int,
+    user_id: int = Depends(get_current_user_id),
+    controller: ProductController = Depends(get_controller),
+) -> ProductManagementResponse:
+    return ProductManagementResponse.model_validate(
+        controller.set_status(product_id, user_id, "ativo")
+    )
 
 
 @me_router.post(

@@ -1,11 +1,14 @@
+from typing import Literal
+
 from sqlalchemy.orm import Session
 
-from app.core.errors import Conflict, ErrorCode, NotFound, ValidationError
+from app.core.errors import AppError, Conflict, ErrorCode, NotFound, ValidationError
 from app.core.pagination import PageParams
 from app.models.product import Product
 from app.models.product_ai_correction import ProductAiCorrection
 from app.models.product_image import ProductImage
 from app.repositories.product_repository import ProductFeedRow, ProductRepository
+from app.schemas.product_management_schema import ProductManagementPage
 from app.schemas.product_schema import (
     AiCorrectionResponse,
     FeedResponse,
@@ -183,10 +186,23 @@ class ProductController:
         self.repository.commit()
         return self._to_response(product)
 
-    def update_draft(
+    def update(
         self, user_id: int, product_id: int, data: ProductDraftUpdate
     ) -> ProductDraftResponse:
-        product = self._get_owned_draft(user_id, product_id)
+        """Edita rascunho ou peça publicada/despublicada; vendida é imutável."""
+        product = self._get_owned(user_id, product_id)
+        if product.status == "vendido":
+            raise AppError(
+                "Peça vendida não pode ser editada.",
+                code=ErrorCode.PRODUCT_SOLD,
+                status_code=409,
+            )
+        if product.status != "rascunho" and data.images == []:
+            # Publicar exige foto (`publish`); editar não pode desfazer isso.
+            raise ValidationError(
+                "Peça publicada precisa de ao menos uma foto.",
+                fields={"images": "Mantenha ao menos uma foto."},
+            )
 
         updates = data.model_dump(
             exclude_unset=True, exclude={"images", "ai_corrections"}
@@ -226,6 +242,12 @@ class ProductController:
         return self._to_response(product)
 
     def _get_owned_draft(self, user_id: int, product_id: int) -> Product:
+        product = self._get_owned(user_id, product_id)
+        if product.status != "rascunho":
+            raise Conflict("Esta peça não está em rascunho.")
+        return product
+
+    def _get_owned(self, user_id: int, product_id: int) -> Product:
         product = self.repository.get_by_id(product_id)
         if product is None:
             raise NotFound("Peça não encontrada.", code=ErrorCode.PRODUCT_NOT_FOUND)
@@ -234,8 +256,6 @@ class ProductController:
             # peça de outro vendedor responde igual a peça inexistente. Um 403
             # confirma que aquele id existe, e rascunho alheio não é público.
             raise NotFound("Peça não encontrada.", code=ErrorCode.PRODUCT_NOT_FOUND)
-        if product.status != "rascunho":
-            raise Conflict("Esta peça não está em rascunho.")
         return product
 
     def _to_response(self, product: Product) -> ProductDraftResponse:
@@ -286,3 +306,41 @@ class ProductController:
                 else None
             ),
         )
+
+    def list_for_seller(
+        self, user_id: int, params: PageParams, status: str | None
+    ) -> ProductManagementPage:
+        page = self.repository.list_for_seller(user_id, params, status)
+        return ProductManagementPage(
+            items=page.items,
+            page=page.page,
+            page_size=page.page_size,
+            total=page.total,
+        )
+
+    def set_status(
+        self,
+        product_id: int,
+        user_id: int,
+        target_status: Literal["ativo", "despublicado"],
+    ) -> Product:
+        product = self._get_owned(user_id, product_id)
+        if product.status == "vendido":
+            raise AppError(
+                "Peça vendida não pode mudar de situação.",
+                code=ErrorCode.PRODUCT_SOLD,
+                status_code=409,
+            )
+        # Só alterna entre publicada e despublicada. Rascunho vira ativo pelo
+        # `publish` (#144), que exige foto — aceitá-lo aqui pularia essa regra.
+        source_status = "despublicado" if target_status == "ativo" else "ativo"
+        if product.status != source_status:
+            raise AppError(
+                f"Só peça com situação '{source_status}' pode ir para "
+                f"'{target_status}'.",
+                code=ErrorCode.PRODUCT_NOT_EDITABLE,
+                status_code=409,
+            )
+        product.status = target_status
+        self.repository.commit()
+        return product

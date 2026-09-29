@@ -76,7 +76,7 @@ def test_update_draft_applies_only_sent_fields_and_accumulates_ai_corrections(
     ).json()
 
     resp = client.patch(
-        f"/api/products/{created['id']}",
+        f"/api/users/me/products/{created['id']}",
         json={
             "price": "70.00",
             "images": ["https://cdn.test/a.jpg", "https://cdn.test/b.jpg"],
@@ -97,7 +97,7 @@ def test_update_draft_applies_only_sent_fields_and_accumulates_ai_corrections(
     ]
 
     resp2 = client.patch(
-        f"/api/products/{created['id']}",
+        f"/api/users/me/products/{created['id']}",
         json={
             "ai_corrections": [
                 {"field": "color", "suggested": "Azul", "final": "Verde"}
@@ -121,7 +121,7 @@ def test_update_draft_rejects_explicit_null_price(client, db_session):
     ).json()
 
     resp = client.patch(
-        f"/api/products/{created['id']}",
+        f"/api/users/me/products/{created['id']}",
         json={"price": None},
         headers={"X-User-Id": str(user.id)},
     )
@@ -138,7 +138,7 @@ def test_update_draft_rejects_explicit_null_name(client, db_session):
     ).json()
 
     resp = client.patch(
-        f"/api/products/{created['id']}",
+        f"/api/users/me/products/{created['id']}",
         json={"name": None},
         headers={"X-User-Id": str(user.id)},
     )
@@ -156,7 +156,7 @@ def test_update_draft_rejects_other_sellers_product(client, db_session):
     ).json()
 
     resp = client.patch(
-        f"/api/products/{created['id']}",
+        f"/api/users/me/products/{created['id']}",
         json={"name": "Bolsa roubada"},
         headers={"X-User-Id": str(intruder.id)},
     )
@@ -165,7 +165,7 @@ def test_update_draft_rejects_other_sellers_product(client, db_session):
     assert resp.status_code == 404
 
 
-def test_update_draft_rejects_already_published_product(client, db_session):
+def test_update_edits_published_product(client, db_session):
     user, store = make_seller_store(db_session, "Brecho Publicado")
     product = Product(
         store=store,
@@ -178,19 +178,31 @@ def test_update_draft_rejects_already_published_product(client, db_session):
     db_session.commit()
 
     resp = client.patch(
-        f"/api/products/{product.id}",
+        f"/api/users/me/products/{product.id}",
         json={"name": "Camisa nova"},
         headers={"X-User-Id": str(user.id)},
     )
 
-    assert resp.status_code == 409
+    assert resp.status_code == 200
+    assert resp.json()["name"] == "Camisa nova"
+    assert resp.json()["status"] == "ativo"
+
+    # Publicar exige foto; a edição não pode deixar a peça publicada sem ela.
+    resp = client.patch(
+        f"/api/users/me/products/{product.id}",
+        json={"images": []},
+        headers={"X-User-Id": str(user.id)},
+    )
+
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "VALIDATION_ERROR"
 
 
 def test_update_draft_missing_product_returns_404(client, db_session):
     user, _ = make_seller_store(db_session, "Brecho Vazio")
 
     resp = client.patch(
-        "/api/products/999999",
+        "/api/users/me/products/999999",
         json={"name": "x"},
         headers={"X-User-Id": str(user.id)},
     )
