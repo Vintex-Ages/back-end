@@ -229,7 +229,15 @@ class ProductController:
         return self._to_response(product)
 
     def publish(self, user_id: int, product_id: int) -> ProductDraftResponse:
-        product = self._get_owned_draft(user_id, product_id)
+        """Leva a peca para `ativo`, vindo de `rascunho` ou de `despublicado`.
+
+        A `#145` declarou na secao Fronteira que publicar rascunho e republicar
+        peca despublicada sao a mesma transicao. A rota nasceu no `#159`
+        aceitando so `rascunho`, e o `#157` contornou criando `republish` em vez
+        de completar aqui. O front sempre chamou `publish` para as duas, e
+        recebia 409 na segunda -- `#230`.
+        """
+        product = self._get_owned_publicavel(user_id, product_id)
 
         if not product.images:
             raise ValidationError(
@@ -241,10 +249,22 @@ class ProductController:
         self.repository.commit()
         return self._to_response(product)
 
-    def _get_owned_draft(self, user_id: int, product_id: int) -> Product:
+    def _get_owned_publicavel(self, user_id: int, product_id: int) -> Product:
+        """Peca do vendedor que pode ir para `ativo`: rascunho ou despublicada.
+
+        Vendida responde com o codigo proprio e nao com o conflito generico
+        (RN-53) -- quem chama precisa distinguir "ja esta no ar" de "nao mexe
+        mais nesta".
+        """
         product = self._get_owned(user_id, product_id)
-        if product.status != "rascunho":
-            raise Conflict("Esta peça não está em rascunho.")
+        if product.status == "vendido":
+            raise AppError(
+                "Peça vendida não pode mudar de situação.",
+                code=ErrorCode.PRODUCT_SOLD,
+                status_code=409,
+            )
+        if product.status == "ativo":
+            raise Conflict("Esta peça já está publicada.")
         return product
 
     def _get_owned(self, user_id: int, product_id: int) -> Product:
@@ -323,7 +343,7 @@ class ProductController:
         product_id: int,
         user_id: int,
         target_status: Literal["ativo", "despublicado"],
-    ) -> Product:
+    ) -> ProductDraftResponse:
         product = self._get_owned(user_id, product_id)
         if product.status == "vendido":
             raise AppError(
@@ -343,4 +363,4 @@ class ProductController:
             )
         product.status = target_status
         self.repository.commit()
-        return product
+        return self._to_response(product)

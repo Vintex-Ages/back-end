@@ -89,7 +89,8 @@ def test_update_draft_applies_only_sent_fields_and_accumulates_ai_corrections(
 
     assert resp.status_code == 200
     body = resp.json()
-    assert body["price"] == "70.00"
+    # Numero, nao string: a `#212` deu `field_serializer` ao price desta rota.
+    assert body["price"] == 70.0
     assert body["description"] == "Descrição original"
     assert body["images"] == ["https://cdn.test/a.jpg", "https://cdn.test/b.jpg"]
     assert body["ai_corrections"] == [

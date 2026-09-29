@@ -17,6 +17,7 @@ from pydantic import (
     ConfigDict,
     Field,
     ValidationInfo,
+    field_serializer,
     field_validator,
 )
 
@@ -58,6 +59,10 @@ class StoreProductItemResponse(BaseModel):
     price: Decimal
     cover_image_url: str | None
     status: str
+
+    @field_serializer("price")
+    def serializar_preco(self, price: Decimal) -> float:
+        return float(price)
 
 
 class StoreAddressCreate(BaseModel):

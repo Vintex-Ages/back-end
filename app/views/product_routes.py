@@ -12,7 +12,6 @@ from app.core.pagination import PageParams, page_params
 from app.database import get_db
 from app.schemas.product_management_schema import (
     ProductManagementPage,
-    ProductManagementResponse,
 )
 from app.schemas.product_schema import (
     FeedResponse,
@@ -109,29 +108,30 @@ def update_product(
     return controller.update(user_id, product_id, data)
 
 
-@me_router.post("/{product_id}/unpublish", response_model=ProductManagementResponse)
+# Mesmo schema das outras transicoes do recurso (`#230`): o front trata as tres
+# num mapeador so, que le `store`, `images` e `ai_corrections`. O schema reduzido
+# que ficava aqui derrubava a tela do vendedor assim que o mock fosse desligado.
+@me_router.post("/{product_id}/unpublish", response_model=ProductDraftResponse)
 def unpublish_product(
     product_id: int,
     user_id: int = Depends(get_current_user_id),
     controller: ProductController = Depends(get_controller),
-) -> ProductManagementResponse:
-    return ProductManagementResponse.model_validate(
-        controller.set_status(product_id, user_id, "despublicado")
-    )
+) -> ProductDraftResponse:
+    return controller.set_status(product_id, user_id, "despublicado")
 
 
-# Rota distinta de `POST /users/me/products/{id}/publish` (#159): aquela
-# publica um rascunho pela primeira vez (exige foto); esta só reativa uma peça
-# despublicada — o controller recusa rascunho aqui.
-@me_router.post("/{product_id}/republish", response_model=ProductManagementResponse)
+# Atalho do `POST /users/me/products/{id}/publish`, que desde a `#230` tambem
+# aceita peca despublicada -- o contrato que a `#145` declarou. Esta rota nasceu
+# no `#157` como contorno de um `publish` restrito a rascunho, e continua aqui
+# por compatibilidade: recusa rascunho, para nao existir caminho que pule a
+# exigencia de foto. Contrato novo usa `publish` para as duas transicoes.
+@me_router.post("/{product_id}/republish", response_model=ProductDraftResponse)
 def republish_product(
     product_id: int,
     user_id: int = Depends(get_current_user_id),
     controller: ProductController = Depends(get_controller),
-) -> ProductManagementResponse:
-    return ProductManagementResponse.model_validate(
-        controller.set_status(product_id, user_id, "ativo")
-    )
+) -> ProductDraftResponse:
+    return controller.set_status(product_id, user_id, "ativo")
 
 
 @me_router.post(
