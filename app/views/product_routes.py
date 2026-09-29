@@ -117,21 +117,7 @@ def unpublish_product(
     user_id: int = Depends(get_current_user_id),
     controller: ProductController = Depends(get_controller),
 ) -> ProductDraftResponse:
-    return controller.set_status(product_id, user_id, "despublicado")
-
-
-# Atalho do `POST /users/me/products/{id}/publish`, que desde a `#230` tambem
-# aceita peca despublicada -- o contrato que a `#145` declarou. Esta rota nasceu
-# no `#157` como contorno de um `publish` restrito a rascunho, e continua aqui
-# por compatibilidade: recusa rascunho, para nao existir caminho que pule a
-# exigencia de foto. Contrato novo usa `publish` para as duas transicoes.
-@me_router.post("/{product_id}/republish", response_model=ProductDraftResponse)
-def republish_product(
-    product_id: int,
-    user_id: int = Depends(get_current_user_id),
-    controller: ProductController = Depends(get_controller),
-) -> ProductDraftResponse:
-    return controller.set_status(product_id, user_id, "ativo")
+    return controller.unpublish(user_id, product_id)
 
 
 @me_router.post(

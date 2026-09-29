@@ -189,10 +189,12 @@ def test_feed_combines_filters_with_and_and_reports_applied_filters(client, db_s
     body = response.json()
     assert body["total"] == 1
     assert body["items"][0]["id"] == matching.id
+    # `price_min`/`price_max` saem como numero, nao string: eram os dois unicos
+    # `Decimal` que escapavam do serializer, dentro deste dict (`#212`).
     assert body["applied_filters"] == {
         "category": "Jaquetas",
-        "price_min": "100",
-        "price_max": "150",
+        "price_min": 100.0,
+        "price_max": 150.0,
         "size": "M",
         "brand": "Marca A",
         "condition": "Bom",

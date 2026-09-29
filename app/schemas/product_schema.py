@@ -43,9 +43,18 @@ class ProductFilters(BaseModel):
             raise ValueError("price_min deve ser menor ou igual a price_max")
         return self
 
-    def applied(self) -> dict[str, str | Decimal]:
+    def applied(self) -> dict[str, str | float]:
+        """Os filtros que de fato entraram, para a resposta ecoar.
+
+        `Decimal` dentro de dict nao passa por `field_serializer`: sairia como
+        string ao lado de um `price` numerico, na mesma resposta. Era a ultima
+        ponta da `#212` -- `GET /api/products?price_min=100.50` devolvia
+        `"price": 246.7` e `"price_min": "100.50"` no mesmo JSON.
+        """
         return {
-            key: value for key, value in self.model_dump().items() if value is not None
+            key: float(value) if isinstance(value, Decimal) else value
+            for key, value in self.model_dump().items()
+            if value is not None
         }
 
 
@@ -96,7 +105,7 @@ class FeedResponse(BaseModel):
     page: int
     page_size: int
     total: int
-    applied_filters: dict[str, str | Decimal] = Field(default_factory=dict)
+    applied_filters: dict[str, str | float] = Field(default_factory=dict)
     match_type: Literal["exact", "fallback"] = "exact"
     suggestions: SuggestionsResponse | None = None
 
