@@ -1,5 +1,3 @@
-from typing import Literal
-
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError, Conflict, ErrorCode, NotFound, ValidationError
@@ -338,12 +336,17 @@ class ProductController:
             total=page.total,
         )
 
-    def set_status(
-        self,
-        product_id: int,
-        user_id: int,
-        target_status: Literal["ativo", "despublicado"],
-    ) -> ProductDraftResponse:
+    def unpublish(self, user_id: int, product_id: int) -> ProductDraftResponse:
+        """`ativo -> despublicado`: sai da vitrine, historico preservado (RN-52).
+
+        So tira do ar. O caminho de volta e o `publish`, que exige foto.
+
+        Antes isto era um `set_status` que alternava nos dois sentidos, e a rota
+        `republish` usava o sentido `-> ativo` sem checar foto: peca despublicada
+        sem imagem voltava com 200 e entrava no feed publico. O comentario que
+        estava aqui afirmava justamente que esse caminho nao existia. A rota saiu
+        na `#230`, e com um sentido so essa contradicao nao volta.
+        """
         product = self._get_owned(user_id, product_id)
         if product.status == "vendido":
             raise AppError(
@@ -351,16 +354,12 @@ class ProductController:
                 code=ErrorCode.PRODUCT_SOLD,
                 status_code=409,
             )
-        # Só alterna entre publicada e despublicada. Rascunho vira ativo pelo
-        # `publish` (#144), que exige foto — aceitá-lo aqui pularia essa regra.
-        source_status = "despublicado" if target_status == "ativo" else "ativo"
-        if product.status != source_status:
+        if product.status != "ativo":
             raise AppError(
-                f"Só peça com situação '{source_status}' pode ir para "
-                f"'{target_status}'.",
+                "Só peça com situação 'ativo' pode ir para 'despublicado'.",
                 code=ErrorCode.PRODUCT_NOT_EDITABLE,
                 status_code=409,
             )
-        product.status = target_status
+        product.status = "despublicado"
         self.repository.commit()
         return self._to_response(product)

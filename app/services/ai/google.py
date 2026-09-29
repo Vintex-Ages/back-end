@@ -100,8 +100,9 @@ def modelos_de_visao() -> list[str]:
 # independente, não há vetor guardado com que o resultado precise ser
 # comparável.
 #
-# Tornar isto seguro é a `#228`: registrar o modelo que gerou cada vetor,
-# filtrar a busca por ele, e o backfill usar um nome só.
+# Tornar isto seguro é a `#231`: `find_similar` filtrar pelo modelo que gerou
+# cada vetor, e o backfill usar um nome só. A `#228`, que carregava isto, foi
+# agrupada lá — é a mesma consulta e o mesmo arquivo.
 
 
 def _e_indisponibilidade(exc: Exception) -> bool:

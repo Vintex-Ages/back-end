@@ -130,8 +130,12 @@ def test_update_rejects_explicit_null_for_required_field(client, db_session):
 
 
 def test_product_can_be_unpublished(client, db_session):
+    """Ciclo completo: sai da vitrine e volta. A volta e pelo `publish`, que
+    exige foto -- por isso a peca nasce com uma aqui."""
     store = make_store(db_session, 40, "Cycle")
-    product = make_product(db_session, store, "Cycle product", "ativo")
+    product = com_foto(
+        db_session, make_product(db_session, store, "Cycle product", "ativo")
+    )
     db_session.commit()
 
     response = client.post(
@@ -150,7 +154,7 @@ def test_product_can_be_unpublished(client, db_session):
     assert response.status_code == 405
 
     response = client.post(
-        f"/api/users/me/products/{product.id}/republish",
+        f"/api/users/me/products/{product.id}/publish",
         headers={"X-User-Id": "40"},
     )
     assert response.status_code == 200
@@ -170,31 +174,45 @@ def test_sold_product_cannot_change_status(client, db_session):
     assert response.json()["error"]["code"] == "PRODUCT_SOLD"
 
     response = client.post(
-        f"/api/users/me/products/{product.id}/republish",
+        f"/api/users/me/products/{product.id}/publish",
         headers={"X-User-Id": "41"},
     )
     assert response.status_code == 409
     assert response.json()["error"]["code"] == "PRODUCT_SOLD"
 
 
-def test_draft_cannot_be_republished_without_publish_flow(client, db_session):
+def test_rascunho_nao_se_despublica(client, db_session):
+    """Rascunho nao esta na vitrine, entao nao ha o que tirar dela."""
     store = make_store(db_session, 42, "DraftGuard")
     product = make_product(db_session, store, "Draft product", "rascunho")
     db_session.commit()
 
     response = client.post(
-        f"/api/users/me/products/{product.id}/republish",
-        headers={"X-User-Id": "42"},
-    )
-    assert response.status_code == 409
-    assert response.json()["error"]["code"] == "PRODUCT_NOT_EDITABLE"
-
-    response = client.post(
         f"/api/users/me/products/{product.id}/unpublish",
         headers={"X-User-Id": "42"},
     )
+
     assert response.status_code == 409
     assert response.json()["error"]["code"] == "PRODUCT_NOT_EDITABLE"
+
+
+def test_rota_republish_nao_existe_mais(client, db_session):
+    """A `#145` sempre declarou que `republish` nao existe: publicar rascunho e
+    republicar despublicada sao a mesma transicao. A rota foi criada no `#157`
+    como contorno e virou o unico caminho que publicava peca sem foto -- ela
+    devolvia 200 com `images: []` e a peca entrava no feed. Saiu na `#230`.
+
+    Este teste existe para que reintroduzi-la exija apagar um teste."""
+    store = make_store(db_session, 44, "SemRota")
+    product = make_product(db_session, store, "Peca", "despublicado")
+    db_session.commit()
+
+    response = client.post(
+        f"/api/users/me/products/{product.id}/republish",
+        headers={"X-User-Id": "44"},
+    )
+
+    assert response.status_code == 404
 
 
 def test_unpublished_product_cannot_be_unpublished_again(client, db_session):
@@ -273,9 +291,10 @@ def test_publish_recusa_peca_vendida(client, db_session):
     assert response.json()["error"]["code"] == "PRODUCT_SOLD"
 
 
-def test_republicar_por_publish_ainda_exige_foto(client, db_session):
-    """`publish` passou a aceitar despublicado, e nao pode ser um caminho que
-    pule a exigencia de foto -- era esse o argumento do `republish` separado."""
+def test_republicar_exige_foto(client, db_session):
+    """Com o `republish` fora, `publish` e o unico caminho para `ativo`, e ele
+    exige foto nos dois sentidos. Era isto que a rota `republish` furava: peca
+    despublicada sem imagem voltava com 200 e entrava no feed publico."""
     store = make_store(db_session, 63, "Sem foto")
     product = make_product(db_session, store, "Peca sem foto", "despublicado")
     db_session.commit()
@@ -289,9 +308,9 @@ def test_republicar_por_publish_ainda_exige_foto(client, db_session):
     assert response.json()["error"]["fields"]["images"]
 
 
-def test_as_tres_transicoes_devolvem_o_mesmo_contrato(client, db_session):
+def test_as_transicoes_devolvem_o_mesmo_contrato(client, db_session):
     """Nenhum teste comparava os schemas das transicoes entre si, e foi por isso
-    que `unpublish` e `republish` passaram por dois CIs verdes devolvendo
+    que `unpublish` passou por dois CIs verdes devolvendo
     `ProductManagementResponse` enquanto o front esperava o schema completo."""
     store = make_store(db_session, 64, "Contrato")
     product = com_foto(
@@ -308,8 +327,8 @@ def test_as_tres_transicoes_devolvem_o_mesmo_contrato(client, db_session):
             f"/api/users/me/products/{product.id}/unpublish",
             headers={"X-User-Id": "64"},
         ),
-        "republish": client.post(
-            f"/api/users/me/products/{product.id}/republish",
+        "republicar pelo publish": client.post(
+            f"/api/users/me/products/{product.id}/publish",
             headers={"X-User-Id": "64"},
         ),
     }
