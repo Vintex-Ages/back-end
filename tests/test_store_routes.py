@@ -97,7 +97,8 @@ def test_list_store_products_so_traz_ativas_daquela_loja(client, db_session):
         {
             "id": ativo.id,
             "name": "Jaqueta vintage",
-            "price": "99.90",
+            # Numero, nao string, desde a `#212`.
+            "price": 99.9,
             "cover_image_url": "https://cdn.test/cover.jpg",
             "status": "ativo",
         }

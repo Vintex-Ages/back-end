@@ -216,6 +216,10 @@ class ProductDraftResponse(BaseModel):
     images: list[str]
     ai_corrections: list[AiCorrectionResponse]
 
+    @field_serializer("price")
+    def serializar_preco(self, price: Decimal) -> float:
+        return float(price)
+
 
 class ProductAIStatusResponse(BaseModel):
     """Status da análise de IA da peça (VE-05, back-end#62).

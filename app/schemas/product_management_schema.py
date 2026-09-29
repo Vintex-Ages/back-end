@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_serializer
 
 
 class ProductManagementResponse(BaseModel):
@@ -18,6 +18,13 @@ class ProductManagementResponse(BaseModel):
     price: Decimal
     quantity: int
     status: str
+
+    # `Decimal` sai como string em JSON se ninguem interferir. O front absorvia
+    # com `Number(...)`, mas a mesma peca chegava como numero pelo feed e como
+    # string por aqui -- `#212`.
+    @field_serializer("price")
+    def serializar_preco(self, price: Decimal) -> float:
+        return float(price)
 
 
 class ProductManagementPage(BaseModel):

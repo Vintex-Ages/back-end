@@ -194,9 +194,9 @@ class ProductRepository:
         return self.db.execute(stmt).scalar_one_or_none()
 
     def get_by_id(self, product_id: int) -> Product | None:
-        """Como `get_detail_by_id`, mas com `ai_corrections` — usado pelo
-        fluxo de rascunho (`_get_owned_draft`), que devolve o histórico de
-        correções da IA junto com a peça."""
+        """Como `get_detail_by_id`, mas com `ai_corrections` — usado pelas
+        rotas de peça do vendedor, que devolvem o histórico de correções da IA
+        junto com a peça."""
         stmt = (
             select(Product)
             .options(
