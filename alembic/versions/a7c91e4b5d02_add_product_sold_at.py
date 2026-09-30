@@ -18,6 +18,7 @@ períodos da tela mostram o mesmo valor e o seletor parece quebrado.
 from typing import Sequence, Union
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "a7c91e4b5d02"
@@ -29,8 +30,7 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     op.add_column("products", sa.Column("sold_at", sa.DateTime(), nullable=True))
     op.create_index("ix_products_sold_at", "products", ["sold_at"])
-    op.execute(
-        """
+    op.execute("""
         WITH ordenadas AS (
             SELECT id, (row_number() OVER (ORDER BY id) - 1) * 6 AS dias
               FROM products
@@ -42,8 +42,7 @@ def upgrade() -> None:
                        - make_interval(days => ordenadas.dias::int)
           FROM ordenadas
          WHERE p.id = ordenadas.id
-        """
-    )
+        """)
 
 
 def downgrade() -> None:
