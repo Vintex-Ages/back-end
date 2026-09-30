@@ -145,8 +145,34 @@ def test_resumo_aplica_a_comissao_de_9_porcento(client, db_session):
     assert corpo["gross"] == 150.0
     assert corpo["commission"] == 13.5
     assert corpo["net"] == 136.5
-    # Comissão mais líquido fecha o bruto, sem centavo perdido.
-    assert corpo["commission"] + corpo["net"] == corpo["gross"]
+
+
+def test_comissao_arredonda_para_cima_no_meio_centavo(client, db_session):
+    """Bruto que cai no meio centavo, e cujos três valores não são exatos em
+    base 2.
+
+    `33.33 * 0.09 = 2.9997`, que arredonda para `3.00` em `ROUND_HALF_UP`, e o
+    líquido sai por subtração: `30.33`. A versão anterior deste teste conferia o
+    fechamento só com `13.5 + 136.5 == 150.0`, valores exatos em binário — a
+    asserção não podia falhar e por isso não provava nada.
+    """
+    user, store = _vendedor(db_session, email="f2@v.com")
+    _peca(
+        db_session,
+        store,
+        status="vendido",
+        price=Decimal("33.33"),
+        sold_at=utcnow_naive(),
+    )
+
+    corpo = client.get(RESUMO_URL, params={"period": "all"}, headers=_h(user)).json()
+
+    assert corpo["gross"] == 33.33
+    assert corpo["commission"] == 3.0
+    assert corpo["net"] == 30.33
+    # Fecha no centavo. A conta vive em `Decimal` (`app/core/comissao.py`); o
+    # JSON sai em float por contrato com o front, que faz `Number(...)`.
+    assert round(corpo["commission"] + corpo["net"], 2) == corpo["gross"]
 
 
 def test_resumo_de_30_dias_corta_a_venda_antiga(client, db_session):

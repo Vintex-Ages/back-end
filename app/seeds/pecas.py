@@ -75,10 +75,17 @@ def _status_for(index: int) -> str:
 def _sold_at_for(index: int) -> datetime | None:
     """Data da venda das oito vendidas, espalhada pelos últimos 42 dias.
 
-    Uma a cada seis dias. Sem isso o resumo financeiro (back-end#146) mostra
-    R$ 0,00 nos três períodos, porque não existe checkout nesta sprint e o
-    seed é o único lugar que cria peça vendida. O espaçamento deixa número
-    diferente de zero no mês corrente, nos 30 dias e no total.
+    Uma a cada seis dias. Sem data nenhuma, o resumo financeiro (back-end#146)
+    mostra R$ 0,00 nos três períodos, porque não existe checkout nesta sprint e
+    o seed é o único lugar que cria peça vendida.
+
+    O espaçamento é sobre o índice global, e as peças são distribuídas entre as
+    lojas (`stores[index % len(stores)]`): as vendidas de uma mesma loja ficam
+    `6 * len(stores)` dias apart, ou seja 42 dias com sete lojas. Consequência,
+    medida: um vendedor tem uma venda só, e `month`, `30d` e `all` devolvem o
+    mesmo número para ele. Para o seletor de período mostrar valores diferentes
+    na demonstração, o seed precisaria dar mais de uma venda à mesma loja —
+    decisão de dado de demonstração, não desta função.
     """
     if _status_for(index) != "vendido":
         return None

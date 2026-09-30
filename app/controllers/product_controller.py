@@ -358,6 +358,12 @@ class ProductController:
 
         `month` é o mês corrente, do dia 1; `30d` são os últimos 30 dias;
         `all` não tem corte. Sem venda no período devolve zero, não erro.
+
+        O corte é em UTC, como todo datetime deste projeto (`utcnow_naive`).
+        Para um produto do RS isso desloca a fronteira do mês em três horas: uma
+        venda de 30/09 às 21:30 BRT é 01/10 em UTC e cai no resumo de outubro.
+        Enquanto não houver fuso na base, a alternativa seria converter aqui só
+        para esta conta, e uma conversão isolada mente sobre o resto.
         """
         agora = utcnow_naive()
         if period == "month":

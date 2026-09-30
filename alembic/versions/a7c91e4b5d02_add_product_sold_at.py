@@ -7,12 +7,22 @@ Create Date: 2026-09-30
 Coluna da data da venda (back-end#146). Sem ela não existe "no período": a
 data de última alteração muda a cada edição e não serve.
 
-Nullable de propósito. Peça vendida antes desta migration não tem data, e
-inventar uma seria fabricar histórico. O que a migration faz é preencher as
-peças **sintéticas** do seed, que é o único lugar onde peça vira vendida nesta
-sprint (não há checkout), uma a cada seis dias contados de hoje para trás — o
-mesmo espaçamento de `app/seeds/pecas.py::_sold_at_for`. Sem espalhar, os três
-períodos da tela mostram o mesmo valor e o seletor parece quebrado.
+Nullable de propósito: peça vendida antes desta migration não tem data.
+
+O backfill preenche **toda** peça com `status='vendido'` e `sold_at IS NULL`,
+uma a cada seis dias contados de hoje para trás. Hoje isso significa só as oito
+peças do seed, porque nada nesta sprint transforma peça em vendida — não há
+checkout (VS-022, #44) e o seed é o único lugar que grava `'vendido'`. **Mas o
+`WHERE` não distingue peça sintética de venda real**, e quando o checkout entrar
+esta migration já terá rodado; se alguma venda real aparecer antes, ela recebe
+data fabricada. Está escrito aqui porque a versão anterior deste texto prometia
+o contrário.
+
+O espaçamento de seis dias é sobre a ordem global das vendidas, e o resumo
+financeiro é por loja: com o seed distribuindo peça entre sete lojas, um
+vendedor tem uma venda só, e os três períodos da tela mostram o mesmo número.
+Isso é a conta certa para quem vendeu uma vez, não um defeito — mas não deixa o
+seletor de período informar nada na demonstração.
 """
 
 from typing import Sequence, Union

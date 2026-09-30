@@ -46,6 +46,7 @@ class Product(BaseModel):
         Index("ix_products_color", "color"),
         Index("ix_products_price", "price"),
         Index("ix_products_ai_status", "ai_status"),
+        Index("ix_products_sold_at", "sold_at"),
     )
 
     store_id: Mapped[int] = mapped_column(ForeignKey("stores.id"), nullable=False)
