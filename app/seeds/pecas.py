@@ -12,12 +12,14 @@ from __future__ import annotations
 
 import logging
 import random
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
 from app.constants.catalog import COLORS as CATALOGO_CORES
 from app.constants.catalog import CONDITIONS as CATALOGO_CONSERVACAO
+from app.core.clock import utcnow_naive
 from app.database import SessionLocal
 from app.models import Product, ProductImage, Store
 
@@ -70,6 +72,19 @@ def _status_for(index: int) -> str:
     return "ativo"
 
 
+def _sold_at_for(index: int) -> datetime | None:
+    """Data da venda das oito vendidas, espalhada pelos últimos 42 dias.
+
+    Uma a cada seis dias. Sem isso o resumo financeiro (back-end#146) mostra
+    R$ 0,00 nos três períodos, porque não existe checkout nesta sprint e o
+    seed é o único lugar que cria peça vendida. O espaçamento deixa número
+    diferente de zero no mês corrente, nos 30 dias e no total.
+    """
+    if _status_for(index) != "vendido":
+        return None
+    return utcnow_naive() - timedelta(days=index * 6)
+
+
 def seed_pecas(session: Session, *, total: int = TOTAL) -> list[Product]:
     """Cria `total` peças distribuídas entre as lojas. Não faz commit."""
     if session.query(Product).count() >= total:
@@ -107,6 +122,7 @@ def seed_pecas(session: Session, *, total: int = TOTAL) -> list[Product]:
             price=price,
             quantity=1,
             status=_status_for(index),
+            sold_at=_sold_at_for(index),
         )
         for position in range(rng.randint(1, 3)):
             product.images.append(
