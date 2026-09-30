@@ -32,13 +32,13 @@ def make_seller_store(
     return user, store
 
 
-def test_create_draft_uses_store_from_current_user(client, db_session):
+def test_create_draft_uses_store_from_current_user(client, db_session, auth_headers):
     user, store = make_seller_store(db_session, "Brecho Aurora", city="Porto Alegre")
 
     resp = client.post(
         "/api/users/me/products",
         json={"name": "Jaqueta jeans", "price": "149.90"},
-        headers={"X-User-Id": str(user.id)},
+        headers=auth_headers(user.id),
     )
 
     assert resp.status_code == 201
@@ -50,11 +50,19 @@ def test_create_draft_uses_store_from_current_user(client, db_session):
     assert body["ai_corrections"] == []
 
 
-def test_create_draft_without_store_is_rejected(client, db_session):
+def test_create_draft_without_store_is_rejected(
+    client, db_session, auth_headers, usuario_sem_loja
+):
+    """Usuário logado sem loja recebe STORE_NOT_FOUND, e não 401.
+
+    Antes da `#151` este teste mandava o id 999, que não existia: qualquer id
+    servia. Agora o usuário é de verdade, e o que se testa é a regra da loja e
+    não a autenticação.
+    """
     resp = client.post(
         "/api/users/me/products",
         json={"name": "Jaqueta", "price": "10.00"},
-        headers={"X-User-Id": "999"},
+        headers=auth_headers(usuario_sem_loja.id),
     )
 
     assert resp.status_code == 404
@@ -62,7 +70,9 @@ def test_create_draft_without_store_is_rejected(client, db_session):
 
 
 def test_update_draft_applies_only_sent_fields_and_accumulates_ai_corrections(
-    client, db_session
+    client,
+    db_session,
+    auth_headers,
 ):
     user, _ = make_seller_store(db_session, "Brecho Central")
     created = client.post(
@@ -72,7 +82,7 @@ def test_update_draft_applies_only_sent_fields_and_accumulates_ai_corrections(
             "description": "Descrição original",
             "price": "80.00",
         },
-        headers={"X-User-Id": str(user.id)},
+        headers=auth_headers(user.id),
     ).json()
 
     resp = client.patch(
@@ -84,7 +94,7 @@ def test_update_draft_applies_only_sent_fields_and_accumulates_ai_corrections(
                 {"field": "category", "suggested": "Vestidos", "final": "Vestido longo"}
             ],
         },
-        headers={"X-User-Id": str(user.id)},
+        headers=auth_headers(user.id),
     )
 
     assert resp.status_code == 200
@@ -104,7 +114,7 @@ def test_update_draft_applies_only_sent_fields_and_accumulates_ai_corrections(
                 {"field": "color", "suggested": "Azul", "final": "Verde"}
             ]
         },
-        headers={"X-User-Id": str(user.id)},
+        headers=auth_headers(user.id),
     )
 
     assert resp2.status_code == 200
@@ -113,60 +123,60 @@ def test_update_draft_applies_only_sent_fields_and_accumulates_ai_corrections(
     assert {"field": "color", "suggested": "Azul", "final": "Verde"} in corrections
 
 
-def test_update_draft_rejects_explicit_null_price(client, db_session):
+def test_update_draft_rejects_explicit_null_price(client, db_session, auth_headers):
     user, _ = make_seller_store(db_session, "Brecho Nulo")
     created = client.post(
         "/api/users/me/products",
         json={"name": "Saia", "price": "40.00"},
-        headers={"X-User-Id": str(user.id)},
+        headers=auth_headers(user.id),
     ).json()
 
     resp = client.patch(
         f"/api/users/me/products/{created['id']}",
         json={"price": None},
-        headers={"X-User-Id": str(user.id)},
+        headers=auth_headers(user.id),
     )
 
     assert resp.status_code == 422
 
 
-def test_update_draft_rejects_explicit_null_name(client, db_session):
+def test_update_draft_rejects_explicit_null_name(client, db_session, auth_headers):
     user, _ = make_seller_store(db_session, "Brecho Nulo Nome")
     created = client.post(
         "/api/users/me/products",
         json={"name": "Saia", "price": "40.00"},
-        headers={"X-User-Id": str(user.id)},
+        headers=auth_headers(user.id),
     ).json()
 
     resp = client.patch(
         f"/api/users/me/products/{created['id']}",
         json={"name": None},
-        headers={"X-User-Id": str(user.id)},
+        headers=auth_headers(user.id),
     )
 
     assert resp.status_code == 422
 
 
-def test_update_draft_rejects_other_sellers_product(client, db_session):
+def test_update_draft_rejects_other_sellers_product(client, db_session, auth_headers):
     owner, _ = make_seller_store(db_session, "Brecho Dono")
     intruder, _ = make_seller_store(db_session, "Brecho Intruso")
     created = client.post(
         "/api/users/me/products",
         json={"name": "Bolsa", "price": "50.00"},
-        headers={"X-User-Id": str(owner.id)},
+        headers=auth_headers(owner.id),
     ).json()
 
     resp = client.patch(
         f"/api/users/me/products/{created['id']}",
         json={"name": "Bolsa roubada"},
-        headers={"X-User-Id": str(intruder.id)},
+        headers=auth_headers(intruder.id),
     )
 
     # 404 e não 403: a resposta não pode confirmar que a peça existe.
     assert resp.status_code == 404
 
 
-def test_update_edits_published_product(client, db_session):
+def test_update_edits_published_product(client, db_session, auth_headers):
     user, store = make_seller_store(db_session, "Brecho Publicado")
     product = Product(
         store=store,
@@ -181,7 +191,7 @@ def test_update_edits_published_product(client, db_session):
     resp = client.patch(
         f"/api/users/me/products/{product.id}",
         json={"name": "Camisa nova"},
-        headers={"X-User-Id": str(user.id)},
+        headers=auth_headers(user.id),
     )
 
     assert resp.status_code == 200
@@ -192,37 +202,37 @@ def test_update_edits_published_product(client, db_session):
     resp = client.patch(
         f"/api/users/me/products/{product.id}",
         json={"images": []},
-        headers={"X-User-Id": str(user.id)},
+        headers=auth_headers(user.id),
     )
 
     assert resp.status_code == 422
     assert resp.json()["error"]["code"] == "VALIDATION_ERROR"
 
 
-def test_update_draft_missing_product_returns_404(client, db_session):
+def test_update_draft_missing_product_returns_404(client, db_session, auth_headers):
     user, _ = make_seller_store(db_session, "Brecho Vazio")
 
     resp = client.patch(
         "/api/users/me/products/999999",
         json={"name": "x"},
-        headers={"X-User-Id": str(user.id)},
+        headers=auth_headers(user.id),
     )
 
     assert resp.status_code == 404
     assert resp.json()["error"]["code"] == "PRODUCT_NOT_FOUND"
 
 
-def test_publish_requires_at_least_one_photo(client, db_session):
+def test_publish_requires_at_least_one_photo(client, db_session, auth_headers):
     user, _ = make_seller_store(db_session, "Brecho Sem Foto")
     created = client.post(
         "/api/users/me/products",
         json={"name": "Sapato", "price": "120.00"},
-        headers={"X-User-Id": str(user.id)},
+        headers=auth_headers(user.id),
     ).json()
 
     resp = client.post(
         f"/api/users/me/products/{created['id']}/publish",
-        headers={"X-User-Id": str(user.id)},
+        headers=auth_headers(user.id),
     )
 
     assert resp.status_code == 422
@@ -231,7 +241,9 @@ def test_publish_requires_at_least_one_photo(client, db_session):
     assert "images" in body["error"]["fields"]
 
 
-def test_publish_moves_draft_to_catalog_and_appears_in_feed(client, db_session):
+def test_publish_moves_draft_to_catalog_and_appears_in_feed(
+    client, db_session, auth_headers
+):
     user, _ = make_seller_store(db_session, "Brecho Publica")
     created = client.post(
         "/api/users/me/products",
@@ -240,12 +252,12 @@ def test_publish_moves_draft_to_catalog_and_appears_in_feed(client, db_session):
             "price": "90.00",
             "images": ["https://cdn.test/calca.jpg"],
         },
-        headers={"X-User-Id": str(user.id)},
+        headers=auth_headers(user.id),
     ).json()
 
     resp = client.post(
         f"/api/users/me/products/{created['id']}/publish",
-        headers={"X-User-Id": str(user.id)},
+        headers=auth_headers(user.id),
     )
 
     assert resp.status_code == 200
