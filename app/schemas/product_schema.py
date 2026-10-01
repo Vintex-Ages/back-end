@@ -230,6 +230,25 @@ class ProductDraftResponse(BaseModel):
         return float(price)
 
 
+class SalesSummaryResponse(BaseModel):
+    """Resumo financeiro do vendedor no período (back-end#146).
+
+    `gross`, `commission` e `net` saem como número em reais, não string:
+    o front faz `Number(...)` mas a tela mostra o valor direto, e string
+    com casa decimal já quebrou o painel antes (back-end#214).
+    """
+
+    period: Literal["month", "30d", "all"]
+    sold_count: int
+    gross: Decimal
+    commission: Decimal
+    net: Decimal
+
+    @field_serializer("gross", "commission", "net")
+    def serializar_valor(self, valor: Decimal) -> float:
+        return float(valor)
+
+
 class ProductAIStatusResponse(BaseModel):
     """Status da análise de IA da peça (VE-05, back-end#62).
 

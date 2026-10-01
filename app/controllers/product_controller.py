@@ -1,5 +1,10 @@
+from datetime import timedelta
+from typing import Literal
+
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow_naive
+from app.core.comissao import dividir
 from app.core.errors import AppError, Conflict, ErrorCode, NotFound, ValidationError
 from app.core.pagination import PageParams
 from app.models.product import Product
@@ -21,6 +26,7 @@ from app.schemas.product_schema import (
     ProductFilters,
     ProductMediaResponse,
     ProductStoreResponse,
+    SalesSummaryResponse,
     SuggestionsResponse,
 )
 from app.services.ai.base import ImageAnalysisResult
@@ -334,6 +340,46 @@ class ProductController:
             page=page.page,
             page_size=page.page_size,
             total=page.total,
+        )
+
+    def get_owned_detail(self, user_id: int, product_id: int) -> ProductDraftResponse:
+        """Peça do vendedor em qualquer situação (back-end#234).
+
+        O detalhe público (`get_detail`) não serve para a tela de edição: ele
+        responde 404 para peça despublicada e não devolve rascunho. Peça de
+        outro vendedor responde 404 pela regra do `_get_owned`.
+        """
+        return self._to_response(self._get_owned(user_id, product_id))
+
+    def sales_summary(
+        self, user_id: int, period: Literal["month", "30d", "all"]
+    ) -> SalesSummaryResponse:
+        """Bruto, comissão de 9% e líquido do vendedor no período (#146).
+
+        `month` é o mês corrente, do dia 1; `30d` são os últimos 30 dias;
+        `all` não tem corte. Sem venda no período devolve zero, não erro.
+
+        O corte é em UTC, como todo datetime deste projeto (`utcnow_naive`).
+        Para um produto do RS isso desloca a fronteira do mês em três horas: uma
+        venda de 30/09 às 21:30 BRT é 01/10 em UTC e cai no resumo de outubro.
+        Enquanto não houver fuso na base, a alternativa seria converter aqui só
+        para esta conta, e uma conversão isolada mente sobre o resto.
+        """
+        agora = utcnow_naive()
+        if period == "month":
+            desde = agora.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        elif period == "30d":
+            desde = agora - timedelta(days=30)
+        else:
+            desde = None
+        quantidade, bruto = self.repository.sales_summary(user_id, desde)
+        comissao, liquido = dividir(bruto)
+        return SalesSummaryResponse(
+            period=period,
+            sold_count=quantidade,
+            gross=bruto,
+            commission=comissao,
+            net=liquido,
         )
 
     def unpublish(self, user_id: int, product_id: int) -> ProductDraftResponse:

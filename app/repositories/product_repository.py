@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+from datetime import datetime
 from decimal import Decimal
 from typing import TypedDict, cast
 
@@ -151,6 +152,32 @@ class ProductRepository:
             params,
             item_schema=ProductManagementResponse,
         )
+
+    def sales_summary(
+        self, user_id: int, desde: datetime | None
+    ) -> tuple[int, Decimal]:
+        """`(quantidade, bruto)` das peças vendidas da loja de quem pede.
+
+        `desde=None` é "tudo". Vendedor sem venda no período recebe
+        `(0, Decimal("0"))` e não erro (back-end#146).
+
+        Só entram peças com `sold_at` preenchido quando há corte de período:
+        peça vendida sem data não pode ser contada num intervalo sem que a
+        conta minta. No "tudo" ela entra, porque ali não há intervalo.
+        """
+        stmt = (
+            select(
+                func.count(Product.id),
+                func.coalesce(func.sum(Product.price), 0),
+            )
+            .join(Store, Store.id == Product.store_id)
+            .join(Seller, Seller.id == Store.seller_id)
+            .where(Seller.user_id == user_id, Product.status == "vendido")
+        )
+        if desde is not None:
+            stmt = stmt.where(Product.sold_at.is_not(None), Product.sold_at >= desde)
+        quantidade, bruto = self.db.execute(stmt).one()
+        return int(quantidade), Decimal(bruto)
 
     def get_store_for_user(self, user_id: int) -> Store | None:
         """Loja de quem está criando/editando — um vendedor, uma loja."""
