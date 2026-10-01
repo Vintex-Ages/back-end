@@ -203,16 +203,16 @@ def test_documento_e_gravado_so_com_digitos(client: TestClient) -> None:
 
 def test_mesmo_cpf_com_e_sem_pontuacao_nao_cria_dois_vendedores(
     client: TestClient,
+    auth_headers,
 ) -> None:
     """O indice unico de `Seller.document_value` e o pre-check do controller
     comparam string literal. Gravando cru, `52998224725` e `529.982.247-25`
     passavam os dois.
 
-    O `X-User-Id` explicito aqui nao e preferencia: as rotas de loja resolvem
-    identidade por esse cabeçalho (`app/core/current_user.py`, placeholder da
-    `#151`), e sem ele os dois cadastros seriam o mesmo usuario 1 -- batendo em
-    "ja possui uma loja" antes de chegar na unicidade do documento. Quando a
-    `#151` ligar o `require_auth`, este teste passa a usar dois tokens.
+    As duas sessoes explicitas aqui nao sao preferencia: sem elas os dois
+    cadastros seriam do mesmo usuario, batendo em "ja possui uma loja" antes de
+    chegar na unicidade do documento. Antes da `#151` a separacao vinha de um
+    cabeçalho `X-User-Id`; agora vem de dois tokens de verdade.
     """
     _registrar(client, "cru@vintex.com")
     _registrar(client, "pontuado@vintex.com")
@@ -220,14 +220,14 @@ def test_mesmo_cpf_com_e_sem_pontuacao_nao_cria_dois_vendedores(
     primeiro = client.post(
         "/api/users/me/store",
         json=_loja(document_value="52998224725"),
-        headers={"X-User-Id": "1"},
+        headers=auth_headers(1),
     )
     assert primeiro.status_code == 201, primeiro.text
 
     segundo = client.post(
         "/api/users/me/store",
         json=_loja(document_value="529.982.247-25"),
-        headers={"X-User-Id": "2"},
+        headers=auth_headers(2),
     )
 
     assert segundo.status_code == 409, segundo.text
