@@ -9,6 +9,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 from app.core.clock import utcnow_naive
+from app.core.security import create_access_token
 from app.models.product import Product
 from app.models.seller import Seller
 from app.models.store import Store
@@ -52,7 +53,13 @@ def _peca(db, store: Store, **kwargs) -> Product:
 
 
 def _h(user: User) -> dict[str, str]:
-    return {"X-User-Id": str(user.id)}
+    """Cabecalho de sessao real.
+
+    Este arquivo nasceu no #235, depois de a #151 ja estar aberta, e usava o
+    `X-User-Id` do placeholder. Com a sessao real, as rotas respondem 401 sem
+    token. O corpo dos testes nao muda: todos ja passam por este auxiliar.
+    """
+    return {"Authorization": f"Bearer {create_access_token(user.id, user.is_admin)}"}
 
 
 # --------------------------------------------------------------------- #234
