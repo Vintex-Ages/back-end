@@ -1,6 +1,6 @@
 # Módulos Terraform
 
-Módulos da VE-14 e VE-16:
+Módulos da VE-14, VE-16 e VE-17:
 
 - `network`: VPC com DNS habilitado, duas subnets em zonas diferentes, Internet
   Gateway e rota de saída. As subnets não atribuem IP público automaticamente.
@@ -14,6 +14,9 @@ Módulos da VE-14 e VE-16:
   públicas e criptografia AES256. Expõe o nome do bucket e os prefixos lógicos
   de fotos, vídeos curtos e comprovantes Pix. Os prefixos são proposta para
   alinhamento com a [VE-04 (#59)](https://github.com/Vintex-Ages/back-end/issues/59).
+- `ai_messaging` (VE-17): fila SQS standard para análise de imagens e DLQ,
+  com redrive após três entregas não confirmadas. Expõe nomes, URLs, ARNs e o
+  limite de recebimentos para a configuração local.
 
 ECS Fargate usa `awsvpc`: cada task ganha sua própria interface de rede (ENI)
 na subnet escolhida. Não criamos `aws_network_interface` manualmente. A VE-19
@@ -31,10 +34,11 @@ mockado. O ambiente local envia EC2 ao MiniStack e IAM ao LocalStack; ele não
 executa `apply`. Um ambiente AWS real, backend remoto e orçamento dependem da
 VE-27.
 
+PostgreSQL e pgvector (VE-15, #166/#185) são provisionados pelo Compose e pelas
+migrations Alembic; não são módulos Terraform.
+
 Módulos ainda em hold:
 
-- Banco e busca vetorial (pgvector) — VE-15
-- Mensageria assíncrona (SQS) — VE-17
 - Worker e contrato de IA — VE-18
 - Computação e descoberta (ECS/Fargate, Cloud Map, API Gateway, ECR, VPC Link) — VE-19
 

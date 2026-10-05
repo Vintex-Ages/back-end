@@ -1,9 +1,9 @@
 .PHONY: help infra-qa infra-up infra-down infra-local-test infra-complete \
         infra-api-image lint format-check \
         terraform-init terraform-fmt terraform-validate terraform-test \
-        test-unit test-infra-postgres test-localstack test-media-storage test-ministack test-interoperability
+        test-unit test-infra-postgres test-localstack test-sqs test-media-storage test-ministack test-interoperability
 
-# Infraestrutura de teste local (VE-12/VE-13/VE-16/VE-20/VE-21/VE-22).
+# Infraestrutura de teste local (VE-12/VE-13/VE-16/VE-17/VE-20/VE-21/VE-22).
 # Ver Vintex_Handoff_Infra_Local_Terraform_LocalStack_MiniStack.md para o
 # contrato completo destes alvos.
 
@@ -33,7 +33,7 @@ infra-down:
 	$(COMPOSE) down -v --remove-orphans
 
 ## Executa todos os testes locais sem derrubar a infraestrutura ao final.
-infra-local-test: test-unit terraform-test test-infra-postgres test-localstack test-media-storage test-ministack test-interoperability
+infra-local-test: test-unit terraform-test test-infra-postgres test-localstack test-sqs test-media-storage test-ministack test-interoperability
 	@echo "[infra-local-test] ok"
 
 # QA falhando aborta antes de subir containers. O script preserva a primeira
@@ -87,6 +87,12 @@ test-localstack:
 	$(COMPOSE) exec -T -e LOCALSTACK_ENDPOINT_URL=http://localstack:4566 api python -m scripts.infra.localstack_resources seed
 	$(COMPOSE) exec -T -e LOCALSTACK_ENDPOINT_URL=http://localstack:4566 -e VINTEX_INFRA_LOCALSTACK_TEST=1 api pytest tests/test_infra_localstack.py -v
 	$(COMPOSE) exec -T -e LOCALSTACK_ENDPOINT_URL=http://localstack:4566 api python -m scripts.infra.localstack_resources verify
+
+## Verifica contrato, retries e DLQ de análise de imagens no LocalStack.
+test-sqs:
+	$(COMPOSE) exec -T -e LOCALSTACK_ENDPOINT_URL=http://localstack:4566 api python -m scripts.infra.sqs_resources seed
+	$(COMPOSE) exec -T -e LOCALSTACK_ENDPOINT_URL=http://localstack:4566 -e VINTEX_INFRA_SQS_TEST=1 api pytest tests/test_infra_sqs.py -v
+	$(COMPOSE) exec -T -e LOCALSTACK_ENDPOINT_URL=http://localstack:4566 api python -m scripts.infra.sqs_resources verify
 
 ## Verifica bucket privado e operações de mídia reais no LocalStack (VE-16).
 test-media-storage:
