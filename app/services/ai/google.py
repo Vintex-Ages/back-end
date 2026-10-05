@@ -10,6 +10,7 @@ vez de fingir suportar algo que não foi escrito.
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import AsyncIterator, Sequence
 
 import httpx
@@ -115,6 +116,16 @@ def _e_indisponibilidade(exc: Exception) -> bool:
 
 logger = logging.getLogger(__name__)
 
+# Rodadas da cadeia de modelos e a espera antes de cada repeticao. Medido em
+# 05/10: os tres modelos responderam 503 no mesmo instante e voltaram em menos
+# de dois minutos. A cadeia inteira falha em menos de um segundo, entao trocar
+# de modelo nao cobre esse caso -- so esperar cobre.
+#
+# 2s + 4s de espera, mais as chamadas, cabem folgado no limite de 30s que o API
+# Gateway impoe (documento de infra de 02/09).
+_RODADAS = 3
+_ESPERA_ENTRE_RODADAS_S = (2.0, 4.0)
+
 _IMAGE_DOWNLOAD_TIMEOUT_S = 10.0
 # Alguns hosts (ex.: Wikimedia) recusam requisições sem User-Agent de navegador.
 _IMAGE_DOWNLOAD_HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; VintexBot/1.0)"}
@@ -213,6 +224,11 @@ class GoogleAIProvider(AIProvider):
         e outro modelo costuma estar de pé no mesmo instante. 404 (nome que
         não existe para a chave) e 400 (entrada recusada) são erro nosso, e
         tentar outro só esconderia a causa.
+
+        Quando a cadeia inteira responde 503, espera e repete. Medido em 05/10:
+        os três modelos recusaram no mesmo instante e voltaram em menos de dois
+        minutos. A cadeia falha em menos de um segundo, então trocar de modelo
+        não cobre o congestionamento simultâneo -- só esperar cobre.
         """
         modelos = modelos_de_visao()
         if not modelos:
@@ -223,26 +239,42 @@ class GoogleAIProvider(AIProvider):
             )
         ultimo: Exception | None = None
 
-        for indice, modelo in enumerate(modelos):
-            try:
-                return self._client.models.generate_content(
-                    model=modelo,
-                    contents=[types.Content(parts=parts)],
-                    config=types.GenerateContentConfig(
-                        response_mime_type="application/json",
-                        response_schema=ImageAnalysisResult,
-                    ),
-                )
-            except Exception as exc:  # SDK do Google não documenta uma exceção só
-                ultimo = exc
-                if not _e_indisponibilidade(exc) or indice == len(modelos) - 1:
-                    raise AIProviderError(f"Falha ao analisar as fotos: {exc}") from exc
-
+        for rodada in range(_RODADAS):
+            if rodada:
+                espera = _ESPERA_ENTRE_RODADAS_S[rodada - 1]
                 logger.warning(
-                    "Modelo %s indisponível (503); tentando %s",
-                    modelo,
-                    modelos[indice + 1],
+                    "Os %d modelos responderam 503; esperando %.0fs e repetindo "
+                    "a cadeia (rodada %d de %d)",
+                    len(modelos),
+                    espera,
+                    rodada + 1,
+                    _RODADAS,
                 )
+                time.sleep(espera)
+
+            for indice, modelo in enumerate(modelos):
+                try:
+                    return self._client.models.generate_content(
+                        model=modelo,
+                        contents=[types.Content(parts=parts)],
+                        config=types.GenerateContentConfig(
+                            response_mime_type="application/json",
+                            response_schema=ImageAnalysisResult,
+                        ),
+                    )
+                except Exception as exc:  # SDK do Google não documenta uma exceção só
+                    ultimo = exc
+                    if not _e_indisponibilidade(exc):
+                        raise AIProviderError(
+                            f"Falha ao analisar as fotos: {exc}"
+                        ) from exc
+
+                    if indice < len(modelos) - 1:
+                        logger.warning(
+                            "Modelo %s indisponível (503); tentando %s",
+                            modelo,
+                            modelos[indice + 1],
+                        )
 
         raise AIProviderError(f"Falha ao analisar as fotos: {ultimo}")
 
