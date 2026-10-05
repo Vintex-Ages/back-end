@@ -8,7 +8,7 @@ from app.models.store import Store
 from app.models.user import User
 
 
-def make_store(db_session, name: str) -> Store:
+def make_store(db_session, name: str, verified: bool = False) -> Store:
     user = User(
         name=f"{name} owner",
         email=f"{name.lower().replace(' ', '.')}@test.local",
@@ -18,6 +18,7 @@ def make_store(db_session, name: str) -> Store:
         user=user,
         document_type="CPF",
         document_value=str(abs(hash(name)))[:11].zfill(11),
+        verified=verified,
     )
     store = Store(name=name, seller=seller)
     db_session.add(store)
@@ -49,7 +50,7 @@ def make_product(
 
 
 def test_feed_returns_active_products_with_first_cover_and_store(client, db_session):
-    store = make_store(db_session, "Brechó Aurora")
+    store = make_store(db_session, "Brechó Aurora", verified=True)
     product = make_product(
         db_session,
         store,
@@ -79,7 +80,7 @@ def test_feed_returns_active_products_with_first_cover_and_store(client, db_sess
         "name": "Jaqueta vintage",
         "price": 99.90,
         "cover_image_url": "https://cdn.test/cover.jpg",
-        "store": {"id": store.id, "name": "Brechó Aurora"},
+        "store": {"id": store.id, "name": "Brechó Aurora", "verified": True},
         "status": "ativo",
     }
 
@@ -188,10 +189,12 @@ def test_feed_combines_filters_with_and_and_reports_applied_filters(client, db_s
     body = response.json()
     assert body["total"] == 1
     assert body["items"][0]["id"] == matching.id
+    # `price_min`/`price_max` saem como numero, nao string: eram os dois unicos
+    # `Decimal` que escapavam do serializer, dentro deste dict (`#212`).
     assert body["applied_filters"] == {
         "category": "Jaquetas",
-        "price_min": "100",
-        "price_max": "150",
+        "price_min": 100.0,
+        "price_max": 150.0,
         "size": "M",
         "brand": "Marca A",
         "condition": "Bom",

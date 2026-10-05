@@ -56,6 +56,9 @@ class ImageAnalysisResult(BaseModel):
     size: SuggestedField | None = None
     condition: SuggestedField | None = None
     description: SuggestedField | None = None
+    # Só preenchida quando a etiqueta/marca está legível na foto (RN-58,
+    # back-end#150) — sem isso, fica `None`. A IA não chuta marca.
+    brand: SuggestedField | None = None
 
 
 class ChatTurn(BaseModel):

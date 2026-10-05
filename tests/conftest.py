@@ -22,8 +22,52 @@ TEST_POSTGRES_REUSE_MIGRATED_DB = (
 )
 
 import app.models  # noqa: E402,F401 - ensures models register on Base.metadata
+from app.core.security import create_access_token  # noqa: E402
 from app.database import Base, get_db  # noqa: E402
 from app.main import app  # noqa: E402
+
+
+def _auth_headers(user_id: int, *, is_admin: bool = False) -> dict[str, str]:
+    """Cabeçalho de sessão real para o usuário.
+
+    Substitui o `X-User-Id` que as rotas da Sprint 2 usavam antes da `#151`. O
+    usuário precisa existir no banco: `get_current_user` resolve o token e vai
+    buscá-lo, e um id que não existe responde 401.
+    """
+    return {"Authorization": f"Bearer {create_access_token(user_id, is_admin)}"}
+
+
+@pytest.fixture
+def usuario_sem_loja(db_session):
+    """Usuário logado que não é vendedor.
+
+    Antes da `#151` bastava mandar um id qualquer no cabeçalho, inclusive um que
+    não existia. Agora o token é resolvido contra o banco, então um usuário de
+    verdade precisa existir para que a resposta seja "você não tem loja" e não
+    "você não está autenticado".
+    """
+    from app.models.user import User
+
+    user = User(
+        name="Sem loja",
+        email="sem.loja@test.local",
+        password_hash="not-a-real-password",
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    return user
+
+
+@pytest.fixture
+def auth_headers():
+    """Entrega `_auth_headers` aos testes.
+
+    Fixture e não import: `tests/` não é pacote e `from conftest import ...` não
+    resolve com o `importmode` deste repositório.
+    """
+    return _auth_headers
+
 
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,

@@ -1,16 +1,33 @@
 from collections.abc import Sequence
+from datetime import datetime
 from decimal import Decimal
 from typing import TypedDict, cast
 
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
-from app.core.pagination import PageParams
+from app.core.pagination import Page, PageParams, paginate
 from app.models.product import Product
 from app.models.product_image import ProductImage
 from app.models.seller import Seller
 from app.models.store import Store
+from app.schemas.product_management_schema import ProductManagementResponse
 from app.schemas.product_schema import ProductFilters
+
+# Mesma expressao do indice ix_products_search_trgm (migration 0f9a7f647244).
+# Se mudar aqui sem mudar la, o Postgres para de usar o indice e a busca vira
+# varredura da tabela inteira.
+TEXTO_BUSCAVEL = func.immutable_unaccent(
+    func.lower(
+        func.coalesce(Product.name, "")
+        + " "
+        + func.coalesce(Product.description, "")
+        + " "
+        + func.coalesce(Product.brand, "")
+        + " "
+        + func.coalesce(Product.category, "")
+    )
+)
 
 
 class ProductFeedRow(TypedDict):
@@ -21,6 +38,7 @@ class ProductFeedRow(TypedDict):
     status: str
     store_id: int
     store_name: str
+    store_verified: bool
 
 
 def _feed_select() -> Select[tuple[object, ...]]:
@@ -34,6 +52,11 @@ def _feed_select() -> Select[tuple[object, ...]]:
         .limit(1)
         .scalar_subquery()
     )
+    # Selo "Confiável" (#143): subquery pelo `Store` que o chamador já juntou,
+    # para ninguém precisar lembrar de um join extra com `Seller`.
+    store_verified = (
+        select(Seller.verified).where(Seller.id == Store.seller_id).scalar_subquery()
+    )
     return select(
         Product.id,
         Product.name,
@@ -42,6 +65,7 @@ def _feed_select() -> Select[tuple[object, ...]]:
         Product.status,
         Store.id.label("store_id"),
         Store.name.label("store_name"),
+        store_verified.label("store_verified"),
     )
 
 
@@ -65,7 +89,7 @@ class ProductRepository:
         )
 
     def get_active_feed(
-        self, params: PageParams, filters: ProductFilters
+        self, params: PageParams, filters: ProductFilters, q: str | None = None
     ) -> tuple[list[ProductFeedRow], int]:
         conditions = [Product.status == "ativo"]
         filter_columns = {
@@ -96,6 +120,11 @@ class ProductRepository:
             .order_by(Product.created_at.desc(), Product.id.desc())
         )
 
+        if q:
+            stmt = stmt.where(
+                TEXTO_BUSCAVEL.contains(func.immutable_unaccent(func.lower(q)))
+            )
+
         count_stmt = select(func.count()).select_from(stmt.order_by(None).subquery())
         total = self.db.scalar(count_stmt) or 0
         rows = (
@@ -104,6 +133,60 @@ class ProductRepository:
             .all()
         )
         return [cast(ProductFeedRow, dict(row)) for row in rows], total
+
+    def list_for_seller(
+        self, user_id: int, params: PageParams, status: str | None = None
+    ) -> Page[ProductManagementResponse]:
+        stmt = (
+            select(Product)
+            .join(Store, Store.id == Product.store_id)
+            .join(Seller, Seller.id == Store.seller_id)
+            .where(Seller.user_id == user_id)
+            .order_by(Product.created_at.desc(), Product.id.desc())
+        )
+        if status is not None:
+            stmt = stmt.where(Product.status == status)
+        return paginate(
+            self.db,
+            stmt,
+            params,
+            item_schema=ProductManagementResponse,
+        )
+
+    def sales_summary(
+        self, user_id: int, desde: datetime | None
+    ) -> tuple[int, Decimal]:
+        """`(quantidade, bruto)` das peças vendidas da loja de quem pede.
+
+        `desde=None` é "tudo". Vendedor sem venda no período recebe
+        `(0, Decimal("0"))` e não erro (back-end#146).
+
+        Só entram peças com `sold_at` preenchido quando há corte de período:
+        peça vendida sem data não pode ser contada num intervalo sem que a
+        conta minta. No "tudo" ela entra, porque ali não há intervalo.
+        """
+        stmt = (
+            select(
+                func.count(Product.id),
+                func.coalesce(func.sum(Product.price), 0),
+            )
+            .join(Store, Store.id == Product.store_id)
+            .join(Seller, Seller.id == Store.seller_id)
+            .where(Seller.user_id == user_id, Product.status == "vendido")
+        )
+        if desde is not None:
+            stmt = stmt.where(Product.sold_at.is_not(None), Product.sold_at >= desde)
+        quantidade, bruto = self.db.execute(stmt).one()
+        return int(quantidade), Decimal(bruto)
+
+    def get_store_for_user(self, user_id: int) -> Store | None:
+        """Loja de quem está criando/editando — um vendedor, uma loja."""
+        stmt = (
+            select(Store)
+            .join(Seller, Seller.id == Store.seller_id)
+            .where(Seller.user_id == user_id)
+        )
+        return self.db.scalars(stmt).first()
 
     def find_similar(
         self, query_embedding: Sequence[float], limit: int = 5
@@ -136,3 +219,27 @@ class ProductRepository:
             .where(Product.id == product_id)
         )
         return self.db.execute(stmt).scalar_one_or_none()
+
+    def get_by_id(self, product_id: int) -> Product | None:
+        """Como `get_detail_by_id`, mas com `ai_corrections` — usado pelas
+        rotas de peça do vendedor, que devolvem o histórico de correções da IA
+        junto com a peça."""
+        stmt = (
+            select(Product)
+            .options(
+                joinedload(Product.store).joinedload(Store.address),
+                joinedload(Product.store).joinedload(Store.seller),
+                selectinload(Product.images),
+                selectinload(Product.ai_corrections),
+            )
+            .where(Product.id == product_id)
+        )
+        return self.db.scalars(stmt).one_or_none()
+
+    def create(self, product: Product) -> Product:
+        self.db.add(product)
+        self.db.flush()
+        return product
+
+    def commit(self) -> None:
+        self.db.commit()

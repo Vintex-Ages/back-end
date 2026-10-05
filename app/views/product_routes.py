@@ -1,7 +1,7 @@
 from decimal import Decimal
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, status
 from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy.orm import Session
 
@@ -10,21 +10,29 @@ from app.core.current_user import get_current_user_id
 from app.core.errors import ValidationError
 from app.core.pagination import PageParams, page_params
 from app.database import get_db
+from app.schemas.product_management_schema import (
+    ProductManagementPage,
+)
 from app.schemas.product_schema import (
     FeedResponse,
     ProductAIStatusResponse,
     ProductDetailResponse,
+    ProductDraftCreate,
+    ProductDraftResponse,
+    ProductDraftUpdate,
     ProductFilters,
+    SalesSummaryResponse,
 )
 
 router = APIRouter(prefix="/products", tags=["Products"])
 
-# Recurso do usuário logado (dono da peça) — ADR 0001 §4. A análise de IA de
-# uma peça (inclusive sugestões ainda em rascunho) não é dado público; fica
-# fora do router acima, que é só para o feed. `get_current_user_id` é o
-# placeholder de identidade da Sprint 2 (X-User-Id) até a #151 trocar por JWT
-# de verdade — o controller já filtra a peça pelo dono.
+# Recurso do usuário logado (ADR 0001 §4): peças do próprio vendedor.
 me_router = APIRouter(prefix="/users/me/products", tags=["Products"])
+
+# Vendas do próprio vendedor. Router separado porque o caminho é outro
+# (`/users/me/sales`), e no mesmo arquivo porque o dado é peça — o
+# `ProductController` e o `get_controller` daqui são os mesmos.
+sales_router = APIRouter(prefix="/users/me/sales", tags=["Sales"])
 
 
 def get_controller(db: Session = Depends(get_db)) -> ProductController:
@@ -61,13 +69,47 @@ def product_filters(
 @router.get("", response_model=FeedResponse)
 def list_products(
     params: PageParams = Depends(page_params),
+    q: str | None = Query(
+        None, max_length=200, description="Termo de busca; ignora acento e caixa."
+    ),
     filters: ProductFilters = Depends(product_filters),
     sort: Literal["recent"] = Query(
         "recent", description="Ordenação do feed; atualmente apenas recentes."
     ),
     controller: ProductController = Depends(get_controller),
 ) -> FeedResponse:
-    return controller.get_feed(params, filters)
+    return controller.get_feed(params, filters, q=q)
+
+
+@me_router.get("", response_model=ProductManagementPage)
+def list_seller_products(
+    status: Literal["ativo", "vendido", "despublicado"] | None = Query(None),
+    params: PageParams = Depends(page_params),
+    user_id: int = Depends(get_current_user_id),
+    controller: ProductController = Depends(get_controller),
+) -> ProductManagementPage:
+    return controller.list_for_seller(user_id, params, status)
+
+
+# Antes de `/products/{id}`: a tela de edição precisa da peça em qualquer
+# situação, e o detalhe público responde 404 para despublicada e não traz
+# rascunho. Mesmo schema das transições, que é o que o mapeador do front lê.
+@me_router.get("/{product_id}", response_model=ProductDraftResponse)
+def get_seller_product(
+    product_id: int,
+    user_id: int = Depends(get_current_user_id),
+    controller: ProductController = Depends(get_controller),
+) -> ProductDraftResponse:
+    return controller.get_owned_detail(user_id, product_id)
+
+
+@sales_router.get("/summary", response_model=SalesSummaryResponse)
+def get_sales_summary(
+    period: Literal["month", "30d", "all"] = Query("month"),
+    user_id: int = Depends(get_current_user_id),
+    controller: ProductController = Depends(get_controller),
+) -> SalesSummaryResponse:
+    return controller.sales_summary(user_id, period)
 
 
 @router.get(
@@ -81,6 +123,48 @@ def get_product_detail(
     controller: ProductController = Depends(get_controller),
 ) -> ProductDetailResponse:
     return controller.get_detail(product_id)
+
+
+@me_router.patch("/{product_id}", response_model=ProductDraftResponse)
+def update_product(
+    product_id: int,
+    data: ProductDraftUpdate,
+    user_id: int = Depends(get_current_user_id),
+    controller: ProductController = Depends(get_controller),
+) -> ProductDraftResponse:
+    return controller.update(user_id, product_id, data)
+
+
+# Mesmo schema das outras transicoes do recurso (`#230`): o front trata as tres
+# num mapeador so, que le `store`, `images` e `ai_corrections`. O schema reduzido
+# que ficava aqui derrubava a tela do vendedor assim que o mock fosse desligado.
+@me_router.post("/{product_id}/unpublish", response_model=ProductDraftResponse)
+def unpublish_product(
+    product_id: int,
+    user_id: int = Depends(get_current_user_id),
+    controller: ProductController = Depends(get_controller),
+) -> ProductDraftResponse:
+    return controller.unpublish(user_id, product_id)
+
+
+@me_router.post(
+    "", response_model=ProductDraftResponse, status_code=status.HTTP_201_CREATED
+)
+def create_draft(
+    data: ProductDraftCreate,
+    user_id: int = Depends(get_current_user_id),
+    controller: ProductController = Depends(get_controller),
+) -> ProductDraftResponse:
+    return controller.create_draft(user_id, data)
+
+
+@me_router.post("/{product_id}/publish", response_model=ProductDraftResponse)
+def publish_draft(
+    product_id: int,
+    user_id: int = Depends(get_current_user_id),
+    controller: ProductController = Depends(get_controller),
+) -> ProductDraftResponse:
+    return controller.publish(user_id, product_id)
 
 
 @me_router.get("/{product_id}/ai-status", response_model=ProductAIStatusResponse)

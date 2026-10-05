@@ -7,11 +7,12 @@ from collections.abc import AsyncIterator, Sequence
 
 from sqlalchemy.orm import Session
 
+from app.core.errors import ErrorCode, ServiceUnavailable
 from app.repositories.product_repository import ProductRepository
 from app.schemas.chat_schema import ChatErrorEvent, ChatEvent, ChatProductsEvent
 from app.schemas.product_schema import ProductFeedItemResponse
 from app.services.ai import AIProviderError, get_ai_provider
-from app.services.ai.base import ChatTurn, SearchDone
+from app.services.ai.base import ChatTurn, ImageAnalysisResult, SearchDone
 
 logger = logging.getLogger("vintex.assistant")
 
@@ -24,6 +25,34 @@ _FALHA_PROVIDER = (
 class AssistantController:
     def __init__(self, db: Session):
         self.repository = ProductRepository(db)
+
+    def suggest_listing(self, image_urls: Sequence[str]) -> ImageAnalysisResult:
+        """Preenchimento automático do cadastro a partir da foto (back-end#150).
+
+        A IA não trava o cadastro (RN-57): o vendedor sempre pode preencher à
+        mão. Mas falha da IA e foto ilegível são coisas diferentes, e antes as
+        duas chegavam ao front idênticas — 200 com todos os campos nulos. Quem
+        cadastrava lia "não identificamos nada nas fotos" enquanto o provedor
+        estava fora do ar, o que joga a culpa na foto e sugere a ação errada:
+        trocar a imagem em vez de tentar de novo.
+
+        Aconteceu na primeira execução com a API real, com um 503 do Gemini por
+        excesso de demanda. Agora a falha sobe como 503 `AI_UNAVAILABLE`, o
+        front a distingue e diz o que de fato houve. Resultado vazio volta a
+        significar só uma coisa: a IA respondeu e não reconheceu nada.
+        """
+        if not image_urls:
+            return ImageAnalysisResult()
+
+        try:
+            return get_ai_provider().analyze_image(image_urls)
+        except AIProviderError as exc:
+            logger.exception("Falha ao analisar fotos para preenchimento automático")
+            raise ServiceUnavailable(
+                "A análise de fotos está indisponível agora. Tente de novo em "
+                "instantes ou preencha os campos à mão.",
+                code=ErrorCode.AI_UNAVAILABLE,
+            ) from exc
 
     async def chat(self, messages: Sequence[ChatTurn]) -> AsyncIterator[ChatEvent]:
         """Nunca inventa peça, preço ou loja (RN-65): só devolve o que `find_similar`

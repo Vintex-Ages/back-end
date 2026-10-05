@@ -11,11 +11,17 @@ from botocore.config import Config
 
 from app.config import Settings, settings
 
-MediaKind = Literal["photo", "video", "receipt"]
+# `logo` existe para a imagem da loja nao morar em `products/photos/`
+# (back-end#220). O `front-end#212` sobe a logo por esta rota e manda a URL em
+# `POST /api/users/me/store`; sem um prefixo proprio, logo de brecho e foto de
+# peca ficariam misturadas no bucket para sempre, e qualquer limpeza de fotos
+# de peca apagada levaria logo junto.
+MediaKind = Literal["photo", "video", "receipt", "logo"]
 MEDIA_PREFIXES: dict[MediaKind, str] = {
     "photo": "products/photos/",
     "video": "products/videos/",
     "receipt": "payments/receipts/",
+    "logo": "stores/logos/",
 }
 
 
@@ -53,6 +59,16 @@ class MediaStorage:
 
     def read(self, key: str) -> bytes:
         return self.client.get_object(Bucket=self.bucket, Key=key)["Body"].read()
+
+    def read_with_type(self, key: str) -> tuple[bytes, str]:
+        """Bytes e `Content-Type` gravado no upload.
+
+        A chave e um uuid sem extensao, entao quem serve o arquivo depois nao
+        tem como adivinhar o tipo pelo nome: ele vem do objeto.
+        """
+        objeto = self.client.get_object(Bucket=self.bucket, Key=key)
+        content_type = objeto.get("ContentType") or "application/octet-stream"
+        return objeto["Body"].read(), content_type
 
     def delete(self, key: str) -> None:
         self.client.delete_object(Bucket=self.bucket, Key=key)

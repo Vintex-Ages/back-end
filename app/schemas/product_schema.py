@@ -3,7 +3,14 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import TYPE_CHECKING, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_serializer,
+    field_validator,
+    model_validator,
+)
 
 from app.services.ai.base import ImageAnalysisResult
 
@@ -36,15 +43,25 @@ class ProductFilters(BaseModel):
             raise ValueError("price_min deve ser menor ou igual a price_max")
         return self
 
-    def applied(self) -> dict[str, str | Decimal]:
+    def applied(self) -> dict[str, str | float]:
+        """Os filtros que de fato entraram, para a resposta ecoar.
+
+        `Decimal` dentro de dict nao passa por `field_serializer`: sairia como
+        string ao lado de um `price` numerico, na mesma resposta. Era a ultima
+        ponta da `#212` -- `GET /api/products?price_min=100.50` devolvia
+        `"price": 246.7` e `"price_min": "100.50"` no mesmo JSON.
+        """
         return {
-            key: value for key, value in self.model_dump().items() if value is not None
+            key: float(value) if isinstance(value, Decimal) else value
+            for key, value in self.model_dump().items()
+            if value is not None
         }
 
 
 class FeedStoreResponse(BaseModel):
     id: int
     name: str
+    verified: bool
 
 
 class ProductFeedItemResponse(BaseModel):
@@ -64,12 +81,21 @@ class ProductFeedItemResponse(BaseModel):
             price=row["price"],
             cover_image_url=row["cover_image_url"],
             status=row["status"],
-            store=FeedStoreResponse(id=row["store_id"], name=row["store_name"]),
+            store=FeedStoreResponse(
+                id=row["store_id"],
+                name=row["store_name"],
+                verified=row["store_verified"],
+            ),
         )
 
     @field_serializer("price")
     def serializar_preco(self, price: Decimal) -> float:
         return float(price)
+
+
+class SuggestionsResponse(BaseModel):
+    reason: str
+    items: list[ProductFeedItemResponse]
 
 
 class FeedResponse(BaseModel):
@@ -79,7 +105,9 @@ class FeedResponse(BaseModel):
     page: int
     page_size: int
     total: int
-    applied_filters: dict[str, str | Decimal] = Field(default_factory=dict)
+    applied_filters: dict[str, str | float] = Field(default_factory=dict)
+    match_type: Literal["exact", "fallback"] = "exact"
+    suggestions: SuggestionsResponse | None = None
 
 
 class ProductMediaResponse(BaseModel):
@@ -115,6 +143,112 @@ class ProductDetailResponse(BaseModel):
         return float(price)
 
 
+class AiCorrectionInput(BaseModel):
+    """Uma correção do vendedor sobre uma sugestão da IA, enviada pelo front."""
+
+    field: str
+    suggested: str | None = None
+    final: str
+
+
+class AiCorrectionResponse(BaseModel):
+    field: str
+    suggested: str | None
+    final: str
+
+
+class ProductDraftCreate(BaseModel):
+    """Corpo de `POST /api/products`. Não tem `store_id` nem `quantity`:
+    a loja vem de quem está criando, a quantidade é sempre 1."""
+
+    name: str
+    description: str | None = None
+    category: str | None = None
+    style: str | None = None
+    brand: str | None = None
+    color: str | None = None
+    size: str | None = None
+    condition: str | None = None
+    price: Decimal
+    images: list[str] = Field(default_factory=list)
+    ai_corrections: list[AiCorrectionInput] = Field(default_factory=list)
+
+
+class ProductDraftUpdate(BaseModel):
+    """Corpo de `PATCH /api/users/me/products/{id}` — edita rascunho e peça
+    publicada. Todo campo é opcional — só o que for enviado é alterado (ver
+    `exclude_unset` no controller). Limites espelham as colunas de `products`."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=150)
+    description: str | None = None
+    category: str | None = Field(default=None, max_length=80)
+    style: str | None = Field(default=None, max_length=80)
+    brand: str | None = Field(default=None, max_length=80)
+    color: str | None = Field(default=None, max_length=50)
+    size: str | None = Field(default=None, max_length=30)
+    condition: str | None = Field(default=None, max_length=50)
+    price: Decimal | None = Field(default=None, gt=0, decimal_places=2)
+    images: list[str] | None = None
+    ai_corrections: list[AiCorrectionInput] = Field(default_factory=list)
+
+    @field_validator("name", "price")
+    @classmethod
+    def _reject_explicit_null(cls, value: object) -> object:
+        """`name`/`price` são NOT NULL no banco: aceitamos o campo ausente
+        (não altera nada), mas não `null` explícito (limparia um campo
+        obrigatório e quebraria no commit)."""
+        if value is None:
+            raise ValueError("Este campo não pode ser definido como nulo.")
+        return value
+
+
+class ProductStoreResponse(BaseModel):
+    id: int
+    name: str
+    city: str | None
+
+
+class ProductDraftResponse(BaseModel):
+    id: int
+    name: str
+    description: str | None
+    category: str | None
+    style: str | None
+    brand: str | None
+    color: str | None
+    size: str | None
+    condition: str | None
+    price: Decimal
+    quantity: int
+    status: str
+    store: ProductStoreResponse
+    images: list[str]
+    ai_corrections: list[AiCorrectionResponse]
+
+    @field_serializer("price")
+    def serializar_preco(self, price: Decimal) -> float:
+        return float(price)
+
+
+class SalesSummaryResponse(BaseModel):
+    """Resumo financeiro do vendedor no período (back-end#146).
+
+    `gross`, `commission` e `net` saem como número em reais, não string:
+    o front faz `Number(...)` mas a tela mostra o valor direto, e string
+    com casa decimal já quebrou o painel antes (back-end#214).
+    """
+
+    period: Literal["month", "30d", "all"]
+    sold_count: int
+    gross: Decimal
+    commission: Decimal
+    net: Decimal
+
+    @field_serializer("gross", "commission", "net")
+    def serializar_valor(self, valor: Decimal) -> float:
+        return float(valor)
+
+
 class ProductAIStatusResponse(BaseModel):
     """Status da análise de IA da peça (VE-05, back-end#62).
 
@@ -125,3 +259,14 @@ class ProductAIStatusResponse(BaseModel):
     status: ProductAIStatusValue
     error: str | None = None
     suggestions: ImageAnalysisResult | None = None
+
+
+class ListingSuggestionsRequest(BaseModel):
+    """`POST /api/ai/listing-suggestions` (BE-US014-2, back-end#150).
+
+    `max_length` no número de fotos: sem isso, nada impede uma lista enorme
+    de URLs — cada uma baixada e mandada pra API de IA (revisão da
+    Adrielle no PR #200).
+    """
+
+    image_urls: list[str] = Field(max_length=8)
