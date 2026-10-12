@@ -1,5 +1,7 @@
 from decimal import Decimal
 
+import pytest
+
 from app.models.address import Address
 from app.models.product import Product
 from app.models.product_image import ProductImage
@@ -90,13 +92,16 @@ def test_detail_retorna_atributos_media_e_loja(client, db_session):
     }
 
 
-def test_detail_de_peca_vendida_responde_200_com_status(client, db_session):
+# `reservado` é peça num pedido aberto (back-end#243): a RN-44 manda
+# sinalizar, não esconder, então o detalhe abre como na vendida.
+@pytest.mark.parametrize("status", ["vendido", "reservado"])
+def test_detail_de_peca_vendida_responde_200_com_status(client, db_session, status):
     store = make_store_with_address(db_session, "Brechó Central")
     product = Product(
         store=store,
         name="Camisa vendida",
         price=Decimal("50.00"),
-        status="vendido",
+        status=status,
     )
     db_session.add(product)
     db_session.commit()
@@ -104,7 +109,7 @@ def test_detail_de_peca_vendida_responde_200_com_status(client, db_session):
     response = client.get(f"/api/products/{product.id}")
 
     assert response.status_code == 200
-    assert response.json()["status"] == "vendido"
+    assert response.json()["status"] == status
 
 
 def test_detail_de_peca_despublicada_responde_404(client, db_session):
