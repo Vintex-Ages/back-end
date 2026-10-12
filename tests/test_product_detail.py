@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from app.core.security import create_access_token
 from app.models.address import Address
 from app.models.product import Product
 from app.models.product_image import ProductImage
@@ -122,6 +123,60 @@ def test_detail_de_peca_despublicada_responde_404(client, db_session):
 
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "PRODUCT_NOT_FOUND"
+
+
+def test_detail_de_peca_em_rascunho_responde_404(client, db_session):
+    """Rascunho nao e publico (back-end#238).
+
+    Medido contra a API de pe em 30/09: `GET /api/products/{id}` de uma peca em
+    rascunho respondia **200**, sem token nenhum, com nome, preco e loja. Ela
+    nao aparece no feed, que filtra por `ativo`; chega-se nela pelo id, que e
+    sequencial.
+    """
+    store = make_store_with_address(db_session, "Brechó do Rascunho")
+    product = Product(
+        store=store,
+        name="Peça secreta em rascunho",
+        price=Decimal("99.90"),
+        status="rascunho",
+    )
+    db_session.add(product)
+    db_session.commit()
+
+    response = client.get(f"/api/products/{product.id}")
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "PRODUCT_NOT_FOUND"
+    # 404 e nao 403: um 403 confirmaria que aquele id existe.
+    assert "rascunho" not in response.text
+    assert "secreta" not in response.text
+
+
+def test_detail_de_rascunho_e_404_tambem_para_o_dono(client, db_session):
+    """O dono tambem nao ve o proprio rascunho por esta rota.
+
+    A rota e de catalogo, e nao muda de resposta por quem pergunta. Quem precisa
+    do proprio rascunho usa `GET /users/me/products/{id}` (back-end#234).
+    """
+    store = make_store_with_address(db_session, "Brechó da Dona")
+    product = Product(
+        store=store,
+        name="Rascunho da dona",
+        price=Decimal("50.00"),
+        status="rascunho",
+    )
+    db_session.add(product)
+    db_session.commit()
+
+    # Token montado aqui, e nao por fixture: a fixture `auth_headers` chega com
+    # a back-end#151, que e outro PR. Este teste nao depende dela.
+    token = create_access_token(store.seller.user_id, False)
+    response = client.get(
+        f"/api/products/{product.id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 404
 
 
 def test_detail_de_id_inexistente_responde_404(client, db_session):
