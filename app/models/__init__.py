@@ -1,6 +1,10 @@
 from app.models.address import Address
 from app.models.cart import CartItem
 from app.models.legal_document import LegalDocument
+from app.models.order import Order
+from app.models.order_item import OrderItem
+from app.models.order_status_history import OrderStatusHistory
+from app.models.payment import Payment
 from app.models.product import Product
 from app.models.product_ai_correction import ProductAiCorrection
 from app.models.product_image import ProductImage
@@ -14,6 +18,10 @@ __all__ = [
     "Address",
     "CartItem",
     "LegalDocument",
+    "Order",
+    "OrderItem",
+    "OrderStatusHistory",
+    "Payment",
     "Product",
     "ProductAiCorrection",
     "ProductImage",
