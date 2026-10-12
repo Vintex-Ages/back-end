@@ -95,17 +95,21 @@ class SearchDone(BaseModel):
 SearchStreamEvent = SearchTextDelta | InterpretedQuery | SearchDone
 
 
-class AIProvider(ABC):
+class ImageAnalysisProvider(ABC):
+    """Contrato mínimo para provedores usados pelo worker de imagens."""
+
+    @abstractmethod
+    def analyze_image(self, image_urls: Sequence[str]) -> ImageAnalysisResult:
+        """Sugere atributos da peça a partir das fotos."""
+
+
+class AIProvider(ImageAnalysisProvider, ABC):
     """Interface única para os usos de IA do Vintex.
 
     Implementações concretas (um fornecedor real) entram como subclasses
     quando o time escolher o modelo. Até lá, `UnavailableAIProvider`
     (`app/services/ai/unavailable.py`) é o provider ativo por padrão.
     """
-
-    @abstractmethod
-    def analyze_image(self, image_urls: Sequence[str]) -> ImageAnalysisResult:
-        """Sugere atributos da peça a partir das fotos (VS-014, VE-05)."""
 
     @abstractmethod
     def stream_interpret_search(

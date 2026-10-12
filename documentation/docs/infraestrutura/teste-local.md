@@ -93,15 +93,18 @@ O teste cria uma chave única por upload, lê o conteúdo e exclui cada objeto
 mesmo se a asserção falhar. Depois confirma a ausência da chave e as proteções
 do bucket. `make infra-local-test` inclui esse alvo.
 
-## Mensageria SQS (VE-17)
+## Mensageria SQS e worker (VE-17/VE-18)
 
 `make infra-up` prepara a fila de análise de imagens e sua DLQ no LocalStack.
 A política move para a DLQ as mensagens que não foram confirmadas após três
 entregas. `make test-sqs` verifica configuração, publicação e consumo, além de
-exercitar o redrive com filas temporárias isoladas. A fila e a DLQ correspondem
-às declaradas no módulo Terraform; esse plano permanece mockado e não é aplicado
-nos emuladores. O contrato consumido pela futura VE-18 (#169) está em
-[mensageria.md](./mensageria.md).
+exercitar o redrive com filas temporárias isoladas. `make test-ai-worker`
+verifica o polling e a confirmação do worker no mesmo LocalStack. Testes
+unitários usam provedores HTTP simulados e credenciais fictícias. A fila e a
+DLQ correspondem às declaradas no módulo Terraform; esse plano permanece
+mockado e não é aplicado nos emuladores. O contrato e a configuração estão em
+[mensageria.md](./mensageria.md). O worker de Compose é opt-in pelo perfil
+`ai-worker` e não publica porta.
 
 ## MiniStack (VE-21)
 
@@ -120,7 +123,7 @@ O handoff de infraestrutura (item 10) e os critérios de aceite da VE-21 delimit
 
 ## Interoperabilidade e limpeza (VE-22)
 
-`make test-interoperability` usa os aliases `api`, `localstack` e `ministack` dentro do Compose. Ele verifica a API contra o Postgres migrado, publica uma mensagem na fila SQS, executa um consumidor sintético que grava o resultado em S3 e registra a localização no Cloud Map. O teste consulta os dados nos dois emuladores e remove bucket, fila e registro ao final. Outro caso injeta falha após a gravação em S3 e confirma que nenhum desses recursos temporários fica para trás. O consumidor é somente um harness de infraestrutura: o worker de produto permanece na [VE-18 (#169)](https://github.com/Vintex-Ages/back-end/issues/169), em hold.
+`make test-interoperability` usa os aliases `api`, `localstack` e `ministack` dentro do Compose. Ele verifica a API contra o Postgres migrado, publica uma mensagem na fila SQS, executa um consumidor sintético que grava o resultado em S3 e registra a localização no Cloud Map. O teste consulta os dados nos dois emuladores e remove bucket, fila e registro ao final. Outro caso injeta falha após a gravação em S3 e confirma que nenhum desses recursos temporários fica para trás. Esse consumidor permanece um harness de infraestrutura; `make test-ai-worker` cobre separadamente o worker de produto da [VE-18 (#169)](https://github.com/Vintex-Ages/back-end/issues/169).
 
 ```bash
 make infra-complete  # QA, subida, testes e teardown
