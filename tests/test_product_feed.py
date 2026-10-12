@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
+from app.models.address import Address
 from app.models.product import Product
 from app.models.product_image import ProductImage
 from app.models.seller import Seller
@@ -8,7 +9,14 @@ from app.models.store import Store
 from app.models.user import User
 
 
-def make_store(db_session, name: str, verified: bool = False) -> Store:
+def make_store(
+    db_session,
+    name: str,
+    verified: bool = False,
+    *,
+    city: str | None = None,
+    state: str | None = None,
+) -> Store:
     user = User(
         name=f"{name} owner",
         email=f"{name.lower().replace(' ', '.')}@test.local",
@@ -20,7 +28,16 @@ def make_store(db_session, name: str, verified: bool = False) -> Store:
         document_value=str(abs(hash(name)))[:11].zfill(11),
         verified=verified,
     )
-    store = Store(name=name, seller=seller)
+    address = None
+    if city is not None and state is not None:
+        address = Address(
+            street="Rua de teste",
+            number="1",
+            city=city,
+            state=state,
+            zip_code="90000-000",
+        )
+    store = Store(name=name, seller=seller, address=address)
     db_session.add(store)
     db_session.flush()
     return store
@@ -200,6 +217,101 @@ def test_feed_combines_filters_with_and_and_reports_applied_filters(client, db_s
         "condition": "Bom",
         "color": "Azul",
     }
+
+
+def test_feed_filters_by_store_city_and_state(client, db_session):
+    porto_alegre = make_store(
+        db_session, "Brechó Porto Alegre", city="Porto Alegre", state="RS"
+    )
+    sao_paulo = make_store(db_session, "Brechó São Paulo", city="São Paulo", state="SP")
+    now = datetime.now(timezone.utc)
+    porto_product = make_product(db_session, porto_alegre, "Peça RS", now)
+    make_product(db_session, sao_paulo, "Peça SP", now - timedelta(minutes=1))
+    db_session.commit()
+
+    store_response = client.get(f"/api/products?store_id={porto_alegre.id}")
+    city_response = client.get("/api/products?city=Porto+Alegre")
+    state_response = client.get("/api/products?state=SP")
+
+    for response in (store_response, city_response, state_response):
+        assert response.status_code == 200
+        assert response.json()["total"] == 1
+
+    assert store_response.json()["items"][0]["id"] == porto_product.id
+    assert store_response.json()["applied_filters"] == {"store_id": porto_alegre.id}
+    assert city_response.json()["items"][0]["id"] == porto_product.id
+    assert city_response.json()["applied_filters"] == {"city": "Porto Alegre"}
+    assert state_response.json()["items"][0]["name"] == "Peça SP"
+    assert state_response.json()["applied_filters"] == {"state": "SP"}
+
+
+def test_feed_combines_store_location_and_product_filters(client, db_session):
+    matching_store = make_store(
+        db_session, "Brechó Curitiba", city="Curitiba", state="PR"
+    )
+    other_store = make_store(
+        db_session, "Brechó Porto Alegre", city="Porto Alegre", state="RS"
+    )
+    now = datetime.now(timezone.utc)
+    matching = make_product(
+        db_session,
+        matching_store,
+        "Jaqueta PR",
+        now,
+        category="Jaquetas",
+    )
+    make_product(
+        db_session,
+        other_store,
+        "Jaqueta RS",
+        now - timedelta(minutes=1),
+        category="Jaquetas",
+    )
+    db_session.commit()
+
+    response = client.get(
+        f"/api/products?store_id={matching_store.id}&city=Curitiba"
+        "&state=PR&category=Jaquetas"
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 1
+    assert body["items"][0]["id"] == matching.id
+    assert body["applied_filters"] == {
+        "category": "Jaquetas",
+        "store_id": matching_store.id,
+        "city": "Curitiba",
+        "state": "PR",
+    }
+
+
+def test_feed_filter_without_matches_returns_catalog_suggestions(client, db_session):
+    store = make_store(
+        db_session, "Brechó Porto Alegre", city="Porto Alegre", state="RS"
+    )
+    product = make_product(
+        db_session, store, "Peça disponível", datetime.now(timezone.utc)
+    )
+    db_session.commit()
+
+    response = client.get("/api/products?city=Recife")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["items"] == []
+    assert body["match_type"] == "fallback"
+    assert body["total"] == 1
+    assert body["suggestions"]["items"][0]["id"] == product.id
+    assert "filtros selecionados" in body["suggestions"]["reason"]
+    assert body["applied_filters"] == {"city": "Recife"}
+
+
+def test_feed_unknown_store_returns_404_without_authentication(client):
+    response = client.get("/api/products?store_id=999999")
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "STORE_NOT_FOUND"
 
 
 def test_feed_text_filters_ignore_case(client, db_session):

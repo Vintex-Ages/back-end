@@ -47,6 +47,9 @@ def product_filters(
     brand: str | None = Query(None),
     condition: str | None = Query(None),
     color: str | None = Query(None),
+    store_id: int | None = Query(None, gt=0),
+    city: str | None = Query(None),
+    state: str | None = Query(None),
 ) -> ProductFilters:
     try:
         return ProductFilters(
@@ -57,6 +60,9 @@ def product_filters(
             brand=brand,
             condition=condition,
             color=color,
+            store_id=store_id,
+            city=city,
+            state=state,
         )
     except PydanticValidationError as exc:
         fields = {
