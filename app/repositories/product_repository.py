@@ -7,6 +7,7 @@ from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.pagination import Page, PageParams, paginate
+from app.models.address import Address
 from app.models.product import Product
 from app.models.product_image import ProductImage
 from app.models.seller import Seller
@@ -88,6 +89,9 @@ class ProductRepository:
             .where(Product.id == product_id, Seller.user_id == user_id)
         )
 
+    def get_store(self, store_id: int) -> Store | None:
+        return self.db.get(Store, store_id)
+
     def get_active_feed(
         self, params: PageParams, filters: ProductFilters, q: str | None = None
     ) -> tuple[list[ProductFeedRow], int]:
@@ -98,6 +102,8 @@ class ProductRepository:
             "brand": Product.brand,
             "condition": Product.condition,
             "color": Product.color,
+            "city": Address.city,
+            "state": Address.state,
         }
         for field_name, column in filter_columns.items():
             value = getattr(filters, field_name)
@@ -112,10 +118,15 @@ class ProductRepository:
             conditions.append(Product.price >= filters.price_min)
         if filters.price_max is not None:
             conditions.append(Product.price <= filters.price_max)
+        if filters.store_id is not None:
+            conditions.append(Store.id == filters.store_id)
 
         stmt = (
             _feed_select()
             .join(Store, Store.id == Product.store_id)
+            # A localizacao e da loja. O outer join preserva lojas sem endereco
+            # quando city/state nao foram informados.
+            .outerjoin(Address, Store.address_id == Address.id)
             .where(*conditions)
             .order_by(Product.created_at.desc(), Product.id.desc())
         )

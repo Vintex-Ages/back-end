@@ -39,9 +39,15 @@ class ProductController:
     def get_feed(
         self, params: PageParams, filters: ProductFilters, q: str | None = None
     ) -> FeedResponse:
+        if (
+            filters.store_id is not None
+            and self.repository.get_store(filters.store_id) is None
+        ):
+            raise NotFound("Loja não encontrada.", code=ErrorCode.STORE_NOT_FOUND)
+
         rows, total = self.repository.get_active_feed(params, filters, q=q)
 
-        if q and not rows:
+        if not rows and (q or filters.applied()):
             return self._sem_resultado(params, filters, q)
 
         return FeedResponse(
@@ -53,21 +59,23 @@ class ProductController:
         )
 
     def _sem_resultado(
-        self, params: PageParams, filters: ProductFilters, q: str
+        self, params: PageParams, filters: ProductFilters, q: str | None
     ) -> FeedResponse:
-        """Busca sem correspondencia: devolve pecas parecidas e explica o motivo.
+        """Filtro ou busca sem correspondencia: devolve pecas alternativas.
 
-        Tenta cada palavra do termo isoladamente ("jaqueta jeans" vira
-        "jaqueta" e depois "jeans"). Se nenhuma achar, cai para o catalogo
-        com os mesmos filtros, de modo que a busca nunca volta vazia enquanto
-        houver peca. Catalogo vazio devolve vazio, sem erro.
+        Para busca textual, tenta cada palavra do termo isoladamente
+        ("jaqueta jeans" vira "jaqueta" e depois "jeans"), mantendo os
+        filtros selecionados. Se ainda nao houver resultado, relaxa todos os
+        filtros e a busca para exibir o catalogo disponivel. Catalogo vazio
+        devolve vazio, sem erro.
         """
-        for palavra in self._palavras(q):
-            rows, _ = self.repository.get_active_feed(params, filters, q=palavra)
-            if rows:
-                return self._alternativas(params, filters, q, rows)
+        if q:
+            for palavra in self._palavras(q):
+                rows, _ = self.repository.get_active_feed(params, filters, q=palavra)
+                if rows:
+                    return self._alternativas(params, filters, q, rows)
 
-        rows, _ = self.repository.get_active_feed(params, filters)
+        rows, _ = self.repository.get_active_feed(params, ProductFilters())
         if not rows:
             return FeedResponse(
                 items=[],
@@ -82,7 +90,7 @@ class ProductController:
         self,
         params: PageParams,
         filters: ProductFilters,
-        q: str,
+        q: str | None,
         rows: list[ProductFeedRow],
     ) -> FeedResponse:
         return FeedResponse(
@@ -97,7 +105,12 @@ class ProductController:
             applied_filters=filters.applied(),
             match_type="fallback",
             suggestions=SuggestionsResponse(
-                reason=f'Nenhum resultado para "{q}". Veja outras peças disponíveis.',
+                reason=(
+                    f'Nenhum resultado para "{q}". Veja outras peças disponíveis.'
+                    if q
+                    else "Nenhum resultado para os filtros selecionados. "
+                    "Veja outras peças disponíveis."
+                ),
                 items=[ProductFeedItemResponse.from_row(row) for row in rows],
             ),
         )
