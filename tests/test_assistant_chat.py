@@ -72,12 +72,20 @@ def _make_store(pg_session: Session, name: str) -> Store:
 
 
 def _make_product(
-    pg_session: Session, store: Store, name: str, embedding=None
+    pg_session: Session,
+    store: Store,
+    name: str,
+    embedding=None,
+    status: str = "ativo",
 ) -> Product:
     from decimal import Decimal
 
     product = Product(
-        store=store, name=name, price=Decimal("99.90"), embedding=embedding
+        store=store,
+        name=name,
+        price=Decimal("99.90"),
+        embedding=embedding,
+        status=status,
     )
     pg_session.add(product)
     pg_session.flush()
@@ -190,3 +198,20 @@ def test_find_similar_no_repositorio_ordena_por_distancia(pg_session: Session) -
     rows = ProductRepository(pg_session).find_similar(query, limit=3)
 
     assert [row["id"] for row in rows] == [a.id, b.id, c.id]
+
+
+@pytest.mark.parametrize("status", ["vendido", "reservado"])
+def test_find_similar_ignora_peca_fora_do_catalogo(
+    pg_session: Session, status: str
+) -> None:
+    """`reservado` (back-end#243) sai da busca por similaridade como `vendido`."""
+    from app.repositories.product_repository import ProductRepository
+
+    store = _make_store(pg_session, "BrechoR")
+    ativa = _make_product(pg_session, store, "Ativa", embedding=_onehot(1))
+    _make_product(pg_session, store, "Fora", embedding=_onehot(0), status=status)
+    pg_session.commit()
+
+    rows = ProductRepository(pg_session).find_similar(_onehot(0), limit=5)
+
+    assert [row["id"] for row in rows] == [ativa.id]

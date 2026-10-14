@@ -219,9 +219,13 @@ def test_peca_vendida_vem_marcada_e_nao_entra_na_conta(
     assert grupo["subtotal"] == float(ativa.price)
 
 
-def test_adicionar_peca_ja_vendida_devolve_409(client, db_session, cenario, add):
+# `reservado` é peça num pedido aberto (back-end#243) e responde como vendida.
+@pytest.mark.parametrize("status", ["vendido", "reservado"])
+def test_adicionar_peca_ja_vendida_devolve_409(
+    client, db_session, cenario, add, status
+):
     vendida = make_product(
-        db_session, cenario["aurora"], "Vestido", "70.00", status="vendido"
+        db_session, cenario["aurora"], "Vestido", "70.00", status=status
     )
     db_session.commit()
 

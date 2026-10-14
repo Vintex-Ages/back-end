@@ -273,13 +273,21 @@ class ProductController:
 
         Vendida responde com o codigo proprio e nao com o conflito generico
         (RN-53) -- quem chama precisa distinguir "ja esta no ar" de "nao mexe
-        mais nesta".
+        mais nesta". Reservada tambem e recusada: esta num pedido aberto.
         """
         product = self._get_owned(user_id, product_id)
         if product.status == "vendido":
             raise AppError(
                 "Peça vendida não pode mudar de situação.",
                 code=ErrorCode.PRODUCT_SOLD,
+                status_code=409,
+            )
+        if product.status == "reservado":
+            # Peça num pedido aberto (RN-46): voltar para `ativo` a poria no
+            # feed e no carrinho de outra pessoa enquanto o pedido corre.
+            raise AppError(
+                "Peça reservada em um pedido não pode mudar de situação.",
+                code=ErrorCode.PRODUCT_NOT_EDITABLE,
                 status_code=409,
             )
         if product.status == "ativo":
@@ -413,6 +421,14 @@ class ProductController:
             raise AppError(
                 "Peça vendida não pode mudar de situação.",
                 code=ErrorCode.PRODUCT_SOLD,
+                status_code=409,
+            )
+        if product.status == "reservado":
+            # Recusa explícita, e não pelo `!= "ativo"` abaixo: publicar e
+            # despublicar tratam a peça reservada da mesma forma.
+            raise AppError(
+                "Peça reservada em um pedido não pode mudar de situação.",
+                code=ErrorCode.PRODUCT_NOT_EDITABLE,
                 status_code=409,
             )
         if product.status != "ativo":
