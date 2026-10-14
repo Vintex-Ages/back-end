@@ -28,3 +28,8 @@ override.tf.json
 *_override.tf.json
 .terraformrc
 terraform.rc
+
+# Configuração real fornecida pelo responsável (#272), nunca versionada.
+/infra/terraform/envs/shared/*.tfvars
+/infra/terraform/envs/shared/*.tfbackend
+*.tfplan
