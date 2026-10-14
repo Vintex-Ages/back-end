@@ -172,11 +172,13 @@ def test_busca_com_duas_palavras_tenta_a_unica_relevante(
     ]
 
 
+# `reservado` é peça num pedido aberto (back-end#243) e sai como a vendida.
+@pytest.mark.parametrize("status", ["vendido", "reservado"])
 def test_peca_vendida_nao_aparece_na_busca(
-    pg_client: TestClient, pg_session: Session
+    pg_client: TestClient, pg_session: Session, status: str
 ) -> None:
     loja = criar_loja(pg_session, "Brechó Oeste")
-    criar_peca(pg_session, loja, "Jaqueta Vendida", status="vendido")
+    criar_peca(pg_session, loja, "Jaqueta Vendida", status=status)
     criar_peca(pg_session, loja, "Jaqueta Ativa")
     pg_session.commit()
 
