@@ -140,7 +140,7 @@ Alvos principais:
 
 Alvos granulares para diagnóstico: `lint`, `format-check`, `terraform-init`, `terraform-fmt`, `terraform-validate`, `terraform-test`, `test-unit`, `test-infra-postgres`, `test-localstack`, `test-sqs`, `test-media-storage`, `test-ministack`, `test-interoperability`.
 
-`test-localstack`, `test-sqs`, `test-ministack` e `test-interoperability` executam testes reais dos emuladores e do fluxo local (VE-17/VE-20/VE-21/VE-22). `infra-up` aplica as migrations ao Postgres local e provisiona as filas SQS no mesmo LocalStack do Compose; `test-unit` roda no container da API. O consumidor permanece sintético; o worker de produto pertence à VE-18 (#169), em hold. O módulo Terraform de VPC Link pertence à VE-19 (#170), também em hold.
+`test-localstack`, `test-sqs`, `test-ai-worker`, `test-ministack` e `test-interoperability` executam testes reais dos emuladores e do fluxo local (VE-17/VE-18/VE-20/VE-21/VE-22). `infra-up` aplica as migrations ao Postgres local e provisiona as filas SQS no mesmo LocalStack do Compose; `test-unit` roda no container da API. O consumidor sintético de interoperabilidade permanece um harness de teste; o worker de produto consome a fila de análise. O módulo Terraform de VPC Link pertence à VE-19 (#170), ainda em hold.
 
 A [VE-14 (#165)](https://github.com/Vintex-Ages/back-end/issues/165) acrescenta módulos Terraform de rede e papel de execução ECS, exercitados apenas por plano mockado. A interface de cada task Fargate será criada pelo modo `awsvpc` quando a VE-19 ligar os módulos à computação; nenhum recurso AWS real é aplicado nesta fase. Veja [a documentação de Terraform](infra/terraform/README.md).
 
