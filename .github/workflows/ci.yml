@@ -10,6 +10,24 @@ permissions:
   contents: read
 
 jobs:
+  terraform:
+    name: Terraform Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.16.4"
+      - name: Check Terraform formatting
+        run: terraform fmt -check -recursive infra/terraform
+      - name: Validate and test local and shared without AWS credentials
+        run: |
+          for env in local shared; do
+            terraform -chdir="infra/terraform/envs/$env" init -backend=false -input=false -lockfile=readonly
+            terraform -chdir="infra/terraform/envs/$env" validate
+            terraform -chdir="infra/terraform/envs/$env" test
+          done
+
   lint:
     name: Lint & Format
     runs-on: ubuntu-latest

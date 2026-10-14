@@ -1,0 +1,4 @@
+# Copie para backend.tfbackend (ignorado pelo Git) e informe a conta/bucket reais.
+# O bucket de state deve existir, em us-east-2, antes do terraform init.
+bucket              = "SUBSTITUIR-PELO-BUCKET-DO-STATE"
+allowed_account_ids = ["123456789012"]
