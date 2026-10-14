@@ -4,6 +4,8 @@ sidebar_position: 6
 
 # Base AWS compartilhada para staging manual (#272)
 
+Próxima entrega: [runtime e deploy manual da staging (#273)](./aws-staging-runtime.md).
+
 A [#272](https://github.com/Vintex-Ages/back-end/issues/272), parte do
 [épico #180](https://github.com/Vintex-Ages/back-end/issues/180), prepara a
 base compartilhada em `infra/terraform/envs/shared`. A conta pode começar

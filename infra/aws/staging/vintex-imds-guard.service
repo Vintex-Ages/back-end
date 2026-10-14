@@ -1,0 +1,11 @@
+[Unit]
+Description=Restrict Vintex containers from EC2 instance metadata
+Before=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/vintex-imds-guard
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

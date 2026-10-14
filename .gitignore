@@ -33,3 +33,7 @@ terraform.rc
 /infra/terraform/envs/shared/*.tfvars
 /infra/terraform/envs/shared/*.tfbackend
 *.tfplan
+
+# Configuração manual da staging (#273).
+/infra/aws/staging/*.json
+/infra/aws/staging/*.env
