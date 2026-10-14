@@ -6,6 +6,8 @@ Backend da aplicação Vintex, desenvolvido com **Python** e **FastAPI**, seguin
 
 Documentação viva (arquitetura, decisões, infraestrutura) em [`documentation/`](documentation/README.md).
 
+O catálogo de funcionalidades está disponível na seção [Features](documentation/docs/features/index.md).
+
 ## Arquitetura
 
 ```
