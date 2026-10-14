@@ -50,6 +50,69 @@ def test_create_draft_uses_store_from_current_user(client, db_session, auth_head
     assert body["ai_corrections"] == []
 
 
+def test_create_draft_with_images_queues_analysis_after_persisting(
+    db_session, monkeypatch
+):
+    from app.controllers import product_controller
+    from app.controllers.product_controller import ProductController
+    from app.models.product import Product
+    from app.schemas.product_schema import ProductDraftCreate
+
+    user, _ = make_seller_store(db_session, "Brecho Analise")
+    published = []
+
+    def enqueue(product_id, image_urls):
+        product = db_session.get(Product, product_id)
+        assert product is not None
+        assert product.ai_status == "pending"
+        published.append((product_id, image_urls))
+
+    monkeypatch.setattr(product_controller, "enqueue_image_analysis", enqueue)
+
+    response = ProductController(db_session).create_draft(
+        user.id,
+        ProductDraftCreate(
+            name="Jaqueta",
+            price="99.90",
+            images=["https://cdn.test/jaqueta.jpg"],
+        ),
+    )
+
+    product = db_session.get(Product, response.id)
+    assert product.ai_status == "pending"
+    assert published == [(product.id, ["https://cdn.test/jaqueta.jpg"])]
+
+
+def test_create_draft_survives_queue_failure_and_persists_ai_error(
+    db_session, monkeypatch
+):
+    from app.controllers import product_controller
+    from app.controllers.product_controller import ProductController
+    from app.models.product import Product
+    from app.schemas.product_schema import ProductDraftCreate
+    from app.services.ai.queue import ImageAnalysisQueueError
+
+    user, _ = make_seller_store(db_session, "Brecho Fila Indisponivel")
+
+    def fail_enqueue(product_id, image_urls):
+        raise ImageAnalysisQueueError("detalhe de transporte não deve ser exposto")
+
+    monkeypatch.setattr(product_controller, "enqueue_image_analysis", fail_enqueue)
+
+    response = ProductController(db_session).create_draft(
+        user.id,
+        ProductDraftCreate(
+            name="Saia",
+            price="49.90",
+            images=["https://cdn.test/saia.jpg"],
+        ),
+    )
+
+    product = db_session.get(Product, response.id)
+    assert product.ai_status == "failed"
+    assert product.ai_error == "Não foi possível agendar a análise de IA."
+
+
 def test_create_draft_without_store_is_rejected(
     client, db_session, auth_headers, usuario_sem_loja
 ):
