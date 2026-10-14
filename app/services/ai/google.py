@@ -17,8 +17,8 @@ from google import genai
 from google.genai import types
 
 from app.config import settings
-from app.constants.catalog import CATEGORIES, COLORS, CONDITIONS, SIZES, lista
 from app.constants.embedding import EMBEDDING_DIM
+from app.services.ai.analysis_prompt import ANALYZE_IMAGE_PROMPT
 from app.services.ai.base import (
     AIProvider,
     AIProviderError,
@@ -27,6 +27,9 @@ from app.services.ai.base import (
     ImageAnalysisResult,
     SearchStreamEvent,
 )
+from app.services.ai.media_urls import image_download_url
+
+_ANALYZE_IMAGE_PROMPT = ANALYZE_IMAGE_PROMPT
 
 _NOT_IMPLEMENTED = (
     "GoogleAIProvider ainda não implementa este método (fora do escopo do back-end#92)."
@@ -37,34 +40,6 @@ _NOT_IMPLEMENTED = (
 # "Camiseta" para categoria, "Branco e preto" para cor — e o formulário
 # descarta, porque nenhum dos dois existe nas opções da tela. Dar a lista
 # muda o preenchimento de 2 campos para 5.
-_ANALYZE_IMAGE_PROMPT = f"""\
-Você está ajudando um vendedor de brechó a cadastrar uma peça de roupa a \
-partir das fotos dela. Analise as imagens e sugira, em português:
-
-- category: escolha UM valor exato desta lista: {lista(CATEGORIES)}. \
-É a família da peça no catálogo, não o tipo dela: uma camiseta é "Roupas", \
-um tênis é "Sapatos", uma bolsa é "Acessórios".
-- color: escolha UM valor exato desta lista: {lista(COLORS)}. \
-Se a peça tiver mais de uma cor, escolha a predominante; use "Estampado" \
-quando não houver uma cor dominante.
-- size: escolha UM valor exato desta lista: {lista(SIZES)}, e só se o \
-tamanho estiver legível numa etiqueta na foto. Não estime pelo caimento.
-- condition: escolha UM valor exato desta lista: {lista(CONDITIONS)}.
-- description: uma frase curta descrevendo a peça. Texto livre.
-- brand: a marca, APENAS se houver uma etiqueta ou logo legível na foto — \
-se não houver etiqueta visível ou não for possível ler com certeza, não \
-preencha este campo. Nunca chute a marca a partir do estilo da peça.
-
-Nos quatro campos de lista, responda com o valor exato como está escrito \
-acima, com acento e maiúscula. Se nenhum valor da lista servir, deixe o \
-campo nulo — é melhor vazio que aproximado, porque o vendedor corrige um \
-campo vazio mas não percebe um valor errado.
-
-Para cada campo que conseguir sugerir, dê um `value` e uma `confidence` \
-(0 a 1) de quão certo você está. Deixe o campo nulo se não conseguir \
-sugerir algo com razoável confiança — melhor um campo vazio que um chute.
-"""
-
 # Teto para a chamada ao modelo (o SDK conta em milissegundos).
 _GOOGLE_TIMEOUT_MS = 30_000
 
@@ -148,7 +123,7 @@ class GoogleAIProvider(AIProvider):
         if not image_urls:
             return ImageAnalysisResult()
 
-        parts = [types.Part.from_text(text=_ANALYZE_IMAGE_PROMPT)]
+        parts = [types.Part.from_text(text=ANALYZE_IMAGE_PROMPT)]
         total_bytes = 0
         try:
             with httpx.Client(
@@ -157,7 +132,7 @@ class GoogleAIProvider(AIProvider):
                 headers=_IMAGE_DOWNLOAD_HEADERS,
             ) as client:
                 for url in image_urls:
-                    with client.stream("GET", url) as photo:
+                    with client.stream("GET", image_download_url(url)) as photo:
                         photo.raise_for_status()
                         mime_type = photo.headers.get("content-type", "").split(";")[0]
                         if mime_type not in _ALLOWED_CONTENT_TYPES:
