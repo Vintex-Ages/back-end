@@ -48,6 +48,62 @@ const graphql = async (query, variables) => {
   return data.data;
 };
 
+const isAlreadyInProjectError = (error) => {
+  try {
+    const errors = JSON.parse(error.message);
+    return (
+      Array.isArray(errors) &&
+      errors.some(
+        (entry) =>
+          entry?.path?.[0] === "addProjectV2ItemById" &&
+          entry?.type === "UNPROCESSABLE" &&
+          /content already exists in this project/i.test(entry?.message || ""),
+      )
+    );
+  } catch {
+    return false;
+  }
+};
+
+const findProjectItem = async (projectId, contentId) => {
+  let after = null;
+  while (true) {
+    const data = await graphql(
+      `
+        query ($project: ID!, $after: String) {
+          node(id: $project) {
+            ... on ProjectV2 {
+              items(first: 100, after: $after) {
+                nodes {
+                  id
+                  content {
+                    ... on Issue {
+                      id
+                    }
+                    ... on PullRequest {
+                      id
+                    }
+                  }
+                }
+                pageInfo {
+                  hasNextPage
+                  endCursor
+                }
+              }
+            }
+          }
+        }
+      `,
+      { project: projectId, after },
+    );
+    const items = data.node?.items;
+    const item = items?.nodes?.find((candidate) => candidate.content?.id === contentId);
+    if (item) return item;
+    if (!items?.pageInfo?.hasNextPage) return null;
+    after = items.pageInfo.endCursor;
+  }
+};
+
 async function setStatus(projectNumber, contentId, desiredStatus) {
   const data = await graphql(
     `
@@ -99,21 +155,27 @@ async function setStatus(projectNumber, contentId, desiredStatus) {
     (candidate) => candidate.content?.id === contentId,
   );
   if (!item) {
-    const added = await graphql(
-      `
-        mutation ($project: ID!, $content: ID!) {
-          addProjectV2ItemById(
-            input: { projectId: $project, contentId: $content }
-          ) {
-            item {
-              id
+    try {
+      const added = await graphql(
+        `
+          mutation ($project: ID!, $content: ID!) {
+            addProjectV2ItemById(
+              input: { projectId: $project, contentId: $content }
+            ) {
+              item {
+                id
+              }
             }
           }
-        }
-      `,
-      { project: project.id, content: contentId },
-    );
-    item = added.addProjectV2ItemById.item;
+        `,
+        { project: project.id, content: contentId },
+      );
+      item = added.addProjectV2ItemById.item;
+    } catch (error) {
+      if (!isAlreadyInProjectError(error)) throw error;
+      item = await findProjectItem(project.id, contentId);
+      if (!item) throw error;
+    }
   }
   await graphql(
     `
