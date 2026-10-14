@@ -10,6 +10,18 @@ permissions:
   contents: read
 
 jobs:
+  staging-runtime:
+    name: Staging Runtime Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test real Nginx against synthetic backend
+        run: python3 scripts/infra/test_staging_proxy.py
+      - name: Test IMDS guard in isolated container namespaces
+        run: |
+          docker build -f tests/staging/Dockerfile.imds -t vintex-staging-imds:test .
+          docker run --rm --privileged --network none vintex-staging-imds:test
+
   terraform:
     name: Terraform Validation
     runs-on: ubuntu-latest

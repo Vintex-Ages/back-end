@@ -24,6 +24,8 @@ build/
 .coverage
 htmlcov/
 **/.terraform/
+infra/aws/staging/*.json
+infra/aws/staging/*.env
 
 # Bancos locais
 *.db
