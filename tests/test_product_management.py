@@ -297,6 +297,46 @@ def test_publish_recusa_peca_vendida(client, db_session, auth_headers):
     assert response.json()["error"]["code"] == "PRODUCT_SOLD"
 
 
+def test_publish_recusa_peca_reservada(client, db_session, auth_headers):
+    """Peca reservada esta num pedido aberto. Se voltasse para `ativo`, entraria
+    no feed e no carrinho de outra pessoa, e a mesma peca fecharia dois pedidos
+    (RN-46)."""
+    store = make_store(db_session, 67, "Reservada")
+    product = com_foto(
+        db_session, make_product(db_session, store, "Peca reservada", "reservado")
+    )
+    db_session.commit()
+
+    response = client.post(
+        f"/api/users/me/products/{product.id}/publish",
+        headers=auth_headers(67),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "PRODUCT_NOT_EDITABLE"
+    db_session.refresh(product)
+    assert product.status == "reservado"
+
+
+def test_unpublish_recusa_peca_reservada(client, db_session, auth_headers):
+    """Mesma recusa do `publish`, explicita e nao herdada do `!= ativo`."""
+    store = make_store(db_session, 68, "Reservada off")
+    product = com_foto(
+        db_session, make_product(db_session, store, "Peca em pedido", "reservado")
+    )
+    db_session.commit()
+
+    response = client.post(
+        f"/api/users/me/products/{product.id}/unpublish",
+        headers=auth_headers(68),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "PRODUCT_NOT_EDITABLE"
+    db_session.refresh(product)
+    assert product.status == "reservado"
+
+
 def test_republicar_exige_foto(client, db_session, auth_headers):
     """Com o `republish` fora, `publish` e o unico caminho para `ativo`, e ele
     exige foto nos dois sentidos. Era isto que a rota `republish` furava: peca
