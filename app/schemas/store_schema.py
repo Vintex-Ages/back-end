@@ -156,6 +156,9 @@ class StoreResponse(BaseModel):
     # como conferir onde vai cair o dinheiro. Nao entra no retrato publico
     # (`StoreDetailResponse`): e dado do vendedor, nao da vitrine.
     pix_key: str | None
+    # Selo Confiável/Pendente (RN-73). O painel do vendedor mostra o dele, e
+    # sem o campo aqui fazia uma segunda requisição só para isso (#259).
+    verified: bool
     document_type: str
     document_value: str
     terms_version: str | None

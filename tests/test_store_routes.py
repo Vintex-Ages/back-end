@@ -289,3 +289,17 @@ def test_get_own_store_returns_created_store(client, db_session, auth_headers):
     assert response.status_code == 200
     assert response.json()["name"] == "Brechó do Teste"
     assert response.json()["logo_url"] == "https://example.com/logo.png"
+
+
+def test_get_own_store_devolve_o_selo(client, db_session, auth_headers):
+    """O painel do vendedor mostra o proprio selo (RN-73). Antes da
+    back-end#259 ele precisava de uma segunda requisicao, a da loja publica."""
+    for verified in (True, False):
+        store = make_store(db_session, f"Selo {verified}", verified=verified)
+
+        response = client.get(
+            "/api/users/me/store", headers=auth_headers(store.seller.user_id)
+        )
+
+        assert response.status_code == 200
+        assert response.json()["verified"] is verified

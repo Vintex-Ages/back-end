@@ -182,6 +182,7 @@ class StoreController:
             description=store.description,
             logo_url=store.logo_url,
             pix_key=store.pix_key,
+            verified=store.seller.verified,
             document_type=store.seller.document_type,
             document_value=store.seller.document_value,
             terms_version=store.seller.terms_version,
