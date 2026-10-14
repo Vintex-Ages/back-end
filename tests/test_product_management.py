@@ -1,4 +1,8 @@
+from collections.abc import Iterator
+from contextlib import contextmanager
 from decimal import Decimal
+
+from sqlalchemy import event
 
 from app.models.product import Product
 from app.models.product_image import ProductImage
@@ -409,3 +413,72 @@ def test_publish_recusa_peca_de_outro_vendedor(client, db_session, auth_headers)
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "PRODUCT_NOT_FOUND"
     assert db_session.get(Product, product.id).status == "despublicado"
+
+
+@contextmanager
+def contar_consultas(db_session) -> Iterator[list[str]]:
+    """Guarda o SQL de cada consulta executada dentro do bloco."""
+    consultas: list[str] = []
+
+    def registrar(conn, cursor, statement, *args) -> None:
+        consultas.append(statement)
+
+    engine = db_session.get_bind()
+    event.listen(engine, "before_cursor_execute", registrar)
+    try:
+        yield consultas
+    finally:
+        event.remove(engine, "before_cursor_execute", registrar)
+
+
+def test_listagem_devolve_a_capa_de_posicao_zero(client, db_session, auth_headers):
+    store = make_store(db_session, 10, "Aurora")
+    com_capa = make_product(db_session, store, "Com foto", "ativo")
+    # Inseridas fora de ordem: a capa é a de menor posição, não a primeira gravada.
+    db_session.add_all(
+        [
+            ProductImage(
+                product=com_capa, image_url="https://exemplo/2.jpg", position=1
+            ),
+            ProductImage(
+                product=com_capa, image_url="https://exemplo/1.jpg", position=0
+            ),
+        ]
+    )
+    rascunho = make_product(db_session, store, "Rascunho sem foto", "rascunho")
+    db_session.commit()
+
+    response = client.get("/api/users/me/products", headers=auth_headers(10))
+
+    assert response.status_code == 200
+    capas = {item["id"]: item["cover_image_url"] for item in response.json()["items"]}
+    assert capas == {com_capa.id: "https://exemplo/1.jpg", rascunho.id: None}
+
+
+def test_listagem_busca_as_capas_sem_uma_consulta_por_peca(
+    client, db_session, auth_headers
+):
+    """N+1 (#86): com uma consulta por peça, a página maior faria mais
+    consultas. A capa vem na própria consulta da página, então o número de
+    consultas não muda com o número de peças."""
+    store = make_store(db_session, 10, "Aurora")
+
+    def nova_peca_com_foto(nome: str) -> None:
+        com_foto(db_session, make_product(db_session, store, nome, "ativo"))
+
+    nova_peca_com_foto("Primeira")
+    db_session.commit()
+    with contar_consultas(db_session) as uma_peca:
+        response = client.get("/api/users/me/products", headers=auth_headers(10))
+    assert response.status_code == 200
+
+    for nome in ("Segunda", "Terceira", "Quarta"):
+        nova_peca_com_foto(nome)
+    db_session.commit()
+    with contar_consultas(db_session) as quatro_pecas:
+        response = client.get("/api/users/me/products", headers=auth_headers(10))
+
+    assert response.status_code == 200
+    assert all(item["cover_image_url"] for item in response.json()["items"])
+    assert len(quatro_pecas) == len(uma_peca)
+    assert sum("product_images" in sql for sql in quatro_pecas) == 1
