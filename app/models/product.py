@@ -31,8 +31,13 @@ class Product(BaseModel):
     __tablename__ = "products"
     __table_args__ = (
         CheckConstraint("quantity = 1", name="ck_products_quantity"),
+        # `reservado`: peça num pedido aberto, ainda sem comprovante aprovado
+        # (back-end#243). Nas leituras se comporta como `vendido` — sai do
+        # catálogo e da busca, continua no detalhe, dá 409 no carrinho — porque
+        # todas elas já filtram por `ativo`. Não é `vendido` porque o resumo
+        # financeiro soma `vendido` como dinheiro recebido.
         CheckConstraint(
-            "status IN ('rascunho', 'ativo', 'vendido', 'despublicado')",
+            "status IN ('rascunho', 'ativo', 'reservado', 'vendido', 'despublicado')",
             name="ck_products_status",
         ),
         CheckConstraint(
