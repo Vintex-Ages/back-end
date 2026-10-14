@@ -49,6 +49,8 @@ services:
       SQS_ENDPOINT_URL: http://localstack:4566
       AI_ANALYSIS_QUEUE_URL: http://localstack:4566/000000000000/vintex-local-image-analysis
       MEDIA_BUCKET: vintex-local-media
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8001}
+      MEDIA_INTERNAL_BASE_URL: http://api:8000
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
     networks:
@@ -80,8 +82,10 @@ services:
       AI_ANALYSIS_QUEUE_URL: http://localstack:4566/000000000000/vintex-local-image-analysis
       AI_WORKER_PROVIDER: ${AI_WORKER_PROVIDER:-unavailable}
       FREELLMAPI_BASE_URL: ${FREELLMAPI_BASE_URL:-http://freellmapi:3001/v1}
-      FREELLMAPI_API_KEY: ""
+      FREELLMAPI_API_KEY: ${FREELLMAPI_API_KEY:-}
       FREELLMAPI_MODEL: ${FREELLMAPI_MODEL:-auto}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8001}
+      MEDIA_INTERNAL_BASE_URL: http://api:8000
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
     networks:

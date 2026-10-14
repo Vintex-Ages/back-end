@@ -29,6 +29,7 @@ Sobe Postgres, API, LocalStack (`4566`) e MiniStack (`4567`) numa rede Docker pr
 | `make infra-local-test` | Testes locais (unitários, Terraform mockado, PostgreSQL, LocalStack, SQS, mídia S3, MiniStack, interoperabilidade), sem derrubar o ambiente. |
 | `make test-media-storage` | Confere bucket privado e upload, leitura e limpeza de mídia no LocalStack. |
 | `make test-sqs` | Confere o contrato de análise, publicação/consumo e redrive à DLQ no LocalStack. |
+| `make test-ai-worker` | E2E da API, mídia, SQS, worker e Postgres: sucesso, duplicidade, falha do provedor, chave ausente e DLQ. |
 | `make infra-complete` | QA + subida + testes + `infra-down`, sempre derrubando o ambiente no final, preservando a primeira falha. |
 
 ## Terraform
@@ -99,7 +100,7 @@ do bucket. `make infra-local-test` inclui esse alvo.
 A política move para a DLQ as mensagens que não foram confirmadas após três
 entregas. `make test-sqs` verifica configuração, publicação e consumo, além de
 exercitar o redrive com filas temporárias isoladas. `make test-ai-worker`
-verifica o polling e a confirmação do worker no mesmo LocalStack. Testes
+verifica o polling e o fluxo API → S3/SQS → worker → Postgres no mesmo Compose. Testes
 unitários usam provedores HTTP simulados e credenciais fictícias. A fila e a
 DLQ correspondem às declaradas no módulo Terraform; esse plano permanece
 mockado e não é aplicado nos emuladores. O contrato e a configuração estão em
@@ -136,4 +137,4 @@ make infra-complete  # repetição confirma isolamento entre execuções
 
 Base local ([VE-12, #163](https://github.com/Vintex-Ages/back-end/issues/163)) e estrutura Terraform ([VE-13, #164](https://github.com/Vintex-Ages/back-end/issues/164)) concluídas. As integrações LocalStack ([VE-20, #171](https://github.com/Vintex-Ages/back-end/issues/171)) e MiniStack ([VE-21, #172](https://github.com/Vintex-Ages/back-end/issues/172)) provisionam e testam os recursos sintéticos previstos nesta sprint. A interoperabilidade ([VE-22, #173](https://github.com/Vintex-Ages/back-end/issues/173)) cobre o fluxo local e o teardown. A rede e segurança ([VE-14, #165](https://github.com/Vintex-Ages/back-end/issues/165)) foi concluída na PR #192; a base PostgreSQL da VE-15 (#166) foi concluída na PR #193; o storage de mídia da VE-16 (#167), na PR #194; e o pgvector (#185), na PR #199.
 
-Em execução: mensageria assíncrona ([VE-17, #168](https://github.com/Vintex-Ages/back-end/issues/168)). Worker, computação e gates de CI/promoção seguem no backlog do épico VE-29.
+Mensageria assíncrona ([VE-17, #168](https://github.com/Vintex-Ages/back-end/issues/168)) incorporada pela PR #203. Em execução: worker [VE-18, #169](https://github.com/Vintex-Ages/back-end/issues/169). Após seu merge, a staging manual segue #272 → #273 → #274, uma subissue e PR por vez. Computação e gates de CI/promoção seguem no backlog do épico VE-29.

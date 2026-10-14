@@ -27,6 +27,7 @@ from app.services.ai.base import (
     ImageAnalysisResult,
     SearchStreamEvent,
 )
+from app.services.ai.media_urls import image_download_url
 
 _ANALYZE_IMAGE_PROMPT = ANALYZE_IMAGE_PROMPT
 
@@ -131,7 +132,7 @@ class GoogleAIProvider(AIProvider):
                 headers=_IMAGE_DOWNLOAD_HEADERS,
             ) as client:
                 for url in image_urls:
-                    with client.stream("GET", url) as photo:
+                    with client.stream("GET", image_download_url(url)) as photo:
                         photo.raise_for_status()
                         mime_type = photo.headers.get("content-type", "").split(";")[0]
                         if mime_type not in _ALLOWED_CONTENT_TYPES:

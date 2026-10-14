@@ -15,6 +15,7 @@ from app.services.ai.base import (
     ImageAnalysisProvider,
     ImageAnalysisResult,
 )
+from app.services.ai.media_urls import image_download_url
 
 _IMAGE_TIMEOUT_SECONDS = 10.0
 _PROVIDER_TIMEOUT_SECONDS = 45.0
@@ -89,7 +90,7 @@ class FreeLLMAPIProvider(ImageAnalysisProvider):
                 headers=_DOWNLOAD_HEADERS,
             ) as client:
                 for url in image_urls:
-                    with client.stream("GET", url) as response:
+                    with client.stream("GET", image_download_url(url)) as response:
                         response.raise_for_status()
                         media_type = response.headers.get("content-type", "").split(
                             ";", maxsplit=1

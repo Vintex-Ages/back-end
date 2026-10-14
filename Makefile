@@ -110,9 +110,9 @@ test-ministack:
 test-interoperability:
 	$(COMPOSE) exec -T -e LOCALSTACK_ENDPOINT_URL=http://localstack:4566 -e MINISTACK_ENDPOINT_URL=http://ministack:4567 -e VINTEX_INFRA_INTEROP_TEST=1 api pytest tests/test_infra_interoperability.py -v
 
-## Verifica o polling do worker e a confirmação no LocalStack.
+## Verifica API, mídia, worker, persistência e DLQ no Docker local.
 test-ai-worker:
-	$(COMPOSE) exec -T -e LOCALSTACK_ENDPOINT_URL=http://localstack:4566 -e VINTEX_INFRA_AI_WORKER_TEST=1 api pytest tests/test_infra_ai_worker.py -v
+	$(COMPOSE) exec -T -e LOCALSTACK_ENDPOINT_URL=http://localstack:4566 -e VINTEX_INFRA_AI_WORKER_TEST=1 api pytest tests/test_infra_ai_worker.py tests/test_infra_ai_worker_e2e.py -v
 
 ## --- Ajuda ----------------------------------------------------------------
 
