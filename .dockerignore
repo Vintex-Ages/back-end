@@ -38,3 +38,9 @@ infra/aws/staging/*.env
 .agents/
 .claude/
 docker-compose.yml
+
+# Inputs, planos e state Terraform podem conter valores reais.
+infra/terraform/**/*.tfvars
+infra/terraform/**/*.tfbackend
+infra/terraform/**/*.tfplan
+infra/terraform/**/*.tfstate*

@@ -58,3 +58,17 @@ Worker e contrato de IA (VE-18, #169) foram incorporados pela PR #282. A staging
 EC2 segue #272 → #273 → #274; a computação local ECS permanece em hold.
 
 `envs/local` já expõe o provider AWS configurado para LocalStack/MiniStack; os módulos devem herdá-lo, sem reconfigurar o provider dentro de cada módulo.
+
+## Staging EC2 real (#274)
+
+- `staging_services`: reutiliza mídia e mensageria; bucket privado com TLS,
+  fila/DLQ criptografadas (polling 20 s, visibilidade 180 s, DLQ 14 dias),
+  parâmetros SecureString provisórios e cinco grupos de logs com retenção 7 dias.
+- `staging_host`: AL2023 ARM64/t4g.small, EBS gp3 10 GB, nenhum ingress,
+  IMDSv2, role mínima isolada e bootstrap do runtime #273, sem deploy.
+- `staging_schedule`: start 10h/stop 22h seg–sex e sweep 02h diário, Brasília,
+  role limitada ao ARN/tags da instância e trust da conta/grupo Scheduler.
+
+Os tempos opcionais de `ai_messaging` preservam defaults locais e expõem o
+contrato efetivo em `delivery_settings`. Staging usa `envs/staging` e state
+separado; [procedimento manual](../../../documentation/docs/infraestrutura/aws-staging.md).

@@ -96,6 +96,32 @@ def test_parameters_paginate_and_decrypt_only_staging():
     )
 
 
+def test_provisional_parameters_are_not_used_as_secrets(tmp_path, config, parameters):
+    client = Mock()
+    client.get_paginator.return_value.paginate.return_value = [
+        {
+            "Parameters": [
+                {
+                    "Name": "/vintex/staging/llm_api_key",
+                    "Value": "REPLACE_MANUALLY_BEFORE_DEPLOY",
+                },
+                {
+                    "Name": "/vintex/staging/db_password",
+                    "Value": "REPLACE_MANUALLY_BEFORE_DEPLOY",
+                },
+            ]
+        }
+    ]
+    assert deploy.read_parameters(client) == {}
+    with pytest.raises(ValueError, match="Missing required"):
+        deploy.render_secrets(deploy.read_parameters(client), tmp_path, config)
+    assert not list(tmp_path.iterdir())
+    deploy.render_secrets(
+        {**parameters, **deploy.read_parameters(client)}, tmp_path, config
+    )
+    assert "FREELLMAPI_API_KEY=\n" in (tmp_path / "worker.env").read_text()
+
+
 @pytest.mark.parametrize(
     "change",
     [
