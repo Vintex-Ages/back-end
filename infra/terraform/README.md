@@ -1,4 +1,4 @@
-# Terraform — ambiente local e base AWS compartilhada
+# Terraform — ambiente local e AWS real
 
 ```
 infra/terraform/
@@ -12,6 +12,7 @@ infra/terraform/
 │   └── project_budget/ # Budget mensal da conta dedicada (#272)
 └── envs/
     ├── local/        # provider -> LocalStack/MiniStack, testes mockados
+    ├── staging/      # EC2/serviços/IAM/Scheduler reais (#274)
     └── shared/       # provider AWS real, state S3, testes mockados (#272)
 ```
 
@@ -59,7 +60,7 @@ partindo de conta vazia está em
 Use checkout separado para testes offline se já inicializou este diretório
 com backend real; antes do apply, inicialize sempre o backend S3 real.
 
-O job `Terraform Validation` valida e testa `local` e `shared`, apenas com
+O job `Terraform Validation` valida e testa `local`, `shared` e `staging`, apenas com
 providers mockados, sem credenciais AWS. Nenhum alvo Make ou job faz apply real.
 Staging/runtime seguem #273 e #274 do épico #180, uma entrega por vez.
 
@@ -77,3 +78,12 @@ lógicos `products/photos/`, `products/videos/` e `payments/receipts/`; não cri
 objetos vazios para simular pastas no S3. O plano mockado verifica bucket,
 prefixos e bloqueio público. O script local provisiona o mesmo contrato no
 LocalStack durante `make infra-up`; a composição Terraform continua sem `apply`.
+
+## AWS real: staging (#274)
+
+`envs/staging` consome rede/ECR shared. Cria EC2 ARM64 sem ingress, instance
+profile SSM, mídia/SQS/DLQ/parâmetros/logs isolados e agendamentos Brasília.
+State S3 separado em `vintex/staging/terraform.tfstate`; configurações reais
+são ignoradas. Não implanta aplicações automaticamente. Consulte o
+[roteiro manual completo](../../documentation/docs/infraestrutura/aws-staging.md)
+e o runtime #273 antes do primeiro apply/deploy. O CI só executa planos mockados.
