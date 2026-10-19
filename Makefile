@@ -1,6 +1,7 @@
 .PHONY: help infra-qa infra-up infra-down infra-local-test infra-complete \
         infra-api-image lint format-check \
         terraform-init terraform-fmt terraform-validate terraform-test \
+        terraform-plan terraform-show terraform-apply terraform-output \
         test-unit test-infra-postgres test-localstack test-sqs test-media-storage test-ministack test-interoperability test-ai-worker
 
 # Infraestrutura de teste local (VE-12/VE-13/VE-16/VE-17/VE-20/VE-21/VE-22).
@@ -13,7 +14,12 @@ API_IMAGE := vintex-infra-api:local
 QA_RUN := docker run --rm --network none \
 	--mount "type=bind,source=$(CURDIR),target=/app,readonly" \
 	--workdir /app $(API_IMAGE)
+ENV ?= local
+ifeq ($(filter $(ENV),local bootstrap shared staging),)
+$(error ENV inválido: use local, bootstrap, shared ou staging)
+endif
 TF_DIR := infra/terraform/envs/local
+AWS_TF := python3 scripts/infra/terraform_env.py
 TF := terraform -chdir=$(TF_DIR)
 
 ## --- Contrato principal ---------------------------------------------------
@@ -56,22 +62,49 @@ lint: infra-api-image
 format-check: infra-api-image
 	$(QA_RUN) black --check .
 
-## Inicializa o Terraform do ambiente local.
+## Inicializa o ambiente (ENV=local|bootstrap|shared|staging).
 terraform-init:
+ifeq ($(ENV),local)
 	$(TF) init -input=false
+else
+	$(AWS_TF) init --env $(ENV)
+endif
 
 ## Verifica a formatação dos arquivos Terraform.
 terraform-fmt:
 	terraform fmt -check -recursive infra/terraform
 
-# Nunca executa `terraform apply`.
 ## Valida a configuração Terraform sem aplicar mudanças.
 terraform-validate: terraform-init
+ifeq ($(ENV),local)
 	$(TF) validate
+else
+	$(AWS_TF) validate --env $(ENV)
+endif
 
-## Executa os testes Terraform do ambiente local.
+## Executa testes mockados, sem provisionar recursos.
 terraform-test:
+ifeq ($(ENV),local)
 	$(TF) test
+else
+	$(AWS_TF) test --env $(ENV)
+endif
+
+## Salva o plano AWS do ambiente selecionado.
+terraform-plan:
+	$(AWS_TF) plan --env $(ENV)
+
+## Exibe o plano AWS salvo para revisão.
+terraform-show:
+	$(AWS_TF) show --env $(ENV)
+
+## Aplica manualmente o plano salvo, após confirmação do ambiente.
+terraform-apply:
+	$(AWS_TF) apply --env $(ENV)
+
+## Exibe outputs do ambiente AWS selecionado.
+terraform-output:
+	$(AWS_TF) output --env $(ENV)
 
 ## Executa os testes unitários do back-end no container da API.
 test-unit:

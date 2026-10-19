@@ -1,6 +1,6 @@
 # Módulos Terraform locais e AWS real
 
-Módulos da base AWS compartilhada (#272), usados exclusivamente por `envs/shared`:
+Módulos da base AWS compartilhada (#272), usados exclusivamente por `aws` com `config/shared.tfvars`:
 
 - `shared_network`: VPC EC2, uma subnet pública com IP automático, IGW e rota.
   O grupo da staging, sem ingress, pertence à #274. Não usa ECS/VPC Link.
@@ -44,7 +44,7 @@ permite somente HTTPS de saída e entrada privada do VPC Link.
 
 Os recursos declarados aqui são verificados apenas com `terraform test`
 mockado. O ambiente local envia EC2 ao MiniStack e IAM ao LocalStack; ele não
-executa `apply`. A base AWS real, backend remoto e Budget estão em `envs/shared`
+executa `apply`. A base AWS real, backend remoto e Budget estão em `aws` com `config/shared.tfvars`
 (#272), com provider separado.
 
 PostgreSQL e pgvector (VE-15, #166/#185) são provisionados pelo Compose e pelas
@@ -70,5 +70,5 @@ EC2 segue #272 → #273 → #274; a computação local ECS permanece em hold.
   role limitada ao ARN/tags da instância e trust da conta/grupo Scheduler.
 
 Os tempos opcionais de `ai_messaging` preservam defaults locais e expõem o
-contrato efetivo em `delivery_settings`. Staging usa `envs/staging` e state
+contrato efetivo em `delivery_settings`. Staging usa `aws` com `config/staging.tfvars` e state
 separado; [procedimento manual](../../../documentation/docs/infraestrutura/aws-staging.md).

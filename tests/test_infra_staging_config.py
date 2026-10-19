@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-STAGING = ROOT / "infra/terraform/envs/staging"
+STAGING = ROOT / "infra/terraform/aws"
 MODULES = ROOT / "infra/terraform/modules"
 
 
@@ -20,7 +20,6 @@ def test_staging_provider_and_state_are_real_isolated_and_locked():
     assert re.search(r"allowed_account_ids\s*=\s*\[var.expected_account_id\]", source)
     for name, value in (
         ("Project", "Vintex"),
-        ("Environment", "staging"),
         ("ManagedBy", "Terraform"),
     ):
         assert re.search(rf'{name}\s*=\s*"{value}"', source)
@@ -34,14 +33,19 @@ def test_staging_provider_and_state_are_real_isolated_and_locked():
     ):
         assert not re.search(rf"\b{forbidden}\b", provider.group(1))
     backend = (STAGING / "versions.tf").read_text()
-    assert '"vintex/staging/terraform.tfstate"' in backend
-    assert re.search(r"use_lockfile\s*=\s*true", backend)
-    assert re.search(r"encrypt\s*=\s*true", backend)
-    assert 'required_version = ">= 1.16"' in backend
-    assert not re.search(
-        r"\b(bucket|access_key|secret_key|dynamodb_table)\s*=", backend
+    assert 'backend "s3" {}' in backend
+    assert re.search(r"Environment\s*=\s*var.deployment", source)
+    from scripts.infra.terraform_env import backend_config
+
+    config = backend_config(
+        "staging",
+        {"expected_account_id": "123456789012", "state_bucket": "vintex-test-state"},
+        Path("/tmp/runtime"),
     )
-    assert "allowed_account_ids" in (STAGING / "backend.tfbackend.example").read_text()
+    assert config["key"] == "vintex/staging/terraform.tfstate"
+    assert config["encrypt"] and config["use_lockfile"]
+    assert config["allowed_account_ids"] == ["123456789012"]
+    assert 'required_version = ">= 1.16"' in backend
 
 
 def test_host_and_parameter_updates_preserve_manual_values_and_instance():

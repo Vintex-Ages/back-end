@@ -8,9 +8,9 @@ Próxima entrega: [runtime e deploy manual da staging (#273)](./aws-staging-runt
 
 A [#272](https://github.com/Vintex-Ages/back-end/issues/272), parte do
 [épico #180](https://github.com/Vintex-Ages/back-end/issues/180), prepara a
-base compartilhada em `infra/terraform/envs/shared`. A conta pode começar
-inteiramente vazia. O responsável configura o acesso e cria o bucket de state
-antes do primeiro uso do Terraform. A implementação é validada sem credenciais,
+base compartilhada em `infra/terraform/aws`, selecionada por `config/shared.tfvars`.
+A conta pode começar vazia: o novo root `bootstrap` cria o bucket de state
+antes do shared, com execução manual pelo responsável. A implementação é validada sem credenciais,
 com planos mockados; nenhum recurso AWS é provisionado pelos testes ou pelo CI.
 
 ## O que o shared cria
@@ -38,66 +38,53 @@ ou roles/workflows de deploy nesta etapa.
 
 ## Preparação manual de uma conta vazia
 
-Executada **pelo responsável na conta do projeto**, antes do `init` real:
+Use o perfil já autorizado na subconta da faculdade, sem provisionar outra
+conta ou alterar a governança institucional. O roteiro completo está no
+[README do Terraform](https://github.com/Vintex-Ages/back-end/blob/develop/infra/terraform/README.md).
 
-1. Proteger o root com MFA e configurar IAM Identity Center com acesso federado
-   e MFA para o responsável. A sessão precisa de permissões para criar a rede,
-   ECR, Budget e administrar o state nesta conta dedicada.
-2. Instalar AWS CLI v2 e Terraform >=1.16. Usar SSO, sem access keys permanentes:
+Na raiz do backend, instale Terraform >=1.16, AWS CLI v2, Python >=3.12 e Make:
 
-   ```bash
-   aws configure sso --profile vintex
-   aws sso login --profile vintex
-   export AWS_PROFILE=vintex
-   aws sts get-caller-identity
-   ```
+```bash
+export AWS_PROFILE=vintex-terraform
+aws sts get-caller-identity
+cp infra/terraform/account.tfvars.json.example infra/terraform/account.tfvars.json
+chmod 600 infra/terraform/account.tfvars.json
+```
 
-3. Conferir o ID retornado e criar **manualmente no console S3**, em Ohio
-   (`us-east-2`), um bucket de state com nome globalmente único, por exemplo
-   `vintex-terraform-state-<ID-DA-CONTA>`. Ele fica fora do state que armazena.
-   Habilitar versionamento, criptografia padrão SSE-S3/AES256, Object Ownership
-   com ACLs desabilitadas e todos os bloqueios de acesso público. Não usar
-   Object Lock: o lock nativo do Terraform é um objeto `.tflock` removível.
-4. Conferir as permissões S3 do responsável: listar o bucket, ler/gravar
-   `vintex/shared/terraform.tfstate` e ler/gravar/apagar
-   `vintex/shared/terraform.tfstate.tflock`. Não é necessário DynamoDB.
-
-Apenas o bucket e a configuração de acesso precisam existir antes do Terraform.
-O Budget, a VPC e os ECRs são criados pelo próprio shared. Dados reais ficam
-nos arquivos ignorados abaixo; não gravar chaves AWS em nenhum deles.
+Preencha uma única vez o ID confirmado pelo STS, nome único do bucket e
+1–10 e-mails reais do Budget. Nenhuma credencial entra no arquivo ou na imagem.
+SSO é usado se já fizer parte do perfil institucional; não é pré-requisito de
+código para usar a identidade IAM autorizada. PowerUserAccess sozinho não cria
+roles IAM: o responsável precisa das concessões para os recursos previstos.
 
 ## Configuração e primeiro apply manual
 
-Na raiz do backend:
-
 ```bash
-cp infra/terraform/envs/shared/backend.tfbackend.example infra/terraform/envs/shared/backend.tfbackend
-cp infra/terraform/envs/shared/terraform.tfvars.example infra/terraform/envs/shared/terraform.tfvars
+make terraform-init ENV=bootstrap
+make terraform-plan ENV=bootstrap
+make terraform-show ENV=bootstrap
+make terraform-apply ENV=bootstrap
+
+make terraform-init ENV=shared
+make terraform-plan ENV=shared
+make terraform-show ENV=shared
+make terraform-apply ENV=shared
+make terraform-output ENV=shared
 ```
 
-Editar localmente:
+Bootstrap cria o bucket privado/versionado/AES256/TLS-only, com ACLs desativadas
+e proteção contra destruição; seu state é **local** em
+`infra/terraform/.terraform/bootstrap/bootstrap.tfstate`. Guarde cópia privada.
+Não há dependência de bucket pré-criado na conta vazia.
+Shared usa `vintex/shared/terraform.tfstate` nesse bucket, com criptografia e
+lock nativo S3. O backend e o provider restringem a conta esperada em Ohio.
+O runner usa planos e diretórios de dados separados por ambiente e exige
+confirmação antes do apply; alterações de configuração exigem novo plano.
 
-- `backend.tfbackend`: nome do bucket real e `allowed_account_ids` com o ID
-  confirmado pelo STS. A chave do state é `vintex/shared/terraform.tfstate`,
-  região Ohio, criptografia e `use_lockfile=true` já estão fixados no backend.
-- `terraform.tfvars`: o mesmo ID em `expected_account_id` e de 1 a 10 e-mails
-  reais em `budget_email_addresses`. Os valores de exemplo são fictícios.
-
-O backend e o provider restringem a conta. Com a sessão SSO ativa, o responsável
-executa e revisa o plano antes de aplicar:
-
-```bash
-terraform -chdir=infra/terraform/envs/shared init -input=false -backend-config=backend.tfbackend
-terraform -chdir=infra/terraform/envs/shared plan -out=shared.tfplan
-terraform -chdir=infra/terraform/envs/shared show shared.tfplan
-terraform -chdir=infra/terraform/envs/shared apply shared.tfplan
-terraform -chdir=infra/terraform/envs/shared output
-```
-
-O plano salvo é ignorado pelo Git. Confirmar a conta, os dois ECRs, a rede e os
-quatro alertas. Se a conta/região estiver errada ou o plano incluir recursos
-inesperados, corrigir a configuração local e gerar um novo plano antes do apply.
-Não executar destroy para desfazer uma implantação da aplicação.
+Revise os dois ECRs, a rede e os quatro alertas antes de aplicar. Não publique
+state/plan, que podem conter dados sensíveis. A role da EC2 não acessa state.
+A identidade do operador precisa de S3 List/Get/Put para os states e Get/Put/Delete
+para seus `.tflock`, além de administrar os recursos declarados.
 
 ## Outputs e sequência
 
@@ -108,11 +95,10 @@ Não executar destroy para desfazer uma implantação da aplicação.
 | `ecr_repositories` | Mapa dos nomes para nome/ARN/URL, build manual e runtime #273 |
 | `budget` | Nome/ARN do orçamento, conferência no console |
 
-A #169 foi incorporada pela PR #282. Após revisão e merge da #272, segue a
-#273 (runtime de cinco serviços e deploy manual); depois a #274 (EC2 e recursos
-próprios da staging). A aplicação e seu banco ainda não são implantados pela
-#272. State de staging/produção terá chave separada, nunca reutilizando shared.
-Os futuros workflows com OIDC e releases pertencem ao vintex-prod.
+#272, #273 e #274 já têm implementação integrada à develop. A consolidação
+completa o caminho de conta vazia até o apply manual, sem implantar aplicações.
+Staging lê a rede diretamente do state shared; não copie IDs para tfvars.
+Os futuros workflows OIDC/releases continuam no vintex-prod.
 
 Os módulos locais de ECS/VPC Link são preservados. A nova rede EC2 usa
 `shared_network`; o provider real não reutiliza endpoints ou credenciais
@@ -122,16 +108,16 @@ fictícias do ambiente local. Templates de PR e regras de promoção não mudam.
 
 ```bash
 terraform fmt -check -recursive infra/terraform
-terraform -chdir=infra/terraform/envs/shared init -backend=false -input=false -lockfile=readonly
-terraform -chdir=infra/terraform/envs/shared validate
-terraform -chdir=infra/terraform/envs/shared test
+terraform -chdir=infra/terraform/aws init -backend=false -input=false -lockfile=readonly
+terraform -chdir=infra/terraform/aws validate
+terraform -chdir=infra/terraform/aws test
 ```
 
 Os testes usam exclusivamente `mock_provider "aws"` e `command=plan`, com
 conta/e-mails fictícios. Verificam rede/outputs, imutabilidade e retenção ECR,
 orçamento/notificações e recusa de inputs inválidos. Os testes Python verificam
 o provider, tags e backend, pois o mock não exerce autenticação nem conexão S3.
-O job **Terraform Validation** faz o mesmo para `local`, `shared` e `staging`, sem OIDC ou
+O job **Terraform Validation** faz o mesmo para `envs/local`, `bootstrap` e `aws`, sem OIDC ou
 credenciais AWS. Dependências dos providers são baixadas do registry no init.
 
 Use um checkout separado para testar offline se este diretório já foi
