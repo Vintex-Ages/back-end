@@ -3,7 +3,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TypedDict, cast
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, func, select, update
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.pagination import Page, PageParams, paginate
@@ -235,6 +235,31 @@ class ProductRepository:
             .where(Product.id == product_id)
         )
         return self.db.scalars(stmt).one_or_none()
+
+    def get_many_for_order(self, product_ids: Sequence[int]) -> list[Product]:
+        """Peças do pedido com loja e fotos. Id que não existe não volta: quem
+        chama compara a quantidade."""
+        stmt = (
+            select(Product)
+            .options(joinedload(Product.store), selectinload(Product.images))
+            .where(Product.id.in_(product_ids))
+        )
+        return list(self.db.scalars(stmt).unique())
+
+    def reserve(self, product_ids: Sequence[int]) -> int:
+        """`ativo -> reservado` num comando só, e devolve quantas mudaram.
+
+        Conferir e trocar no mesmo UPDATE é o que resolve duas pessoas pedindo
+        a mesma peça ao mesmo tempo: o banco aplica um UPDATE por vez na linha,
+        e o segundo já não encontra `ativo`. Ler o status antes e gravar depois
+        deixaria as duas passarem pela conferência.
+        """
+        result = self.db.execute(
+            update(Product)
+            .where(Product.id.in_(product_ids), Product.status == "ativo")
+            .values(status="reservado")
+        )
+        return result.rowcount
 
     def create(self, product: Product) -> Product:
         self.db.add(product)
