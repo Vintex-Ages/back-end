@@ -30,6 +30,7 @@ from app.schemas.product_schema import (
     SuggestionsResponse,
 )
 from app.services.ai.base import ImageAnalysisResult
+from app.services.ai.queue import ImageAnalysisQueueError, enqueue_image_analysis
 
 
 class ProductController:
@@ -186,8 +187,22 @@ class ProductController:
                 for correction in data.ai_corrections
             ],
         )
+        if data.images:
+            product.ai_status = "pending"
+            product.ai_error = None
         self.repository.create(product)
         self.repository.commit()
+        if data.images:
+            try:
+                enqueue_image_analysis(
+                    product.id, [image.image_url for image in product.images]
+                )
+            except ImageAnalysisQueueError:
+                # IA é complementar ao cadastro: indisponibilidade da fila
+                # registra a falha sem desfazer a peça já persistida.
+                product.ai_status = "failed"
+                product.ai_error = "Não foi possível agendar a análise de IA."
+                self.repository.commit()
         return self._to_response(product)
 
     def update(

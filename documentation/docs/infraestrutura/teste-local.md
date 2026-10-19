@@ -29,6 +29,7 @@ Sobe Postgres, API, LocalStack (`4566`) e MiniStack (`4567`) numa rede Docker pr
 | `make infra-local-test` | Testes locais (unitários, Terraform mockado, PostgreSQL, LocalStack, SQS, mídia S3, MiniStack, interoperabilidade), sem derrubar o ambiente. |
 | `make test-media-storage` | Confere bucket privado e upload, leitura e limpeza de mídia no LocalStack. |
 | `make test-sqs` | Confere o contrato de análise, publicação/consumo e redrive à DLQ no LocalStack. |
+| `make test-ai-worker` | E2E da API, mídia, SQS, worker e Postgres: sucesso, duplicidade, falha do provedor, chave ausente e DLQ. |
 | `make infra-complete` | QA + subida + testes + `infra-down`, sempre derrubando o ambiente no final, preservando a primeira falha. |
 
 ## Terraform
@@ -93,15 +94,18 @@ O teste cria uma chave única por upload, lê o conteúdo e exclui cada objeto
 mesmo se a asserção falhar. Depois confirma a ausência da chave e as proteções
 do bucket. `make infra-local-test` inclui esse alvo.
 
-## Mensageria SQS (VE-17)
+## Mensageria SQS e worker (VE-17/VE-18)
 
 `make infra-up` prepara a fila de análise de imagens e sua DLQ no LocalStack.
 A política move para a DLQ as mensagens que não foram confirmadas após três
 entregas. `make test-sqs` verifica configuração, publicação e consumo, além de
-exercitar o redrive com filas temporárias isoladas. A fila e a DLQ correspondem
-às declaradas no módulo Terraform; esse plano permanece mockado e não é aplicado
-nos emuladores. O contrato consumido pela futura VE-18 (#169) está em
-[mensageria.md](./mensageria.md).
+exercitar o redrive com filas temporárias isoladas. `make test-ai-worker`
+verifica o polling e o fluxo API → S3/SQS → worker → Postgres no mesmo Compose. Testes
+unitários usam provedores HTTP simulados e credenciais fictícias. A fila e a
+DLQ correspondem às declaradas no módulo Terraform; esse plano permanece
+mockado e não é aplicado nos emuladores. O contrato e a configuração estão em
+[mensageria.md](./mensageria.md). O worker de Compose é opt-in pelo perfil
+`ai-worker` e não publica porta.
 
 ## MiniStack (VE-21)
 
@@ -120,7 +124,7 @@ O handoff de infraestrutura (item 10) e os critérios de aceite da VE-21 delimit
 
 ## Interoperabilidade e limpeza (VE-22)
 
-`make test-interoperability` usa os aliases `api`, `localstack` e `ministack` dentro do Compose. Ele verifica a API contra o Postgres migrado, publica uma mensagem na fila SQS, executa um consumidor sintético que grava o resultado em S3 e registra a localização no Cloud Map. O teste consulta os dados nos dois emuladores e remove bucket, fila e registro ao final. Outro caso injeta falha após a gravação em S3 e confirma que nenhum desses recursos temporários fica para trás. O consumidor é somente um harness de infraestrutura: o worker de produto permanece na [VE-18 (#169)](https://github.com/Vintex-Ages/back-end/issues/169), em hold.
+`make test-interoperability` usa os aliases `api`, `localstack` e `ministack` dentro do Compose. Ele verifica a API contra o Postgres migrado, publica uma mensagem na fila SQS, executa um consumidor sintético que grava o resultado em S3 e registra a localização no Cloud Map. O teste consulta os dados nos dois emuladores e remove bucket, fila e registro ao final. Outro caso injeta falha após a gravação em S3 e confirma que nenhum desses recursos temporários fica para trás. Esse consumidor permanece um harness de infraestrutura; `make test-ai-worker` cobre separadamente o worker de produto da [VE-18 (#169)](https://github.com/Vintex-Ages/back-end/issues/169).
 
 ```bash
 make infra-complete  # QA, subida, testes e teardown
@@ -133,4 +137,4 @@ make infra-complete  # repetição confirma isolamento entre execuções
 
 Base local ([VE-12, #163](https://github.com/Vintex-Ages/back-end/issues/163)) e estrutura Terraform ([VE-13, #164](https://github.com/Vintex-Ages/back-end/issues/164)) concluídas. As integrações LocalStack ([VE-20, #171](https://github.com/Vintex-Ages/back-end/issues/171)) e MiniStack ([VE-21, #172](https://github.com/Vintex-Ages/back-end/issues/172)) provisionam e testam os recursos sintéticos previstos nesta sprint. A interoperabilidade ([VE-22, #173](https://github.com/Vintex-Ages/back-end/issues/173)) cobre o fluxo local e o teardown. A rede e segurança ([VE-14, #165](https://github.com/Vintex-Ages/back-end/issues/165)) foi concluída na PR #192; a base PostgreSQL da VE-15 (#166) foi concluída na PR #193; o storage de mídia da VE-16 (#167), na PR #194; e o pgvector (#185), na PR #199.
 
-Em execução: mensageria assíncrona ([VE-17, #168](https://github.com/Vintex-Ages/back-end/issues/168)). Worker, computação e gates de CI/promoção seguem no backlog do épico VE-29.
+Mensageria assíncrona ([VE-17, #168](https://github.com/Vintex-Ages/back-end/issues/168)) incorporada pela PR #203; worker [VE-18, #169](https://github.com/Vintex-Ages/back-end/issues/169), pela PR #282. A staging manual segue #272 → #273 → #274, uma subissue e PR por vez. A [base AWS compartilhada](./aws-shared.md) usa provider e state separados; as ferramentas locais continuam sem apply. Computação e gates de CI/promoção seguem no backlog do épico VE-29.

@@ -1,7 +1,7 @@
 .PHONY: help infra-qa infra-up infra-down infra-local-test infra-complete \
         infra-api-image lint format-check \
         terraform-init terraform-fmt terraform-validate terraform-test \
-        test-unit test-infra-postgres test-localstack test-sqs test-media-storage test-ministack test-interoperability
+        test-unit test-infra-postgres test-localstack test-sqs test-media-storage test-ministack test-interoperability test-ai-worker
 
 # Infraestrutura de teste local (VE-12/VE-13/VE-16/VE-17/VE-20/VE-21/VE-22).
 # Ver Vintex_Handoff_Infra_Local_Terraform_LocalStack_MiniStack.md para o
@@ -33,7 +33,7 @@ infra-down:
 	$(COMPOSE) down -v --remove-orphans
 
 ## Executa todos os testes locais sem derrubar a infraestrutura ao final.
-infra-local-test: test-unit terraform-test test-infra-postgres test-localstack test-sqs test-media-storage test-ministack test-interoperability
+infra-local-test: test-unit terraform-test test-infra-postgres test-localstack test-sqs test-media-storage test-ministack test-interoperability test-ai-worker
 	@echo "[infra-local-test] ok"
 
 # QA falhando aborta antes de subir containers. O script preserva a primeira
@@ -109,6 +109,10 @@ test-ministack:
 ## Verifica API, banco e fluxo sintético LocalStack/MiniStack (VE-22).
 test-interoperability:
 	$(COMPOSE) exec -T -e LOCALSTACK_ENDPOINT_URL=http://localstack:4566 -e MINISTACK_ENDPOINT_URL=http://ministack:4567 -e VINTEX_INFRA_INTEROP_TEST=1 api pytest tests/test_infra_interoperability.py -v
+
+## Verifica API, mídia, worker, persistência e DLQ no Docker local.
+test-ai-worker:
+	$(COMPOSE) exec -T -e LOCALSTACK_ENDPOINT_URL=http://localstack:4566 -e VINTEX_INFRA_AI_WORKER_TEST=1 api pytest tests/test_infra_ai_worker.py tests/test_infra_ai_worker_e2e.py -v
 
 ## --- Ajuda ----------------------------------------------------------------
 

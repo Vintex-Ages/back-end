@@ -1,8 +1,18 @@
 {
   "$schema": "Mapa versionado caminho -> pagina, usado por scripts/docs/generate_draft.py e pelo workflow documentation-draft.yml. Chaves sao padroes fnmatch relativos a raiz do repo; primeira que casar vence.",
   "map": [
+    { "pattern": "infra/aws/staging/**", "page": "infraestrutura/aws-staging-runtime" },
+    { "pattern": "scripts/infra/deploy_staging.py", "page": "infraestrutura/aws-staging-runtime" },
+    { "pattern": "scripts/infra/test_staging_proxy.py", "page": "infraestrutura/aws-staging-runtime" },
+    { "pattern": "tests/test_staging*", "page": "infraestrutura/aws-staging-runtime" },
+    { "pattern": "tests/staging/**", "page": "infraestrutura/aws-staging-runtime" },
     { "pattern": "app/core/**", "page": "arquitetura/fundacao-http" },
     { "pattern": "app/services/ai/**", "page": "arquitetura/provedor-ia" },
+    { "pattern": "infra/terraform/envs/shared/**", "page": "infraestrutura/aws-shared" },
+    { "pattern": "infra/terraform/modules/shared_network/**", "page": "infraestrutura/aws-shared" },
+    { "pattern": "infra/terraform/modules/container_registry/**", "page": "infraestrutura/aws-shared" },
+    { "pattern": "infra/terraform/modules/project_budget/**", "page": "infraestrutura/aws-shared" },
+    { "pattern": "tests/test_infra_shared_config.py", "page": "infraestrutura/aws-shared" },
     { "pattern": "infra/**", "page": "infraestrutura/teste-local" },
     { "pattern": "scripts/infra/**", "page": "infraestrutura/teste-local" },
     { "pattern": "Makefile", "page": "infraestrutura/teste-local" }

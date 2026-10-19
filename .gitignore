@@ -28,3 +28,12 @@ override.tf.json
 *_override.tf.json
 .terraformrc
 terraform.rc
+
+# Configuração real fornecida pelo responsável (#272), nunca versionada.
+/infra/terraform/envs/shared/*.tfvars
+/infra/terraform/envs/shared/*.tfbackend
+*.tfplan
+
+# Configuração manual da staging (#273).
+/infra/aws/staging/*.json
+/infra/aws/staging/*.env
