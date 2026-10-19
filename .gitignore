@@ -37,3 +37,7 @@ terraform.rc
 # Configuração manual da staging (#273).
 /infra/aws/staging/*.json
 /infra/aws/staging/*.env
+
+# Configuração real do ambiente AWS staging (#274).
+/infra/terraform/envs/staging/*.tfvars
+/infra/terraform/envs/staging/*.tfbackend

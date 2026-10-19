@@ -13,6 +13,9 @@
     { "pattern": "infra/terraform/modules/container_registry/**", "page": "infraestrutura/aws-shared" },
     { "pattern": "infra/terraform/modules/project_budget/**", "page": "infraestrutura/aws-shared" },
     { "pattern": "tests/test_infra_shared_config.py", "page": "infraestrutura/aws-shared" },
+    { "pattern": "infra/terraform/envs/staging/**", "page": "infraestrutura/aws-staging" },
+    { "pattern": "infra/terraform/modules/staging_*/**", "page": "infraestrutura/aws-staging" },
+    { "pattern": "tests/test_infra_staging_config.py", "page": "infraestrutura/aws-staging" },
     { "pattern": "infra/**", "page": "infraestrutura/teste-local" },
     { "pattern": "scripts/infra/**", "page": "infraestrutura/teste-local" },
     { "pattern": "Makefile", "page": "infraestrutura/teste-local" }

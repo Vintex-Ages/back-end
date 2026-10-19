@@ -62,6 +62,7 @@ def read_parameters(ssm: Any) -> dict[str, str]:
         values.update(
             (parameter["Name"].rsplit("/", 1)[1], parameter["Value"])
             for parameter in page["Parameters"]
+            if parameter["Value"] != "REPLACE_MANUALLY_BEFORE_DEPLOY"
         )
     return values
 

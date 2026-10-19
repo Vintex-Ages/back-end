@@ -5,7 +5,7 @@ sidebar_position: 6
 # Runtime e deploy manual da staging (#273)
 
 Esta entrega depende de #168/#169 e da base #272. O host e seus recursos AWS
-serão criados na #274. **Não há deploy nem recursos AWS criados nesta entrega.**
+são definidos na [#274](./aws-staging.md). **Não há deploy nem recursos AWS criados nesta entrega.**
 O responsável realiza o primeiro deploy manualmente com sessão temporária SSO;
 na EC2 os comandos utilizam a role da instância. O pipeline futuro pertence ao
 vintex-prod e não é implementado aqui.
@@ -29,7 +29,7 @@ As redes são exclusivas deste runtime, com bridges `br-vintex-app` e
 Nenhuma aplicação usa host networking, modo privilegiado ou socket Docker.
 NET_RAW é removida dos cinco serviços para impedir falsificação de origem.
 API e banco não publicam portas. Proxy e dashboard publicam somente
-`127.0.0.1:80` e `127.0.0.1:3001`, acessíveis por SSM. O SG da #274 não terá ingress.
+`127.0.0.1:80` e `127.0.0.1:3001`, acessíveis por SSM. O SG da #274 não tem ingress.
 
 Nginx mantém `/api` na URL upstream e os 404 da API; só rotas da SPA têm fallback
 para index.html. Limite: 10 requisições/s por IP, burst 20, excedentes retornam
@@ -38,7 +38,7 @@ origem obrigatório. Com SSM, usuários compartilham o IP do túnel no rate limi
 index.html é servido sem cache. HTTPS externo não faz parte desta staging
 privada: o transporte até a instância usa o túnel autenticado/criptografado SSM.
 
-## Recursos que #274 deve fornecer
+## Recursos fornecidos pela #274
 
 - EC2 ARM64 com SSM, Docker Compose >=2.30, Python 3 e boto3 para o script host,
   iptables/ip6tables com backend compatível, 1 GiB de swap e disco para imagens.
@@ -65,7 +65,7 @@ Cadastrar via console, sem valores em Git, histórico de shell ou logs:
 | `db_password` | SecureString, mínimo 16 caracteres |
 | `jwt_secret` | SecureString, mínimo 32 caracteres |
 | `llm_encryption_key` | SecureString, 64 dígitos hexadecimais, estável |
-| `llm_admin_email` | String, e-mail do administrador do dashboard |
+| `llm_admin_email` | SecureString, e-mail do administrador do dashboard |
 | `llm_admin_password` | SecureString, senha forte do administrador |
 | `llm_api_key` | SecureString, token unificado criado no dashboard; opcional no primeiro deploy |
 
@@ -74,7 +74,7 @@ diretórios root 0700. A URL PostgreSQL usa **db:5432**, com senha percent-encod
 nenhum endpoint de emulador é utilizado. APP_ENV=production ativa a proteção JWT
 existente também na staging; APP_DEBUG=false impede logs SQL com valores.
 AI_PROVIDER=unavailable mantém embedding, chat e sugestões síncronas de IA degradados; worker usa
-FreeLLMAPI. Sem token, o adaptador existente registra falha e a mensagem segue
+FreeLLMAPI. O deploy ignora parâmetros provisórios da #274; os obrigatórios impedem o deploy até serem preenchidos. Sem token, o adaptador existente registra falha e a mensagem segue
 retry/DLQ, sem derrubar a API. Nenhum health check invoca inferência.
 
 FreeLLMAPI recebe ENCRYPTION_KEY e FREEAPI_CONFIG_JSON para criar o administrador
