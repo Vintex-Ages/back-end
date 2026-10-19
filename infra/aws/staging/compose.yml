@@ -1,0 +1,154 @@
+name: vintex-staging
+
+x-runtime: &runtime
+  platform: linux/arm64
+  restart: unless-stopped
+  cap_drop: [NET_RAW]
+  security_opt: [no-new-privileges:true]
+  
+
+services:
+  proxy:
+    <<: *runtime
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: us-east-2
+        awslogs-group: /vintex/staging/proxy
+        awslogs-stream: "${RELEASE_SHA:?Release SHA required}-proxy"
+    image: nginx:1.28.0-alpine@sha256:30f1c0d78e0ad60901648be663a710bdadf19e4c10ac6782c235200619158284
+    mem_limit: 64m
+    ports: ["127.0.0.1:80:80"]
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ${FRONTEND_DIR:?Frontend directory required}:/usr/share/nginx/html:ro
+    networks:
+      app: {ipv4_address: 172.30.73.2}
+    depends_on:
+      api: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1/health]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    <<: *runtime
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: us-east-2
+        awslogs-group: /vintex/staging/api
+        awslogs-stream: "${RELEASE_SHA:?Release SHA required}-api"
+    image: ${BACKEND_IMAGE:?Backend image required}
+    mem_limit: 384m
+    env_file:
+      - path: ${SECRETS_DIR:?Secrets directory required}/api.env
+        format: raw
+    networks:
+      app: {ipv4_address: 172.30.73.3}
+    depends_on:
+      db: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  worker:
+    <<: *runtime
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: us-east-2
+        awslogs-group: /vintex/staging/worker
+        awslogs-stream: "${RELEASE_SHA:?Release SHA required}-worker"
+    image: ${BACKEND_IMAGE:?Backend image required}
+    command: [python, -m, app.workers.ai_analysis]
+    mem_limit: 256m
+    env_file:
+      - path: ${SECRETS_DIR:?Secrets directory required}/worker.env
+        format: raw
+    volumes:
+      - ./worker-health.py:/opt/vintex/worker-health.py:ro
+    networks:
+      app: {ipv4_address: 172.30.73.4}
+      llm: {ipv4_address: 172.30.74.2}
+    depends_on:
+      db: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, python, -c, "exec(open('/opt/vintex/worker-health.py').read())"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    stop_grace_period: 180s
+
+  freellmapi:
+    <<: *runtime
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: us-east-2
+        awslogs-group: /vintex/staging/freellmapi
+        awslogs-stream: "${RELEASE_SHA:?Release SHA required}-freellmapi"
+    image: ${FREELLMAPI_IMAGE:?FreeLLMAPI ECR digest required}
+    mem_limit: 128m
+    ports: ["127.0.0.1:3001:3001"]
+    env_file:
+      - path: ${SECRETS_DIR:?Secrets directory required}/llm.env
+        format: raw
+    volumes:
+      - llm_data:/app/server/data
+    networks:
+      llm: {ipv4_address: 172.30.74.3}
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3001/api/ping').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  db:
+    <<: *runtime
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: us-east-2
+        awslogs-group: /vintex/staging/db
+        awslogs-stream: "${RELEASE_SHA:?Release SHA required}-db"
+    image: pgvector/pgvector:0.8.1-pg16@sha256:33198da2828a14c30348d2ccb4750833d5ed9a44c88d840a0e523d7417120337
+    mem_limit: 448m
+    env_file:
+      - path: ${SECRETS_DIR:?Secrets directory required}/db.env
+        format: raw
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks:
+      app: {ipv4_address: 172.30.73.5}
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U postgres -d vintex']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+networks:
+  app:
+    name: vintex-staging-app
+    driver_opts:
+      com.docker.network.bridge.name: br-vintex-app
+    ipam:
+      config: [{subnet: 172.30.73.0/24}]
+  llm:
+    name: vintex-staging-llm
+    driver_opts:
+      com.docker.network.bridge.name: br-vintex-llm
+    ipam:
+      config: [{subnet: 172.30.74.0/24}]
+
+volumes:
+  pg_data:
+    name: vintex-staging-pgdata
+  llm_data:
+    name: vintex-staging-llmdata

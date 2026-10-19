@@ -38,12 +38,22 @@ class Settings(BaseSettings):
     # minutos, com seis outros modelos respondendo no mesmo período.
     GOOGLE_VISION_MODEL: str = "gemini-3.1-flash-lite,gemini-3.8-flash,gemini-3.7-flash"
 
+    # VE-18 (#169): configuração do produtor/worker de análise de imagens.
+    AI_ANALYSIS_QUEUE_URL: str = ""
+    SQS_ENDPOINT_URL: str | None = None
+    AI_WORKER_PROVIDER: str = "unavailable"
+    FREELLMAPI_BASE_URL: str = "http://freellmapi:3001/v1"
+    FREELLMAPI_API_KEY: str = ""
+    FREELLMAPI_MODEL: str = "auto"
+
     # Storage de mídia (VE-16). Sem endpoint explícito, boto3 usa a AWS.
     # Base publica da propria API, usada para montar a URL da midia. Fica
     # configuravel porque a URL precisa ser alcancavel pelo servidor: e ele
     # que baixa a foto para mandar ao modelo multimodal. Vazio usa a base da
     # requisicao, que serve para desenvolvimento.
     PUBLIC_BASE_URL: str = ""
+    # Só para downloads no servidor; nunca altera URLs devolvidas ao navegador.
+    MEDIA_INTERNAL_BASE_URL: str = ""
 
     AWS_REGION: str = "us-east-2"
     S3_ENDPOINT_URL: str | None = None

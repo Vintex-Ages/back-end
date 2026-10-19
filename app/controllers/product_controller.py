@@ -30,6 +30,7 @@ from app.schemas.product_schema import (
     SuggestionsResponse,
 )
 from app.services.ai.base import ImageAnalysisResult
+from app.services.ai.queue import ImageAnalysisQueueError, enqueue_image_analysis
 
 
 class ProductController:
@@ -186,19 +187,42 @@ class ProductController:
                 for correction in data.ai_corrections
             ],
         )
+        if data.images:
+            product.ai_status = "pending"
+            product.ai_error = None
         self.repository.create(product)
         self.repository.commit()
+        if data.images:
+            try:
+                enqueue_image_analysis(
+                    product.id, [image.image_url for image in product.images]
+                )
+            except ImageAnalysisQueueError:
+                # IA é complementar ao cadastro: indisponibilidade da fila
+                # registra a falha sem desfazer a peça já persistida.
+                product.ai_status = "failed"
+                product.ai_error = "Não foi possível agendar a análise de IA."
+                self.repository.commit()
         return self._to_response(product)
 
     def update(
         self, user_id: int, product_id: int, data: ProductDraftUpdate
     ) -> ProductDraftResponse:
-        """Edita rascunho ou peça publicada/despublicada; vendida é imutável."""
+        """Edita rascunho ou peça publicada/despublicada; vendida é imutável,
+        e reservada também, enquanto o pedido estiver aberto."""
         product = self._get_owned(user_id, product_id)
         if product.status == "vendido":
             raise AppError(
                 "Peça vendida não pode ser editada.",
                 code=ErrorCode.PRODUCT_SOLD,
+                status_code=409,
+            )
+        if product.status == "reservado":
+            # O comprador fechou o pedido com esta peça (back-end#247): editar
+            # agora a faria diferente do que ele comprou.
+            raise AppError(
+                "Peça reservada em um pedido não pode ser editada.",
+                code=ErrorCode.PRODUCT_NOT_EDITABLE,
                 status_code=409,
             )
         if product.status != "rascunho" and data.images == []:
