@@ -208,12 +208,21 @@ class ProductController:
     def update(
         self, user_id: int, product_id: int, data: ProductDraftUpdate
     ) -> ProductDraftResponse:
-        """Edita rascunho ou peça publicada/despublicada; vendida é imutável."""
+        """Edita rascunho ou peça publicada/despublicada; vendida é imutável,
+        e reservada também, enquanto o pedido estiver aberto."""
         product = self._get_owned(user_id, product_id)
         if product.status == "vendido":
             raise AppError(
                 "Peça vendida não pode ser editada.",
                 code=ErrorCode.PRODUCT_SOLD,
+                status_code=409,
+            )
+        if product.status == "reservado":
+            # O comprador fechou o pedido com esta peça (back-end#247): editar
+            # agora a faria diferente do que ele comprou.
+            raise AppError(
+                "Peça reservada em um pedido não pode ser editada.",
+                code=ErrorCode.PRODUCT_NOT_EDITABLE,
                 status_code=409,
             )
         if product.status != "rascunho" and data.images == []:

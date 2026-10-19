@@ -15,6 +15,7 @@ from app.views.cart_routes import router as cart_router
 from app.views.legal_routes import router as legal_router
 from app.views.media_routes import me_router as media_me_router
 from app.views.media_routes import public_router as media_public_router
+from app.views.order_routes import router as order_router
 from app.views.product_routes import me_router as product_me_router
 from app.views.product_routes import router as product_router
 from app.views.product_routes import sales_router as sales_router
@@ -34,6 +35,7 @@ api_router.include_router(cart_router)
 api_router.include_router(legal_router)
 api_router.include_router(media_me_router)
 api_router.include_router(media_public_router)
+api_router.include_router(order_router)
 api_router.include_router(product_router)
 api_router.include_router(product_me_router)
 api_router.include_router(sales_router)
