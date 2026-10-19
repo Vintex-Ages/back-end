@@ -5,10 +5,9 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import Conflict, ErrorCode, NotFound
 from app.core.pagination import DEFAULT_PAGE_SIZE, Page, PageParams
-from app.repositories.cart_repository import CartRepository
-from app.repositories.product_repository import ProductFeedRow, ProductRepository
-from app.schemas.cart_schema import CartItemResponse, CartStoreResponse
-from app.schemas.product_schema import FeedStoreResponse
+from app.repositories.cart_repository import CartRepository, CartRow
+from app.repositories.product_repository import ProductRepository
+from app.schemas.cart_schema import CartItemResponse, CartStoreInfo, CartStoreResponse
 
 # Só peça ativa pode ser comprada. Qualquer outro status (hoje, `vendido`)
 # fica no carrinho marcado como indisponível e fora do subtotal.
@@ -89,7 +88,7 @@ class CartController:
 
     @staticmethod
     def _group_by_store(
-        store_ids: list[int], rows: list[ProductFeedRow]
+        store_ids: list[int], rows: list[CartRow]
     ) -> list[CartStoreResponse]:
         """Monta um grupo por loja, na ordem de `store_ids` (a da paginação),
         somando no subtotal só as peças disponíveis."""
@@ -98,10 +97,13 @@ class CartController:
             group = groups.get(row["store_id"])
             if group is None:
                 group = CartStoreResponse(
-                    store=FeedStoreResponse(
+                    store=CartStoreInfo(
                         id=row["store_id"],
                         name=row["store_name"],
                         verified=row["store_verified"],
+                        pix_key=row["store_pix_key"],
+                        city=row["store_city"],
+                        logo_url=row["store_logo_url"],
                     ),
                     items=[],
                     subtotal=Decimal("0"),
