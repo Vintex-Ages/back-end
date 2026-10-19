@@ -238,6 +238,16 @@ def test_bootstrap_lifecycle_moves_and_private_configuration_guards():
     for module in ("network", "registry", "budget", "services", "host", "scheduler"):
         assert f"from = module.{module}\n" in moves
         assert f"to   = module.{module}[0]" in moves
-    for file in (".gitignore", ".dockerignore"):
-        assert "infra/terraform/account.tfvars.json" in (root / file).read_text()
+    assert "infra/terraform/account.tfvars.json" in (root / ".dockerignore").read_text()
     assert "**/.terraform/" in (root / ".dockerignore").read_text()
+
+
+@pytest.mark.skipif(
+    not (tf.BASE.parents[1] / ".gitignore").exists(),
+    reason="a imagem da API exclui metadados Git; CI verifica no checkout",
+)
+def test_account_configuration_is_ignored_by_git():
+    assert (
+        "infra/terraform/account.tfvars.json"
+        in (tf.BASE.parents[1] / ".gitignore").read_text()
+    )
