@@ -77,6 +77,28 @@ class OrderController:
         self.orders.commit()
         return self._to_response(order)
 
+    def expire_overdue(self) -> int:
+        """Expira os pedidos sem comprovante dentro do prazo e devolve as peças
+        a `ativo` (back-end#280). Devolve quantos pedidos expiraram.
+
+        Só `aguardando_comprovante` expira: em `em_analise` o comprovante já
+        foi enviado e quem decide é a administradora (RN-21).
+
+        Pedido e peças mudam no mesmo commit: não pode existir pedido expirado
+        com peça presa, nem peça liberada com pedido aberto. Rodar de novo não
+        muda nada, porque o pedido já não está aguardando e a peça já não está
+        reservada. Qualquer gatilho (rotina periódica, chamada antes de outra
+        operação) deve passar por aqui.
+        """
+        try:
+            expired_ids = self.orders.expire_overdue(utcnow_naive())
+            self.products.release_for_orders(expired_ids)
+        except Exception:
+            self.orders.rollback()
+            raise
+        self.orders.commit()
+        return len(expired_ids)
+
     @staticmethod
     def _indisponivel() -> Conflict:
         return Conflict(
