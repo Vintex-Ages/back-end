@@ -32,7 +32,7 @@ automaticamente; ao receber US$30, revisar a margem, e ao receber US$35,
 desligar a staging manualmente conforme a especificação.
 
 Subnet pública significa saída por Internet Gateway, não liberação de entrada.
-O security group da staging será criado na #274, sem ingress. Não são criados
+O security group da staging está na [#274](./aws-staging.md), sem ingress. Não são criados
 NAT Gateway, EC2, banco, CloudFront, recursos de produção, bucket de releases
 ou roles/workflows de deploy nesta etapa.
 
@@ -131,7 +131,7 @@ Os testes usam exclusivamente `mock_provider "aws"` e `command=plan`, com
 conta/e-mails fictícios. Verificam rede/outputs, imutabilidade e retenção ECR,
 orçamento/notificações e recusa de inputs inválidos. Os testes Python verificam
 o provider, tags e backend, pois o mock não exerce autenticação nem conexão S3.
-O job **Terraform Validation** faz o mesmo para `local` e `shared`, sem OIDC ou
+O job **Terraform Validation** faz o mesmo para `local`, `shared` e `staging`, sem OIDC ou
 credenciais AWS. Dependências dos providers são baixadas do registry no init.
 
 Use um checkout separado para testar offline se este diretório já foi
