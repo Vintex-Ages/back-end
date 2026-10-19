@@ -13,6 +13,7 @@ from app.models.product_image import ProductImage
 from app.models.seller import Seller
 from app.models.store import Store
 from app.models.user import User
+from app.seeds.legal import VERSION, seed_legal
 from tests.test_user import persist_user
 
 
@@ -148,8 +149,16 @@ def store_payload(document_type: str = "CPF") -> dict[str, str]:
         "document_value": (
             "123.456.789-09" if document_type == "CPF" else "12.345.678/0001-95"
         ),
-        "terms_version": "v1.0",
+        "terms_version": VERSION,
     }
+
+
+@pytest.fixture(autouse=True)
+def contrato_publicado(db_session):
+    """O `store_payload` aceita o contrato, e a versão aceita tem que existir
+    em `legal_documents` (back-end#217). O seed publica a `v0`."""
+    seed_legal(db_session)
+    db_session.commit()
 
 
 def test_create_store_turns_user_into_seller_and_persists_terms(
@@ -167,7 +176,7 @@ def test_create_store_turns_user_into_seller_and_persists_terms(
     body = response.json()
     assert body["name"] == "Brechó do Teste"
     assert body["document_type"] == "CPF"
-    assert body["terms_version"] == "v1.0"
+    assert body["terms_version"] == VERSION
     assert body["terms_accepted_at"] is not None
     assert db_session.query(Seller).filter_by(user_id=user.id).count() == 1
     assert db_session.query(Store).filter_by(seller_id=body["seller_id"]).count() == 1
