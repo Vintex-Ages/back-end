@@ -4,6 +4,8 @@ merge; nao ha sobreposicao de nomes entre eles."""
 
 from decimal import Decimal
 
+import pytest
+
 from app.core.security import create_access_token
 from app.models.address import Address
 from app.models.product import Product
@@ -144,7 +146,7 @@ def store_payload(document_type: str = "CPF") -> dict[str, str]:
         "logo_url": "https://example.com/logo.png",
         "document_type": document_type,
         "document_value": (
-            "123.456.789-00" if document_type == "CPF" else "12.345.678/0001-90"
+            "123.456.789-09" if document_type == "CPF" else "12.345.678/0001-95"
         ),
         "terms_version": "v1.0",
     }
@@ -303,3 +305,49 @@ def test_get_own_store_devolve_o_selo(client, db_session, auth_headers):
 
         assert response.status_code == 200
         assert response.json()["verified"] is verified
+
+
+@pytest.mark.parametrize(
+    "document_type,document_value",
+    [
+        ("CPF", "123.456.789-00"),
+        ("CNPJ", "12.345.678/0001-90"),
+    ],
+    ids=["cpf", "cnpj"],
+)
+def test_create_store_rejects_document_with_wrong_check_digit(
+    client, db_session, auth_headers, document_type, document_value
+):
+    """Contar dígitos deixava passar documento inventado (back-end#217)."""
+    user = persist_user(db_session, email="wrong-digit@example.com")
+
+    response = client.post(
+        "/api/users/me/store",
+        headers=auth_headers(user.id),
+        json={
+            **store_payload(document_type),
+            "document_value": document_value,
+        },
+    )
+
+    assert response.status_code == 422
+    assert "document_value" in response.json()["error"]["fields"]
+    assert db_session.query(Seller).count() == 0
+
+
+@pytest.mark.parametrize("document_value", ["111.111.111-11", "00000000000"])
+def test_create_store_rejects_repeated_sequence(
+    client, db_session, auth_headers, document_value
+):
+    """Sequência repetida passa no cálculo do verificador, e `00000000000`
+    chegava a ganhar o selo Confiável (back-end#217)."""
+    user = persist_user(db_session, email="repeated@example.com")
+
+    response = client.post(
+        "/api/users/me/store",
+        headers=auth_headers(user.id),
+        json={**store_payload(), "document_value": document_value},
+    )
+
+    assert response.status_code == 422
+    assert "document_value" in response.json()["error"]["fields"]

@@ -20,7 +20,7 @@ def persist_seller(db_session, **overrides):
 
     data = {
         "document_type": "CPF",
-        "document_value": "123.456.789-00",
+        "document_value": "123.456.789-09",
     }
     data.update(overrides)
     seller = Seller(**data)
@@ -36,7 +36,7 @@ def test_seller_can_be_persisted_with_required_fields(db_session):
     assert seller.id is not None
     assert seller.user_id is not None
     assert seller.document_type == "CPF"
-    assert seller.document_value == "123.456.789-00"
+    assert seller.document_value == "123.456.789-09"
     assert seller.verified is False
     assert seller.terms_version is None
     assert seller.terms_accepted_at is None
@@ -47,7 +47,7 @@ def test_user_id_must_be_unique(db_session):
     persist_seller(
         db_session,
         user_id=user.id,
-        document_value="123.456.789-00",
+        document_value="123.456.789-09",
     )
 
     with pytest.raises(IntegrityError):
@@ -64,14 +64,14 @@ def test_document_value_must_be_unique(db_session):
     persist_seller(
         db_session,
         user_email="seller-doc-1@example.com",
-        document_value="123.456.789-00",
+        document_value="123.456.789-09",
     )
 
     with pytest.raises(IntegrityError):
         persist_seller(
             db_session,
             user_email="seller-doc-2@example.com",
-            document_value="123.456.789-00",
+            document_value="123.456.789-09",
         )
 
     db_session.rollback()
@@ -82,13 +82,13 @@ def test_document_type_accepts_cpf_and_cnpj(db_session):
         db_session,
         user_email="seller-cpf@example.com",
         document_type="CPF",
-        document_value="123.456.789-00",
+        document_value="123.456.789-09",
     )
     cnpj_seller = persist_seller(
         db_session,
         user_email="seller-cnpj@example.com",
         document_type="CNPJ",
-        document_value="12.345.678/0001-90",
+        document_value="12.345.678/0001-95",
     )
 
     assert cpf_seller.document_type == "CPF"
@@ -134,7 +134,7 @@ def test_get_by_user_id_devolve_none_para_usuario_sem_loja(db_session):
 
 def test_verify_store_muda_pendente_para_confiavel(db_session):
     seller = persist_seller(
-        db_session, document_type="CPF", document_value="123.456.789-00"
+        db_session, document_type="CPF", document_value="123.456.789-09"
     )
 
     resultado = SellerController(db_session).verify_store(seller.user_id)
@@ -161,7 +161,7 @@ def test_verify_store_404_quando_usuario_nao_e_vendedor(db_session):
 
 def test_verify_store_422_quando_documento_nao_bate_com_o_tipo(db_session):
     seller = persist_seller(
-        db_session, document_type="CNPJ", document_value="123.456.789-00"
+        db_session, document_type="CNPJ", document_value="123.456.789-09"
     )
 
     with pytest.raises(ValidationError):
