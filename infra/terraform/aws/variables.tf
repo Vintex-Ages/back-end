@@ -1,8 +1,8 @@
 variable "deployment" {
   type = string
   validation {
-    condition     = contains(["shared", "staging"], var.deployment)
-    error_message = "Selecione shared ou staging pelo arquivo de variáveis."
+    condition     = var.deployment == "staging"
+    error_message = "Selecione staging pelo arquivo de variáveis."
   }
 }
 
@@ -26,11 +26,11 @@ variable "budget_email_addresses" {
   type    = set(string)
   default = []
   validation {
-    condition = var.deployment != "shared" || (
+    condition = (
       length(var.budget_email_addresses) > 0 && length(var.budget_email_addresses) <= 10 && alltrue([
         for email in var.budget_email_addresses : can(regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$", email))
       ])
     )
-    error_message = "Shared exige entre 1 e 10 e-mails válidos para os alertas do Budget."
+    error_message = "Staging exige entre 1 e 10 e-mails válidos para os alertas do Budget."
   }
 }

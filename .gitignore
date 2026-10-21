@@ -29,7 +29,7 @@ override.tf.json
 .terraformrc
 terraform.rc
 
-# Configuração real fornecida pelo responsável (#272), nunca versionada.
+# Exclusões legadas: protegem configurações locais da estrutura anterior (#272).
 /infra/terraform/envs/shared/*.tfvars
 /infra/terraform/envs/shared/*.tfbackend
 *.tfplan
@@ -38,9 +38,12 @@ terraform.rc
 /infra/aws/staging/*.json
 /infra/aws/staging/*.env
 
-# Configuração real do ambiente AWS staging (#274).
+# Exclusões legadas do ambiente AWS staging (#274).
 /infra/terraform/envs/staging/*.tfvars
 /infra/terraform/envs/staging/*.tfbackend
 
 # Conta e backend AWS: configuração local, nunca imagem/Git.
 infra/terraform/account.tfvars.json
+
+# State persistente do bootstrap, identificação e locks locais (não é cache).
+/infra/terraform/state/

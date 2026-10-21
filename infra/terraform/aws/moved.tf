@@ -1,5 +1,4 @@
-# Preserve addresses from envs/shared and envs/staging, using their original
-# S3 keys. These moves stay within each state; states are never combined.
+# Address compatibility only; separate legacy states require reviewed migration.
 moved {
   from = module.network
   to   = module.network[0]

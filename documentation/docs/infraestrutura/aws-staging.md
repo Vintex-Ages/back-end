@@ -5,8 +5,8 @@ sidebar_position: 7
 # Ambiente AWS real de staging (#274)
 
 A [#274](https://github.com/Vintex-Ages/back-end/issues/274), parte do
-[épico #180](https://github.com/Vintex-Ages/back-end/issues/180), conecta a
-[base compartilhada #272](./aws-shared.md) ao
+[épico #180](https://github.com/Vintex-Ages/back-end/issues/180), reúne a
+[base #272](./aws-shared.md) e o
 [runtime e deploy manual #273](./aws-staging-runtime.md).
 O responsável executa bootstrap, apply e deploy com o perfil AWS autorizado na subconta institucional.
 **Os testes e o CI não provisionam recursos AWS.**
@@ -15,10 +15,10 @@ O responsável executa bootstrap, apply e deploy com o perfil AWS autorizado na 
 
 | Componente | Configuração |
 | --- | --- |
-| State | Mesmo bucket administrativo do shared, chave independente `vintex/staging/terraform.tfstate`, criptografia e lock nativo S3 |
+| State | Bucket administrativo criado pelo Terraform, chave `vintex/staging/terraform.tfstate`, criptografia e lock nativo S3 |
 | Provider | Ohio `us-east-2`, `allowed_account_ids`, sem endpoints locais ou access keys |
 | EC2 | `t4g.small`, Amazon Linux 2023 ARM64, EBS gp3 criptografado de 10 GB e swap de 1 GiB |
-| Rede | VPC/subnet recebidas do shared, IPv4 automático, nenhum ingress, saída TCP 443 |
+| Rede | VPC/subnet criadas no mesmo plano, IPv4 automático, nenhum ingress, saída TCP 443 |
 | Metadados | IMDSv2 obrigatório, hop limit 2, IPv6 desativado; guard da #273 instalado antes do Docker |
 | Mídia | `vintex-media-staging-<CONTA>`, privado, AES256, ACLs desativadas e HTTP negado |
 | Mensageria | `vintex-ai-staging` e DLQ, SSE-SQS, polling 20 s, visibilidade 180 s, redrive após 3 entregas, DLQ 14 dias |
@@ -46,7 +46,7 @@ permanecem na #273; não há mudança de firewall na máquina do desenvolvedor.
 ## IAM e isolamento
 
 `VintexStagingInstanceRole` permite autenticação ECR, pull dos dois repositórios
-shared, acesso apenas à mídia/fila/parâmetros/logs staging e agente SSM.
+da staging, acesso apenas à mídia/fila/parâmetros/logs staging e agente SSM.
 Não permite push de imagens, leitura de backups/recursos prod nem consumo da DLQ.
 A inspeção da DLQ é uma operação humana.
 
@@ -63,40 +63,37 @@ Os alvos universais EC2 têm janela flexível desativada, retry limitado a 2
 vezes e idade máxima 300 s, para evitar ligar horas depois do horário.
 Agendamento de desligamento após ativação sob demanda pertence ao pipeline futuro.
 
-## Conta vazia: sequência manual
+## Conta vazia: infraestrutura e aplicação
 
-1. Seguir o [bootstrap da #272](./aws-shared.md#preparação-manual-de-uma-conta-vazia):
-   configurar `account.tfvars.json` com conta/bucket/e-mails, selecionar o perfil
-   institucional e aplicar `ENV=bootstrap`. O bucket é criado pelo Terraform.
-2. Revisar/aplicar `ENV=shared`; confirmar Budget, rede e os dois ECRs.
-3. O mesmo arquivo de conta alimenta o backend e o provider de staging. O state
-   é independente (`vintex/staging/terraform.tfstate`). A role da EC2 não o acessa.
-4. Preparar o ambiente reutilizando o root AWS, na raiz do backend:
+Configure o perfil institucional e o único `account.tfvars.json` conforme o
+[README Terraform](https://github.com/Vintex-Ages/back-end/blob/develop/infra/terraform/README.md),
+incluindo os e-mails reais do Budget. Na raiz do backend:
 
-   ```bash
-   export AWS_PROFILE=vintex-terraform
-   aws sts get-caller-identity
-   make terraform-init ENV=staging
-   make terraform-plan ENV=staging
-   make terraform-show ENV=staging
-   ```
+```bash
+make terraform-validate staging
+make infra-deploy staging
+```
 
-   Staging lê VPC/subnet do state shared. O plano recusa outra conta/região,
-   rede de outro projeto ou subnet sem IPv4 automático. Não há cópia manual de IDs.
-5. Confirmar conta, Ohio, ausência de ingress e recursos próprios; aplicar:
+O primeiro comando não exige credenciais e usa cache QA com backend desativado.
+O segundo verifica a conta em us-east-2 e conduz dois planos/applies revisados:
+criação/proteção do bucket administrativo e staging completa (rede, ECR, Budget e
+runtime AWS). Cada apply pede o nome da etapa; falha interrompe a sequência.
+Reexecutar o mesmo comando após corrigir a causa gera novos planos sobre o state
+preservado. Não há retry automático nem criação manual de bucket.
 
-   ```bash
-   make terraform-apply ENV=staging
-   make terraform-output ENV=staging
-   ```
+`state/bootstrap/` conserva state e identidade do bucket fora do cache; faça
+backup privado. O state completo da staging usa `vintex/staging/terraform.tfstate`,
+com lock S3. Estados antigos separados exigem migração revisada. A role EC2 não
+acessa state. States/plans podem conter SecureString após refresh, mesmo com
+ignore_changes; nunca os anexe à issue, Git ou imagem.
 
-   O apply exige digitar o ambiente e usa somente o plano salvo/revisado.
-   Se a configuração mudar ou o apply falhar, gerar um novo plano.
-   **State/plan podem conter SecureString após refresh**, mesmo com ignore_changes.
-   Não anexar esses arquivos à issue; arquivos locais são privados e ignorados
-   pelo Git/Docker. O apply não publica contêineres nem o front.
+Os comandos granulares `make terraform-{init,plan,show,apply,output} staging`
+continuam disponíveis para operação por etapa após preparar o bucket. Comandos
+Terraform nativos e as diferenças em relação ao runner estão no README.
 
-6. Aguardar a instância ficar `Online` no Systems Manager. Abrir sessão:
+Depois da infraestrutura, publicar a aplicação pelo procedimento #273:
+
+1. Aguardar a instância ficar `Online` no Systems Manager. Abrir sessão:
 
    ```bash
    aws ssm start-session --profile vintex-terraform --region us-east-2 --target <INSTANCE_ID>
@@ -170,24 +167,24 @@ Após o primeiro deploy, anexar evidências sem segredos:
 
 Não usar `terraform destroy` para rollback de release. Destruir staging remove
 seu disco; esvaziar mídia sintética é uma operação manual explícita se necessária
-antes de remover bucket. Shared tem state próprio e não é destruído junto.
+antes de remover bucket. Rede, ECR e Budget agora pertencem ao mesmo state da
+staging; um destroy completo também os alcança. O bucket administrativo tem
+state próprio e proteção contra destruição.
 
 ## Verificações sem AWS
 
 ```bash
-terraform fmt -check -recursive infra/terraform
-terraform -chdir=infra/terraform/aws init -backend=false -input=false -lockfile=readonly
-terraform -chdir=infra/terraform/aws validate
-terraform -chdir=infra/terraform/aws test
-pytest tests/test_infra_staging_config.py tests/test_staging_runtime.py -v
+make terraform-fmt
+make terraform-validate staging
+make terraform-test staging
+pytest tests/test_terraform_env.py tests/test_terraform_make.py tests/test_infra_staging_config.py tests/test_staging_runtime.py -v
 ```
 
-Usar checkout separado se o diretório já foi inicializado com backend real.
-Todos os testes Terraform usam provider mockado e plan: host, IAM, serviços,
-Scheduler, outputs e recusa de inputs/rede incorretos. Pytest cobre contratos de
-backend/provider, lifecycle, sintaxe/ordem do bootstrap e parâmetros provisórios.
-CI valida `envs/local`, `bootstrap` e `aws`, sem credenciais ou apply. Downloads do
-registry são necessários no init; isso não é acesso à conta AWS.
+Os caches QA e operacionais são distintos; não é necessário outro checkout para
+validar. Os testes Terraform só usam provider mockado e plan, cobrindo rede/ECR,
+Budget, host/IAM, serviços, Scheduler, outputs e inputs inválidos. Pytest cobre
+state/layout, retomada, CLI Make, região, segredos e isolamento. CI valida os roots
+local/bootstrap/aws sem conta ou apply. Providers públicos podem ser baixados.
 
 ## Referências
 

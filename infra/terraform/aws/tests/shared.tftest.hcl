@@ -2,7 +2,7 @@
 mock_provider "aws" {}
 
 variables {
-  deployment             = "shared"
+  deployment             = "staging"
   state_bucket           = "vintex-test-state"
   expected_account_id    = "123456789012"
   budget_email_addresses = ["infra@example.test"]
@@ -38,16 +38,22 @@ override_resource {
   }
 }
 
-run "shared_outputs_para_staging" {
+override_data {
+  target          = module.host[0].data.aws_ssm_parameter.al2023
+  override_during = plan
+  values          = { value = "ami-00000000000000001" }
+}
+override_data {
+  target          = module.host[0].data.aws_ami.al2023
+  override_during = plan
+  values          = { id = "ami-00000000000000001", architecture = "arm64" }
+}
+run "base_no_mesmo_state_da_staging" {
   command = plan
-  assert {
-    condition     = length(module.host) == 0 && length(module.services) == 0 && length(module.scheduler) == 0 && length(data.terraform_remote_state.shared) == 0
-    error_message = "Shared deve funcionar sem state prévio e sem recursos staging."
-  }
 
   assert {
     condition     = output.aws_region == "us-east-2" && output.account_id == var.expected_account_id
-    error_message = "Shared deve usar Ohio e expor a conta esperada."
+    error_message = "Staging deve usar Ohio e expor a conta esperada."
   }
   assert {
     condition     = output.vpc_id == "vpc-shared-test" && output.public_subnet_id == "subnet-shared-test"

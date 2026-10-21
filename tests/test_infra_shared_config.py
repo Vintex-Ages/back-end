@@ -42,10 +42,10 @@ def test_state_is_separate_encrypted_and_uses_native_lock():
         "expected_account_id": "123456789012",
         "state_bucket": "vintex-test-state",
     }
-    backend = backend_config("shared", account, Path("/tmp/runtime"))
+    backend = backend_config("staging", account, Path("/tmp/runtime"))
     assert backend == {
         "bucket": "vintex-test-state",
-        "key": "vintex/shared/terraform.tfstate",
+        "key": "vintex/staging/terraform.tfstate",
         "region": "us-east-2",
         "encrypt": True,
         "use_lockfile": True,

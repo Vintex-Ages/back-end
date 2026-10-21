@@ -1,6 +1,6 @@
 # Módulos Terraform locais e AWS real
 
-Módulos da base AWS compartilhada (#272), usados exclusivamente por `aws` com `config/shared.tfvars`:
+Módulos da base AWS compartilhada (#272), integrados ao root completo `aws` com `config/staging.tfvars`:
 
 - `shared_network`: VPC EC2, uma subnet pública com IP automático, IGW e rota.
   O grupo da staging, sem ingress, pertence à #274. Não usa ECS/VPC Link.
@@ -9,8 +9,8 @@ Módulos da base AWS compartilhada (#272), usados exclusivamente por `aws` com `
 - `project_budget`: Budget mensal de US$35 para toda a conta dedicada,
   alertas reais em 28/30/35 e previsão em 30, e-mails fornecidos localmente.
 
-Os módulos herdam o provider AWS do ambiente. `shared` restringe região/conta
-e usa state S3 separado, com lock nativo. Seus testes são planos mockados;
+Os módulos herdam o provider AWS do ambiente. a composição staging restringe região/conta
+e usa um state S3 completo, com lock nativo. Seus testes são planos mockados;
 o apply real é manual. Veja [AWS compartilhada](../../../documentation/docs/infraestrutura/aws-shared.md).
 
 Módulos da VE-14, VE-16 e VE-17:
@@ -44,7 +44,7 @@ permite somente HTTPS de saída e entrada privada do VPC Link.
 
 Os recursos declarados aqui são verificados apenas com `terraform test`
 mockado. O ambiente local envia EC2 ao MiniStack e IAM ao LocalStack; ele não
-executa `apply`. A base AWS real, backend remoto e Budget estão em `aws` com `config/shared.tfvars`
+executa `apply`. A base AWS real, backend remoto e Budget estão em `aws` com `config/staging.tfvars`
 (#272), com provider separado.
 
 PostgreSQL e pgvector (VE-15, #166/#185) são provisionados pelo Compose e pelas
@@ -70,5 +70,4 @@ EC2 segue #272 → #273 → #274; a computação local ECS permanece em hold.
   role limitada ao ARN/tags da instância e trust da conta/grupo Scheduler.
 
 Os tempos opcionais de `ai_messaging` preservam defaults locais e expõem o
-contrato efetivo em `delivery_settings`. Staging usa `aws` com `config/staging.tfvars` e state
-separado; [procedimento manual](../../../documentation/docs/infraestrutura/aws-staging.md).
+contrato efetivo em `delivery_settings`. Staging usa `aws` com `config/staging.tfvars` no mesmo state de rede/ECR/Budget; [procedimento manual](../../../documentation/docs/infraestrutura/aws-staging.md).
