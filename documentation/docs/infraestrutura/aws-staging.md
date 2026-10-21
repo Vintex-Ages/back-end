@@ -238,22 +238,51 @@ visíveis no log; não foram silenciados para obter aprovação. Ao concluir,
 `docker compose ... stop` preservou o volume do banco e os demais volumes.
 Não foi executado `infra-down`, `down -v`, prune ou remoção de dados existentes.
 
+### Preparação da máquina e execução ARM64
+
+Atualização posterior ao ensaio geral, usando o checkout `7a54462`. O responsável
+instalou as ferramentas administrativas; depois foram verificados:
+
+| Verificação | Resultado |
+| --- | --- |
+| Skopeo / Session Manager Plugin | 1.24.1 / 1.2.896.0 instalados |
+| QEMU user static/binfmt | 11.1.2; registro host aarch64 habilitado, flags PF |
+| Builder `vintex-arm64` | docker-container, BuildKit 0.33.1, suporte linux/arm64; padrão preservado |
+| Build do Dockerfile backend | Concluído com Buildx/QEMU; imagem inspecionada linux/arm64 |
+| Smoke backend ARM64 | aarch64, importação e `/health` 200 por FastAPI TestClient, sem rede externa |
+| Manifesto FreeLLMAPI ARM64 | SHA-256 conferido com o digest fixado no runtime |
+| FreeLLMAPI ARM64, 128 MiB | Exit 137 e OOMKilled=true |
+| FreeLLMAPI ARM64, 512 MiB | `/api/ping` saudável, SQLite criado, OOMKilled=false |
+
+Os testes FreeLLMAPI não usaram chave de provedor nem rede externa. O smoke do
+backend usou configuração SQLite em memória, sem Uvicorn, conexão PostgreSQL,
+migrations ou composição AWS completa; os testes anteriores de banco e E2E são
+evidências separadas. Nenhum envio ao ECR ou túnel SSM real foi executado.
+Contêineres/volumes temporários e a tag de teste backend foram removidos;
+o builder dedicado e seu cache foram preservados.
+
+O resultado com 512 MiB não estabelece o mínimo necessário nem o consumo nativo
+da t4g.small. O Compose continua em 128 MiB, pendente de medição na EC2.
+O deploy espera todos os serviços saudáveis; OOM do gateway impede esse aceite.
+Os resultados acima substituem a limitação anterior `exec format error` e a
+pendência de instalação das ferramentas nesta máquina.
+
 ### Decisão de prontidão
 
 O código passou no ensaio local e está apto à revisão para iniciar o
-provisionamento manual após o merge da #289. A máquina usada neste ensaio
-ainda precisa de **Session Manager Plugin**, **Skopeo** e **suporte de build
-ARM64** para completar publicação e acesso. Seu builder só lista AMD64/386;
-executar a imagem ARM64 retorna `exec format error`. Preparar QEMU ou um builder
-ARM64 antes de construir o backend. A imagem FreeLLMAPI ARM64 foi conferida por
-digest/arquitetura, mas sua execução efetiva fica pendente da EC2 ARM64.
+provisionamento manual após o merge da #289. As ferramentas de publicação e
+acesso estão preparadas nesta máquina. O destinatário do Budget foi informado
+pelo responsável e configurado no arquivo administrativo local ignorado por
+Git/Docker. Conta, bucket e lista de e-mails foram validados apenas em formato,
+sem credenciais nem STS real; nenhum dado administrativo real é publicado aqui.
 
-A inspeção local também encontrou `budget_email_addresses` vazio no arquivo
-administrativo. Informar de 1 a 10 destinatários reais antes de executar
-`infra-deploy`; o runner recusa a configuração vazia. Conta e nome do bucket
-passaram na validação de formato, sem consulta de credenciais ou STS real.
+O FreeLLMAPI permanece hospedado na EC2 com cotas gratuitas dos provedores,
+sem Premium, conforme o [roteiro de runtime](./aws-staging-runtime.md#parâmetros-e-ia).
+Memória nativa e compatibilidade do limite de payload de imagens continuam
+[pendências de integração](./aws-staging-runtime.md#pendências-para-o-aceite-de-ia),
+registradas para review; não foram corrigidas por uma alteração documental.
 
-Após preparar essas ferramentas e os artefatos reais, o responsável confirma
+Após preparar os artefatos reais, o responsável confirma
 conta/permissões e planos, executa a infraestrutura, preenche os cinco parâmetros
 obrigatórios e publica o app. Chave de IA não bloqueia o primeiro deploy.
 SSM/boot, IAM/SCP, logs AWS, persistência EBS, consumo de recursos e acesso ao

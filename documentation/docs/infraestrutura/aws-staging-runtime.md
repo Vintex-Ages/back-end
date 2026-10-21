@@ -58,6 +58,19 @@ features; esta task não inventa cotas ainda não implementadas no backend.
 
 ## Parâmetros e IA
 
+O FreeLLMAPI é um roteador hospedado **na própria EC2**, não uma API de inferência
+hospedada em freellmapi.co. Os modelos são executados pelos provedores externos;
+a instância Vintex não executa os modelos. O fluxo existente é
+**API → SQS → worker → FreeLLMAPI → provedor externo**. O worker usa
+`http://freellmapi:3001/v1/chat/completions` na rede Docker llm, com modelo `auto`.
+API, frontend e navegador não recebem as chaves dos provedores.
+
+Usar apenas as cotas gratuitas dos provedores habilitados, com contas/chaves
+próprias de staging. Não contratar Premium: ele altera a atualização do catálogo,
+não fornece inferência hospedada. O catálogo gratuito chega por snapshots mensais;
+aparecer nele não garante acesso, saldo ou capacidade de visão.
+Referência: [README v0.14.2](https://github.com/tashfeenahmed/freellmapi/blob/v0.14.2/README.md).
+
 Cadastrar via console, sem valores em Git, histórico de shell ou logs:
 
 | Caminho em `/vintex/staging/` | Tipo / conteúdo |
@@ -69,6 +82,14 @@ Cadastrar via console, sem valores em Git, histórico de shell ou logs:
 | `llm_admin_password` | SecureString, senha forte do administrador |
 | `llm_api_key` | SecureString, token unificado criado no dashboard; opcional no primeiro deploy |
 
+São credenciais diferentes: `llm_admin_email`/`llm_admin_password` autenticam o
+dashboard; `llm_encryption_key` protege as chaves no SQLite; as chaves dos
+provedores são cadastradas no dashboard; `llm_api_key` autentica o worker no
+roteador e vira `FREELLMAPI_API_KEY` em seu env file. Não colocar uma chave de
+provedor diretamente em `llm_api_key`. O destinatário do Budget é independente
+do administrador do dashboard. Para testes locais, `FREELLMAPI_API_KEY` continua
+sendo lida do `.env` pelo Compose local.
+
 O script gera quatro env files raw, separados por serviço, com modo 0600 em
 diretórios root 0700. A URL PostgreSQL usa **db:5432**, com senha percent-encoded;
 nenhum endpoint de emulador é utilizado. APP_ENV=production ativa a proteção JWT
@@ -78,10 +99,14 @@ FreeLLMAPI. O deploy ignora parâmetros provisórios da #274; os obrigatórios i
 retry/DLQ, sem derrubar a API. Nenhum health check invoca inferência.
 
 FreeLLMAPI recebe ENCRYPTION_KEY e FREEAPI_CONFIG_JSON para criar o administrador
-no primeiro boot; alterações posteriores da senha requerem o procedimento do
-dashboard. Seu SQLite persiste em volume próprio. Nunca trocar a chave de
-criptografia com SQLite existente. Nunca usar chaves/contas de produção na staging.
-Não existe auto-update nem Watchtower.
+antes de abrir o listener, somente enquanto não houver conta cadastrada.
+Alterações posteriores da senha requerem o procedimento do dashboard. Seu SQLite
+persiste em `/app/server/data`, no volume `vintex-staging-llmdata` sobre EBS;
+preservar banco e chave de criptografia juntos. A imagem é fixada por digest,
+sem Watchtower. `FREELLMAPI_UPDATE_CHECK=off` desliga a consulta de atualização do
+software, não a sincronização do catálogo.
+Referências: [instalação v0.14.2](https://github.com/tashfeenahmed/freellmapi/blob/v0.14.2/docs/en/install/01-install.md),
+[variáveis v0.14.2](https://github.com/tashfeenahmed/freellmapi/blob/v0.14.2/.env.example).
 
 ## Build e envio manual (máquina do responsável)
 
@@ -99,7 +124,7 @@ export VINTEX_SHA=0000000000000000000000000000000000000000
 export VINTEX_ECR="$VINTEX_ACCOUNT_ID.dkr.ecr.us-east-2.amazonaws.com"
 aws sts get-caller-identity
 aws ecr get-login-password --region us-east-2 | docker login --username AWS --password-stdin "$VINTEX_ECR"
-docker buildx build --platform linux/arm64 --tag "$VINTEX_ECR/vintex-backend:$VINTEX_SHA" --push .
+docker buildx build --builder vintex-arm64 --platform linux/arm64 --tag "$VINTEX_ECR/vintex-backend:$VINTEX_SHA" --push .
 ```
 
 Fazer o build a partir do checkout do SHA informado; não usar tags mutáveis.
@@ -109,7 +134,7 @@ e o manifesto ARM64 antes de implantar.
 Antes de publicar artefatos, conferir na máquina do responsável:
 
 ```bash
-docker buildx inspect
+docker buildx inspect vintex-arm64 --bootstrap
 skopeo --version
 session-manager-plugin --version
 ```
@@ -119,6 +144,15 @@ garante emulação ARM64. Sem esse suporte, preparar QEMU ou um builder ARM64
 antes do build. Skopeo é usado pelo espelhamento abaixo e o Session Manager
 Plugin pelo acesso/túnel SSM. São pré-requisitos da publicação e do acesso;
 não são instalados pelo Terraform no computador do responsável.
+
+Na máquina preparada em 21/10/2026, Skopeo 1.24.1, Session Manager Plugin
+1.2.896.0 e QEMU user static/binfmt 11.1.2 já foram instalados. O builder dedicado
+`vintex-arm64` usa o driver docker-container e oferece `linux/arm64`; o builder
+padrão foi preservado. Em outra máquina, preparar um builder com esse nome ou
+substituí-lo pelo builder ARM64 disponível. QEMU permite executar binários ARM64
+durante o build no host x86_64; não é necessário instalar QEMU na EC2 ARM64.
+Os [resultados e limites do ensaio](./aws-staging.md#preparação-da-máquina-e-execução-arm64)
+não substituem o aceite operacional na AWS.
 
 Espelhar o manifesto ARM64 oficial FreeLLMAPI v0.14.2 preservando o digest, com
 Skopeo instalado. Credenciais do espelho são temporárias; nunca adicionar ao Git:
@@ -201,14 +235,43 @@ aws ssm start-session --profile vintex-terraform --region us-east-2 --target <IN
 
 Acessar http://localhost:8080 e /health; o frontend usa /api no mesmo domínio.
 Para o dashboard, outra sessão com portNumber 3001/localPortNumber 3001.
-Cadastrar provedores staging, gerar token unificado, gravar `llm_api_key` no
-Parameter Store e reexecutar deploy para atualizar worker.
+
+1. Acessar http://localhost:3001 com o administrador definido no Parameter Store.
+2. Na página **Keys**, cadastrar chaves de provedores com cota gratuita separada
+   da produção. Habilitar na cadeia de fallback ao menos um modelo com visão.
+3. Obter o token unificado na página **Keys**, gravá-lo em
+   `/vintex/staging/llm_api_key` como SecureString e reexecutar o deploy para
+   atualizar o env file privado do worker.
+4. Enviar uma imagem sintética pequena pelo fluxo da aplicação e conferir o
+   resultado persistido. `model=auto` seleciona modelos com visão; sem modelo
+   habilitado compatível, o gateway pode responder 422 (`no_vision_model`).
+
+`/api/ping` e `/v1/models` não comprovam inferência. A listagem
+`/v1/models?available=true` ajuda a conferir modelos disponíveis, mas a entrada
+virtual `auto` pode aparecer mesmo sem provedor utilizável. Exigir um job real
+com imagem e resposta no contrato do backend. Referência:
+[API v0.14.2](https://github.com/tashfeenahmed/freellmapi/blob/v0.14.2/docs/en/api/01-rest-api.md).
 
 Health worker verifica processo, banco e acesso à fila; não prova inferência nem
 processamento de um job. Validar separadamente upload/leitura de mídia, job
 sintético, retry/DLQ, logs e persistência após restart. A role e IMDSv2 reais
 só podem ser comprovados na EC2: token/credenciais devem ser alcançáveis em
 API/worker e inacessíveis em proxy/db/FreeLLMAPI. Não imprimir credenciais.
+
+### Pendências para o aceite de IA
+
+- **Memória:** o Compose mantém 128 MiB. Em ARM64 sob QEMU, o processo terminou
+  com exit 137/OOM nesse limite e passou com 512 MiB. Não foi medido o pico nem
+  testado um limite intermediário; não atribuir a diferença somente à emulação.
+  Validar na EC2 nativa antes de aprovar o dimensionamento. Como o deploy espera
+  os cinco serviços saudáveis, uma falha do contêiner FreeLLMAPI pode impedir o
+  deploy mesmo sem chave de IA. Chave opcional não torna o serviço opcional.
+- **Tamanho do payload:** o adaptador aceita até 8 MiB por imagem e 24 MiB no
+  total. A codificação base64 pode transformar 24 MiB em 32 MiB, mais o JSON,
+  ultrapassando o limite padrão `REQUEST_BODY_LIMIT_MB=25` do gateway e causando
+  413 antes da normalização das imagens. O runtime não sobrescreve esse limite.
+  Alinhar os limites e testar suas bordas em ajuste específico relacionado à
+  integração da #169; esta atualização apenas registra a divergência.
 
 ## Testes sem AWS
 
