@@ -186,6 +186,79 @@ Budget, host/IAM, serviços, Scheduler, outputs e inputs inválidos. Pytest cobr
 state/layout, retomada, CLI Make, região, segredos e isolamento. CI valida os roots
 local/bootstrap/aws sem conta ou apply. Providers públicos podem ser baixados.
 
+## Ensaio local de prontidão — 21/10/2026 (#288 / PR #289)
+
+Revalidação da composição completa, iniciada no commit `1cf85287f9391f5cd12aec09a1324bb2ed72a264`.
+As únicas alterações versionadas posteriores deste ensaio são neste relatório e no roteiro
+manual, para remover a etapa shared antiga e documentar os pré-requisitos do
+computador do responsável. Nenhum apply, credencial real de IA ou recurso AWS
+foi utilizado. O CI do commit publicado deve continuar aprovado antes do merge.
+
+| Verificação | Resultado |
+| --- | --- |
+| `make infra-qa` | Ruff, Black, Terraform fmt/validate aprovados |
+| Terraform validate/test local, bootstrap e staging | 6 + 3 + 19 planos mockados aprovados |
+| Testes focados Terraform/Make/config/documentação/Compose no checkout | 99 aprovados |
+| Testes runtime/Compose no checkout | 33 aprovados (há sobreposição do teste Compose com a linha anterior) |
+| `make infra-up` | Quatro serviços saudáveis, migrations até `e4a2c7b9d1f3`, seeds aprovados |
+| Suíte geral na imagem reconstruída | 563 aprovados, 76 pulados, 325 warnings |
+| PostgreSQL no banco migrado do Compose | 1 probe aprovado; 33 testes PostgreSQL aprovados e 2 migrations puladas por segurança |
+| LocalStack / SQS / mídia / MiniStack / interoperabilidade | Respectivamente 2 / 2 / 3 / 3 / 3 testes aprovados, seeds e verificações aprovados |
+| Worker e E2E HTTP → mídia → SQS → worker → banco | 4 aprovados; sucesso sintético, erro do provedor e chave ausente/retry/DLQ |
+| Persistência após restart do db | Registro sintético preservado em `db:5432`, depois removido; API saudável |
+| PostgreSQL descartável no mesmo contêiner db | 35 aprovados, incluindo as duas migrations com downgrade/upgrade; banco temporário removido |
+| Nginx real | SPA, prefixo API, 404, cache e rate limit aprovados |
+| Guard IMDS em namespaces isolados | API/worker permitidos; proxy/db/FreeLLMAPI bloqueados; firewall do host inalterado |
+| FreeLLMAPI v0.14.2 AMD64 | `/api/ping` saudável, SQLite criado, sem chave e sem rede, limite 128 MiB, sem OOM no smoke test |
+| Manifestos oficiais fixados | Nginx, pgvector e FreeLLMAPI disponíveis em ARM64 |
+
+Os logs resumidos e o SHA final são anexados à issue/PR. Os testes mockados não
+comprovam chamadas AWS e o smoke curto não comprova dimensionamento sob carga.
+O teste de proxy usa frontend/backend sintéticos; não valida o build real do
+front-end. Este ensaio não sobe os cinco serviços do Compose AWS com awslogs,
+IAM e IMDS reais: essa composição precisa ser validada na EC2.
+
+### Por que há testes pulados
+
+Na suíte geral, os 76 skips correspondem a:
+
+- 35 testes PostgreSQL: executados posteriormente contra o contêiner db;
+  os dois que alteram schema só executam no banco descartável exclusivo.
+- 17 testes opt-in de infraestrutura: executados pelos alvos específicos de
+  `infra-local-test`, que terminam com `[infra-local-test] ok`.
+- 21 testes da CLI Make, 1 de Docker Compose e 1 de metadado Git: ferramentas
+  e `.gitignore` não fazem parte da imagem API; verificados no checkout.
+- 1 teste genérico de descoberta em `/api/products/1`: fixture sem produto
+  retorna 404 e aciona um skip preexistente. Os testes próprios de detalhe de
+  produto continuam passando; a explicação antiga do skip não prova ausência
+  da funcionalidade. Ajuste desse teste de produto fica fora desta task.
+
+Nenhum teste opt-in de infraestrutura ficou sem execução. Os warnings são
+visíveis no log; não foram silenciados para obter aprovação. Ao concluir,
+`docker compose ... stop` preservou o volume do banco e os demais volumes.
+Não foi executado `infra-down`, `down -v`, prune ou remoção de dados existentes.
+
+### Decisão de prontidão
+
+O código passou no ensaio local e está apto à revisão para iniciar o
+provisionamento manual após o merge da #289. A máquina usada neste ensaio
+ainda precisa de **Session Manager Plugin**, **Skopeo** e **suporte de build
+ARM64** para completar publicação e acesso. Seu builder só lista AMD64/386;
+executar a imagem ARM64 retorna `exec format error`. Preparar QEMU ou um builder
+ARM64 antes de construir o backend. A imagem FreeLLMAPI ARM64 foi conferida por
+digest/arquitetura, mas sua execução efetiva fica pendente da EC2 ARM64.
+
+A inspeção local também encontrou `budget_email_addresses` vazio no arquivo
+administrativo. Informar de 1 a 10 destinatários reais antes de executar
+`infra-deploy`; o runner recusa a configuração vazia. Conta e nome do bucket
+passaram na validação de formato, sem consulta de credenciais ou STS real.
+
+Após preparar essas ferramentas e os artefatos reais, o responsável confirma
+conta/permissões e planos, executa a infraestrutura, preenche os cinco parâmetros
+obrigatórios e publica o app. Chave de IA não bloqueia o primeiro deploy.
+SSM/boot, IAM/SCP, logs AWS, persistência EBS, consumo de recursos e acesso ao
+front real permanecem critérios de aceite operacional do primeiro deploy.
+
 ## Referências
 
 - [SSM managed policy](https://docs.aws.amazon.com/aws-managed-policy/latest/reference/AmazonSSMManagedInstanceCore.html)

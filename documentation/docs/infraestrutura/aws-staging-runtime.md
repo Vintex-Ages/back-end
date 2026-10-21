@@ -85,13 +85,14 @@ Não existe auto-update nem Watchtower.
 
 ## Build e envio manual (máquina do responsável)
 
-Após selecionar o perfil AWS, aplicar bootstrap/shared e depois staging, usar os URLs ECR dos outputs. Exemplo
+Após selecionar o perfil AWS e executar `make infra-deploy staging`, usar os
+URLs ECR dos outputs. O comando conduz o bucket e a infraestrutura completa;
+não existe aplicação separada de shared. Exemplo
 com valores públicos fictícios, substituindo conta e SHA pelo release aprovado:
 
 ```bash
 export AWS_PROFILE=vintex-terraform
 aws sts get-caller-identity
-export AWS_PROFILE=vintex
 export AWS_REGION=us-east-2
 export VINTEX_ACCOUNT_ID=123456789012
 export VINTEX_SHA=0000000000000000000000000000000000000000
@@ -104,6 +105,20 @@ docker buildx build --platform linux/arm64 --tag "$VINTEX_ECR/vintex-backend:$VI
 Fazer o build a partir do checkout do SHA informado; não usar tags mutáveis.
 Em host x86, preparar previamente Buildx/QEMU para ARM64. Verificar o scan ECR
 e o manifesto ARM64 antes de implantar.
+
+Antes de publicar artefatos, conferir na máquina do responsável:
+
+```bash
+docker buildx inspect
+skopeo --version
+session-manager-plugin --version
+```
+
+O builder precisa listar `linux/arm64`; possuir Buildx em um host x86 não
+garante emulação ARM64. Sem esse suporte, preparar QEMU ou um builder ARM64
+antes do build. Skopeo é usado pelo espelhamento abaixo e o Session Manager
+Plugin pelo acesso/túnel SSM. São pré-requisitos da publicação e do acesso;
+não são instalados pelo Terraform no computador do responsável.
 
 Espelhar o manifesto ARM64 oficial FreeLLMAPI v0.14.2 preservando o digest, com
 Skopeo instalado. Credenciais do espelho são temporárias; nunca adicionar ao Git:
