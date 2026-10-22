@@ -21,6 +21,10 @@ SHA_PATTERN = re.compile(r"[0-9a-f]{40}")
 LLM_DIGEST = "1942b1437628deb70699d7371dab3cb7e65c296c4e1db345218b4de2102149eb"
 
 
+class RuntimeCompatibilityError(ValueError):
+    """Safe operator guidance, without subprocess output or secret values."""
+
+
 def run(args: list[str], *, env: dict[str, str] | None = None) -> str:
     """Capture command output: Docker/SDK errors can contain secret values."""
     result = subprocess.run(args, env=env, capture_output=True, text=True, check=False)
@@ -35,6 +39,26 @@ def private_write(path: Path, content: str) -> None:
     descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(descriptor, "w") as target:
         target.write(content)
+
+
+def validate_runtime_versions() -> None:
+    """Reject unsupported gateways before reading secrets or changing services."""
+    guidance = (
+        "Staging requires Docker Engine API >=1.48 and Compose >=2.33.1; "
+        "update Docker/Compose and rerun the same deploy command"
+    )
+    requirements = (
+        (["docker", "version", "--format", "{{.Server.APIVersion}}"], (1, 48, 0)),
+        (["docker", "compose", "version", "--short"], (2, 33, 1)),
+    )
+    for command, minimum in requirements:
+        try:
+            version = run(command).strip().removeprefix("v")
+        except (RuntimeError, OSError):
+            raise RuntimeCompatibilityError(guidance) from None
+        match = re.fullmatch(r"(\d+)\.(\d+)(?:\.(\d+))?(?:[-+].*)?", version)
+        if match is None or tuple(int(n or 0) for n in match.groups()) < minimum:
+            raise RuntimeCompatibilityError(guidance)
 
 
 def login_ecr(client: Any, registry: str) -> None:
@@ -116,6 +140,7 @@ def render_secrets(
         "llm.env": {
             "NODE_ENV": "production",
             "PORT": "3001",
+            "REQUEST_BODY_LIMIT_MB": "40",
             "ENCRYPTION_KEY": values["llm_encryption_key"],
             "FREELLMAPI_UPDATE_CHECK": "off",
             "FREEAPI_CONFIG_JSON": json.dumps(
@@ -326,6 +351,7 @@ def main() -> None:
         raise ValueError("Deploy requires root on the ARM64 staging host")
     run(["systemctl", "is-active", "--quiet", "vintex-imds-guard.service"])
     run(["/usr/local/sbin/vintex-imds-guard"])
+    validate_runtime_versions()
     config = json.loads(args.config.read_text())
     validate_config(config)
     session = boto3.Session(region_name=REGION)
@@ -366,7 +392,10 @@ if __name__ == "__main__":
         main()
     except Exception as error:
         # Do not expose subprocess output, SDK payloads, secrets or configuration.
-        print(
-            f"[staging] deploy failed ({type(error).__name__}); inspect protected host state"
-        )
+        if isinstance(error, RuntimeCompatibilityError):
+            print(f"[staging] {error}")
+        else:
+            print(
+                f"[staging] deploy failed ({type(error).__name__}); inspect protected host state"
+            )
         raise SystemExit(1) from None
