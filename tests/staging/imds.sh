@@ -32,8 +32,8 @@ ip -n llm address add 172.30.74.3/24 dev guestllm
 ip -n llm link set guestllm up
 ip -n llm link set lo up
 ip -n llm route add default via 172.30.74.1
-# The real worker has both interfaces. Route metadata through app, retaining
-# the llm interface for the private gateway connection.
+# The real worker has two fixed interfaces. Both valid bridge/address pairs
+# must work, independently of the gateway selected by Docker 25.
 ip link add hostworkerllm type veth peer name guestworkerllm
 ip link set hostworkerllm master br-vintex-llm
 ip link set hostworkerllm up
@@ -53,12 +53,23 @@ for denied in service2 service5 llm; do
         exit 1
     fi
 done
-# Even the worker cannot use its llm address to bypass the guard.
+# The worker retains its instance-role access when Docker chooses llm.
 ip -n service4 route replace default via 172.30.74.1
-if ip netns exec service4 curl -sf --max-time 1 http://169.254.169.254/ >/dev/null; then
-    echo 'IMDS unexpectedly reachable through worker llm interface' >&2
+ip netns exec service4 curl -sf --max-time 2 http://169.254.169.254/ >/dev/null
+# A valid worker source on the wrong bridge must still be rejected. Give
+# replies an explicit route so a routing failure cannot mask a broken guard.
+ip route add 172.30.73.4/32 via 172.30.74.2 dev br-vintex-llm
+if ip netns exec service4 curl --interface 172.30.73.4 -sf --max-time 1 http://169.254.169.254/ >/dev/null; then
+    echo 'IMDS unexpectedly reachable from app source on llm bridge' >&2
     exit 1
 fi
+ip route del 172.30.73.4/32
 ip -n service4 route replace default via 172.30.73.1
 ip netns exec service4 curl -sf --max-time 2 http://169.254.169.254/ >/dev/null
+ip route add 172.30.74.2/32 via 172.30.73.4 dev br-vintex-app
+if ip netns exec service4 curl --interface 172.30.74.2 -sf --max-time 1 http://169.254.169.254/ >/dev/null; then
+    echo 'IMDS unexpectedly reachable from llm source on app bridge' >&2
+    exit 1
+fi
+ip route del 172.30.74.2/32
 echo '[staging-imds] API/worker allowed; proxy/db/FreeLLMAPI blocked'

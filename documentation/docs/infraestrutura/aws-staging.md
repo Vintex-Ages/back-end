@@ -262,8 +262,10 @@ Contêineres/volumes temporários e a tag de teste backend foram removidos;
 o builder dedicado e seu cache foram preservados.
 
 O resultado com 512 MiB não estabelece o mínimo necessário nem o consumo nativo
-da t4g.small. O Compose continua em 128 MiB, pendente de medição na EC2.
-O deploy espera todos os serviços saudáveis; OOM do gateway impede esse aceite.
+da t4g.small. Este é um resultado histórico anterior à #291: o Compose foi
+ajustado para 512 MiB após medir 256/384/512 MiB na #290. Consulte a
+[evidência atual de memória e payload](./aws-staging-runtime.md#evidência-arm64-de-memória-e-payload-290).
+O consumo nativo ainda precisa ser medido; o deploy exige todos os serviços saudáveis.
 Os resultados acima substituem a limitação anterior `exec format error` e a
 pendência de instalação das ferramentas nesta máquina.
 
@@ -278,9 +280,11 @@ sem credenciais nem STS real; nenhum dado administrativo real é publicado aqui.
 
 O FreeLLMAPI permanece hospedado na EC2 com cotas gratuitas dos provedores,
 sem Premium, conforme o [roteiro de runtime](./aws-staging-runtime.md#parâmetros-e-ia).
-Memória nativa e compatibilidade do limite de payload de imagens continuam
-[pendências de integração](./aws-staging-runtime.md#pendências-para-o-aceite-de-ia),
-registradas para review; não foram corrigidas por uma alteração documental.
+A #291 integrou os ajustes de memória e parser de payload: 512 MiB e 40 MiB.
+A compatibilidade com o Engine oficial do Amazon Linux usa o guard por bridge/IP
+da API e das duas interfaces do worker; não exige `gw_priority`/Engine 28.
+Memória nativa e inferência externa continuam
+[pendências de aceite](./aws-staging-runtime.md#pendências-para-o-aceite-de-ia).
 
 Após preparar os artefatos reais, o responsável confirma
 conta/permissões e planos, executa a infraestrutura, preenche os cinco parâmetros
@@ -294,3 +298,55 @@ front real permanecem critérios de aceite operacional do primeiro deploy.
 - [Confiança do Scheduler por grupo e conta](https://docs.aws.amazon.com/scheduler/latest/UserGuide/cross-service-confused-deputy-prevention.html)
 - [Python no Amazon Linux 2023](https://docs.aws.amazon.com/linux/al2023/ug/python.html)
 - [Docker Compose v5.6.0](https://github.com/docker/compose/releases/tag/v5.6.0)
+
+
+## Compatibilidade do host e recuperação — 22/10/2026 (#288)
+
+Complemento sobre a branch da #288 após o merge da #291 (`7a2c845`). Mantém
+Amazon Linux 2023 ARM64, t4g.small, us-east-2 e os pacotes Docker fornecidos pela
+AWS. O Compose não depende mais de `gw_priority`: o guard aceita somente os
+pares bridge/IP da API e das duas interfaces do worker. Proxy, banco e
+FreeLLMAPI continuam sem acesso a IMDS. Mínimos: Engine API 1.44 (Docker 25) e
+Compose 2.30.0; bootstrap continua fixando Compose 5.6.0.
+
+O deploy interrompe proxy/worker/API antes de atualizar o banco. A recuperação
+cobre falhas parciais da parada, atualização do banco, migration, subida e
+health check. Nenhum rollback faz downgrade do schema ou remove volumes.
+Black passa a 26.10.1 para atender ao audit de segurança
+([GHSA-cg8m-r9f2-5wm2](https://github.com/psf/black/security/advisories/GHSA-cg8m-r9f2-5wm2)).
+Os limites ajustados na #291 permanecem: gateway 512 MiB, parser 40 MiB,
+adaptador 8 MiB por imagem / 24 MiB no total.
+
+| Verificação repetida neste complemento | Resultado |
+| --- | --- |
+| Ruff, Black, mypy, `make infra-qa` | Aprovados; Black 26.10.1 |
+| `pip-audit` da imagem reconstruída | Nenhuma vulnerabilidade conhecida encontrada |
+| Suíte geral com checkout montado | 589 aprovados / 76 pulados; cobertura 95% |
+| Suíte geral na imagem do `infra-local-test` | 588 aprovados / 77 pulados; diferença: metadado Git ausente na imagem |
+| CLI Make / Compose renderizado no checkout | 21 / 1 aprovados |
+| Terraform fmt/validate/test local, bootstrap e staging | 6 + 3 + 19 planos mockados aprovados |
+| Postgres migrado do Compose (`db:5432`) | Probe aprovado; 33 testes aprovados / 2 migrations puladas por segurança |
+| Postgres descartável no mesmo contêiner db | 35 aprovados, incluindo as duas migrations; banco temporário removido |
+| LocalStack / SQS / mídia / MiniStack / interoperabilidade | 2 / 2 / 3 / 3 / 3 aprovados |
+| Worker e E2E HTTP → mídia → SQS → worker → banco | 5 aprovados; sucesso, falhas e retry/DLQ |
+| Nginx real | SPA, prefixo API, 404, cache e rate limit aprovados |
+| Guard IMDS no kernel | API/worker permitidos pelas interfaces previstas; proxy/db/gateway e bridge incorreta bloqueados; controle negativo aprovado |
+| Engine 25.0.5/API 1.44 + Compose 5.6.0 | Cinco serviços sintéticos saudáveis, IPs fixos, `NET_RAW` removida e valor literal de env preservados |
+| Build Docusaurus | Aprovado |
+
+Os 76 skips da suíte com checkout são 35 PostgreSQL, 18 infra opt-in, 21 CLI
+Make, 1 Compose CLI e 1 descoberta genérica sem fixture de produto. Os grupos
+aplicáveis foram executados separadamente. A imagem adiciona um skip para o
+metadado Git que só existe no checkout. Warnings preexistentes permanecem.
+
+O smoke de compatibilidade usa daemon Docker 25 descartável, sem rede externa
+nem socket do host. O teste renderiza os env files do runtime com valores sintéticos e preserva
+redes, IPs, limites e capabilities, mas usa processos Alpine em AMD64 e logging
+local. Isso comprova compatibilidade da API do Engine e da configuração; não
+comprova a AMI/boot da AWS, o conjunto de aplicações ARM64 ou CloudWatch/IAM.
+A medição ARM64/QEMU da #290 permanece histórica, descrita no
+[guia de runtime](./aws-staging-runtime.md#evidência-arm64-de-memória-e-payload-290).
+
+O aceite na EC2 continua manual: SSM/boot, IAM/SCP, logs reais, memória nativa
+dos cinco serviços, persistência EBS e um job com provedor gratuito/token
+configurados apenas na AWS. Nenhum apply/deploy AWS foi executado neste ensaio.

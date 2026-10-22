@@ -64,8 +64,10 @@ def test_rendered_compose_isolated_and_pinned(tmp_path):
     assert services["api"]["networks"].keys() == {"app"}
     assert services["freellmapi"]["networks"].keys() == {"llm"}
     assert services["worker"]["networks"].keys() == {"app", "llm"}
-    assert services["worker"]["networks"]["app"]["gw_priority"] == 1
-    assert services["worker"]["networks"]["llm"].get("gw_priority", 0) == 0
+    assert all(
+        "gw_priority" not in network
+        for network in services["worker"]["networks"].values()
+    )
     assert "ports" not in services["db"] and "ports" not in services["api"]
     limits_mib = {"proxy": 64, "api": 384, "worker": 256, "freellmapi": 512, "db": 448}
     for name, limit in limits_mib.items():

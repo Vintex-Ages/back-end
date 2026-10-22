@@ -12,8 +12,8 @@ vintex-prod e não é implementado aqui.
 
 ## Runtime
 
-`infra/aws/staging/compose.yml` exige Docker Engine API >=1.48 e Compose >=2.33.1
-(env_file raw e gw_priority), ARM64
+`infra/aws/staging/compose.yml` exige Docker Engine API >=1.44 e Compose >=2.30.0
+(`env_file: raw`), ARM64
 e cinco serviços. API/worker usam o mesmo SHA completo no ECR. Imagens públicas
 estão fixadas por versão e digest; não há build na instância.
 
@@ -27,10 +27,13 @@ estão fixadas por versão e digest; não há build na instância.
 
 As redes são exclusivas deste runtime, com bridges `br-vintex-app` e
 `br-vintex-llm`. API não participa de llm; FreeLLMAPI não participa de app.
-O worker fixa `gw_priority: 1` em `app`: tráfego externo e IMDS saem pelo IP
-172.30.73.4, permitido no firewall. A interface llm continua acessível para o
-gateway, mas não recebe permissão de acesso aos metadados. `priority` não
-substitui `gw_priority`.
+O gateway padrão do worker pode ser escolhido pelo Docker em qualquer rede.
+O guard permite IMDS somente aos pares bridge/IP da API (`app / 172.30.73.3`)
+e do worker (`app / 172.30.73.4` e `llm / 172.30.74.2`). Um IP autorizado
+na bridge errada também é bloqueado. Isso mantém compatibilidade com Docker 25
+fornecido pela AWS, sem exigir `gw_priority` nem alterar a AMI Amazon Linux 2023.
+O FreeLLMAPI (`llm / 172.30.74.3`) continua bloqueado; a permissão adicional é
+para a segunda interface do mesmo worker, sem autorizar outro serviço.
 Nenhuma aplicação usa host networking, modo privilegiado ou socket Docker.
 NET_RAW é removida dos cinco serviços para impedir falsificação de origem.
 API e banco não publicam portas. Proxy e dashboard publicam somente
@@ -45,7 +48,7 @@ privada: o transporte até a instância usa o túnel autenticado/criptografado S
 
 ## Recursos fornecidos pela #274
 
-- EC2 ARM64 com SSM, Docker Engine API >=1.48, Compose >=2.33.1, Python 3 e boto3 para o script host,
+- EC2 ARM64 com SSM, Docker Engine API >=1.44, Compose >=2.30.0, Python 3 e boto3 para o script host,
   iptables/ip6tables com backend compatível, 1 GiB de swap e disco para imagens.
 - IMDSv2 obrigatório, hop limit **2** para API/worker em bridge; IPv6 de IMDS
   desativado; nenhuma entrada de rede.
@@ -61,7 +64,9 @@ SDK deve usar `iam-role`. Não existe backup de produção nem restauração na 
 Antes de ler parâmetros ou alterar serviços, verifica as versões do Engine e
 Compose. Em caso de incompatibilidade, informa os mínimos e orienta atualizar as
 ferramentas e repetir o mesmo comando de deploy. O bootstrap fixa Compose 5.6.0;
-a versão do Engine depende do pacote Docker instalado no Amazon Linux.
+o Engine é o pacote oficial do Amazon Linux 2023 (linha 25 na base verificada).
+Atualizações seguem os pacotes da AWS; não se instala outro daemon por binário
+estático ou repositório de outra distribuição.
 Somente dados sintéticos. Seeds e limites de IA de produto seguem suas próprias
 features; esta task não inventa cotas ainda não implementadas no backend.
 
@@ -224,7 +229,9 @@ Docker no ECR sem imprimir senha. Deploys simultâneos são recusados por flock.
 
 1. Valida conta/config/IMDS, lê SSM e gera env files privados.
 2. Valida Compose, baixa imagens e confirma ARM64.
-3. Espera banco saudável e interrompe proxy/worker/API.
+3. Ativa recuperação antes da primeira alteração; interrompe proxy/worker/API
+   enquanto o banco anterior está disponível, depois sobe/atualiza o banco e
+   espera sua saúde. Assim o worker pode finalizar antes de reiniciar o banco.
 4. Sobe API sem proxy para executar `alembic upgrade head` no container do release,
    usando IP fixo permitido pelo guard. Nenhum tráfego externo chega durante isso.
 5. Sobe os cinco serviços e espera seus health checks; consulta /health até 10 vezes.
@@ -276,18 +283,14 @@ API/worker e inacessíveis em proxy/db/FreeLLMAPI. Não imprimir credenciais.
 
 ### Pendências para o aceite de IA
 
-- **Memória:** o Compose mantém 128 MiB. Em ARM64 sob QEMU, o processo terminou
-  com exit 137/OOM nesse limite e passou com 512 MiB. Não foi medido o pico nem
-  testado um limite intermediário; não atribuir a diferença somente à emulação.
-  Validar na EC2 nativa antes de aprovar o dimensionamento. Como o deploy espera
-  os cinco serviços saudáveis, uma falha do contêiner FreeLLMAPI pode impedir o
-  deploy mesmo sem chave de IA. Chave opcional não torna o serviço opcional.
-- **Tamanho do payload:** o adaptador aceita até 8 MiB por imagem e 24 MiB no
-  total. A codificação base64 pode transformar 24 MiB em 32 MiB, mais o JSON,
-  ultrapassando o limite padrão `REQUEST_BODY_LIMIT_MB=25` do gateway e causando
-  413 antes da normalização das imagens. O runtime não sobrescreve esse limite.
-  Alinhar os limites e testar suas bordas em ajuste específico relacionado à
-  integração da #169; esta atualização apenas registra a divergência.
+- **Memória nativa:** o Compose usa 512 MiB para o gateway. As medições ARM64/QEMU
+  de 256/384/512 MiB estão abaixo; validar os cinco serviços na EC2, incluindo
+  memória do worker e do host. O gateway continua obrigatório para a saúde do
+  deploy, mesmo quando o token ainda não foi cadastrado.
+- **Inferência:** o parser foi ajustado para 40 MiB e suas bordas foram testadas
+  na #290. Isso não comprova normalização de imagens reais ou inferência externa.
+  Após configurar os provedores e o token na AWS, exigir um job sintético pelo
+  fluxo completo e conferir resultado, logs e fila/DLQ.
 
 ## Testes sem AWS
 
@@ -305,7 +308,11 @@ docker run --rm --privileged --network none vintex-staging-imds:test
 
 O teste permite API/worker e bloqueia proxy/db/FreeLLMAPI contra servidor metadata
 sintético; o worker tem as duas interfaces e o teste também força uma rota pela
-llm para confirmar seu bloqueio. Não acessa IMDS real nem instala regras no host.
+llm para confirmar o acesso do worker pelas duas interfaces. Também testa
+origens autorizadas pela bridge incorreta, que devem continuar bloqueadas. Um
+controle negativo, removendo o vínculo com a bridge apenas no teste descartável,
+confirma que esse cenário detecta a liberação indevida. Não acessa IMDS real nem
+instala regras no host.
 
 ### Evidência ARM64 de memória e payload (#290)
 
@@ -375,5 +382,5 @@ deploy manual; o resultado em QEMU não a substitui.
 Referências: [FreeLLMAPI v0.14.2](https://github.com/tashfeenahmed/freellmapi/tree/v0.14.2),
 [IMDS](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-instance-metadata-service.html),
 [Docker e iptables](https://docs.docker.com/engine/network/firewall-iptables/),
-[Compose gw_priority](https://docs.docker.com/reference/compose-file/services/#gw_priority),
-[Engine API GwPriority](https://docs.docker.com/reference/api/engine/version-history/#v148-api-changes).
+[Compose env_file raw](https://docs.docker.com/reference/compose-file/services/#format),
+[Engine API](https://docs.docker.com/reference/api/engine/).
