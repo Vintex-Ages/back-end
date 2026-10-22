@@ -48,6 +48,9 @@ def test_render_secrets_encodes_database_password_and_limits_exposure(
     assert "FREELLMAPI_API_KEY=\n" in (tmp_path / "worker.env").read_text()
     assert "ENCRYPTION_KEY" not in (tmp_path / "api.env").read_text()
     assert "JWT_SECRET" not in (tmp_path / "llm.env").read_text()
+    assert "REQUEST_BODY_LIMIT_MB=40\n" in (tmp_path / "llm.env").read_text()
+    for name in ("api", "worker", "db"):
+        assert "REQUEST_BODY_LIMIT_MB" not in (tmp_path / f"{name}.env").read_text()
     assert "AWS_ACCESS_KEY_ID" not in (tmp_path / "worker.env").read_text()
     assert (
         "POSTGRES_PASSWORD=password$with:'special" in (tmp_path / "db.env").read_text()
@@ -79,6 +82,52 @@ def test_private_write_refuses_symlink(tmp_path):
     with pytest.raises(FileExistsError):
         deploy.private_write(link, "changed")
     assert protected.read_text() == "original"
+
+
+@pytest.mark.parametrize(
+    "engine,compose,valid",
+    [
+        ("1.48", "2.33.1", True),
+        ("1.56", "v5.6.0", True),
+        ("1.48", "2.33.1+vendor", True),
+        ("1.47", "5.6.0", False),
+        ("1.48", "2.33.0", False),
+        ("unknown", "5.6.0", False),
+        ("1.48", "", False),
+    ],
+)
+def test_runtime_versions_reject_unsupported_gateway(
+    monkeypatch, engine, compose, valid
+):
+    monkeypatch.setattr(deploy, "run", Mock(side_effect=[engine, compose]))
+    if valid:
+        deploy.validate_runtime_versions()
+    else:
+        with pytest.raises(deploy.RuntimeCompatibilityError, match="rerun the same"):
+            deploy.validate_runtime_versions()
+
+
+def test_incompatible_runtime_stops_before_reading_aws(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    monkeypatch.setattr("sys.argv", ["deploy", "--config", str(tmp_path / "absent")])
+    monkeypatch.setattr(deploy.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(deploy.os, "uname", lambda: SimpleNamespace(machine="aarch64"))
+    monkeypatch.setattr(deploy, "run", Mock(side_effect=["", "", "1.47"]))
+    session = Mock()
+    monkeypatch.setattr(deploy.boto3, "Session", session)
+    with pytest.raises(deploy.RuntimeCompatibilityError):
+        deploy.main()
+    session.assert_not_called()
+
+
+def test_missing_runtime_tool_returns_safe_operator_guidance(monkeypatch):
+    monkeypatch.setattr(deploy, "run", Mock(side_effect=RuntimeError("secret output")))
+    with pytest.raises(
+        deploy.RuntimeCompatibilityError, match="rerun the same"
+    ) as error:
+        deploy.validate_runtime_versions()
+    assert "secret output" not in str(error.value)
 
 
 def test_parameters_paginate_and_decrypt_only_staging():
@@ -353,7 +402,13 @@ def test_host_bootstrap_checks_identity_and_uses_instance_role(
     )
     monkeypatch.setattr(deploy.os, "geteuid", lambda: 0)
     monkeypatch.setattr(deploy.os, "uname", lambda: SimpleNamespace(machine="aarch64"))
-    runner = Mock(return_value="")
+    runner = Mock(
+        side_effect=lambda args: (
+            "1.48"
+            if args[:2] == ["docker", "version"]
+            else "5.6.0" if args[:2] == ["docker", "compose"] else ""
+        )
+    )
     monkeypatch.setattr(deploy, "run", runner)
     session = Mock()
     session.get_credentials.return_value = SimpleNamespace(method=method)

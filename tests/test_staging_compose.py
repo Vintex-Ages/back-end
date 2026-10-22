@@ -64,6 +64,11 @@ def test_rendered_compose_isolated_and_pinned(tmp_path):
     assert services["api"]["networks"].keys() == {"app"}
     assert services["freellmapi"]["networks"].keys() == {"llm"}
     assert services["worker"]["networks"].keys() == {"app", "llm"}
+    assert services["worker"]["networks"]["app"]["gw_priority"] == 1
+    assert services["worker"]["networks"]["llm"].get("gw_priority", 0) == 0
     assert "ports" not in services["db"] and "ports" not in services["api"]
-    assert sum(int(s["mem_limit"]) for s in services.values()) == 1280 * 1024 * 1024
+    limits_mib = {"proxy": 64, "api": 384, "worker": 256, "freellmapi": 512, "db": 448}
+    for name, limit in limits_mib.items():
+        assert int(services[name]["mem_limit"]) == limit * 1024 * 1024
+    assert 2048 - sum(limits_mib.values()) == 384  # Nominal host reserve, not measured.
     assert all("build" not in s and not s.get("privileged") for s in services.values())
