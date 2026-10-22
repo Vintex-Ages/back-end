@@ -42,14 +42,14 @@ def private_write(path: Path, content: str) -> None:
 
 
 def validate_runtime_versions() -> None:
-    """Reject unsupported gateways before reading secrets or changing services."""
+    """Check the Amazon Linux runtime before reading secrets or changing services."""
     guidance = (
-        "Staging requires Docker Engine API >=1.48 and Compose >=2.33.1; "
+        "Staging requires Docker Engine API >=1.44 and Compose >=2.30.0; "
         "update Docker/Compose and rerun the same deploy command"
     )
     requirements = (
-        (["docker", "version", "--format", "{{.Server.APIVersion}}"], (1, 48, 0)),
-        (["docker", "compose", "version", "--short"], (2, 33, 1)),
+        (["docker", "version", "--format", "{{.Server.APIVersion}}"], (1, 44, 0)),
+        (["docker", "compose", "version", "--short"], (2, 30, 0)),
     )
     for command, minimum in requirements:
         try:
@@ -271,11 +271,12 @@ class Deployment:
                 raise ValueError("Images must target ARM64")
         changed = False
         try:
+            # stop may partially succeed; recover even if draining the worker fails.
+            changed = True
+            self.compose(release, "stop", "proxy", "worker", "api")
             self.compose(release, "up", "-d", "--wait", "--wait-timeout", "120", "db")
             # Run as the allowed API address: `compose run` has a dynamic address.
             # This temporary API is isolated from proxy traffic until migrations finish.
-            changed = True
-            self.compose(release, "stop", "proxy", "worker", "api")
             self.compose(release, "up", "-d", "--no-deps", "api")
             self.compose(release, "exec", "-T", "api", "alembic", "upgrade", "head")
             self.compose(release, "up", "-d", "--wait", "--wait-timeout", "120")

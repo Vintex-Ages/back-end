@@ -73,7 +73,7 @@ services:
     volumes:
       - ./worker-health.py:/opt/vintex/worker-health.py:ro
     networks:
-      app: {ipv4_address: 172.30.73.4, gw_priority: 1}
+      app: {ipv4_address: 172.30.73.4}
       llm: {ipv4_address: 172.30.74.2}
     depends_on:
       db: {condition: service_healthy}
