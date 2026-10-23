@@ -5,16 +5,17 @@ Junta os dois lados que nasceram em issues separadas: a loja publica
 classe porque operam a mesma entidade e o mesmo repositorio.
 """
 
-from datetime import datetime, timezone
-
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.errors import Conflict, ErrorCode, NotFound
+from app.core.clock import utcnow_naive
+from app.core.errors import Conflict, ErrorCode, NotFound, ValidationError
 from app.core.pagination import Page, PageParams
 from app.models.address import Address
+from app.models.legal_document import SELLER_CONTRACT
 from app.models.seller import Seller
 from app.models.store import Store
+from app.repositories.legal_document_repository import LegalDocumentRepository
 from app.repositories.store_repository import StoreRepository
 from app.schemas.store_schema import (
     StoreAddressResponse,
@@ -30,6 +31,7 @@ class StoreController:
     def __init__(self, db: Session):
         self.db = db
         self.repository = StoreRepository(db)
+        self.legal_documents = LegalDocumentRepository(db)
 
     def create(self, user_id: int, data: StoreCreate) -> StoreResponse:
         if self.repository.get_by_user_id(user_id) is not None:
@@ -51,7 +53,18 @@ class StoreController:
         # chumbada registraria um aceite que ninguém deu — e deixou o carimbo
         # de data saindo do mesmo jeito, que é a mesma mentira pelo outro lado:
         # um campo jurídico com a data de um aceite sem versão.
-        aceito_em = datetime.now(timezone.utc) if data.terms_version else None
+        #
+        # E a versão tem que existir: gravar `v999-nao-existe` registrava um
+        # aceite jurídico apontando para um texto que ninguém leu
+        # (back-end#217). O vendedor aceita o contrato de venda.
+        if data.terms_version and not self.legal_documents.exists(
+            SELLER_CONTRACT, data.terms_version
+        ):
+            raise ValidationError(
+                "Versão do contrato não encontrada.",
+                fields={"terms_version": "versão inexistente"},
+            )
+        aceito_em = utcnow_naive() if data.terms_version else None
 
         try:
             seller = self.repository.get_seller_by_user_id(user_id)

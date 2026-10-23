@@ -4,6 +4,8 @@ merge; nao ha sobreposicao de nomes entre eles."""
 
 from decimal import Decimal
 
+import pytest
+
 from app.core.security import create_access_token
 from app.models.address import Address
 from app.models.product import Product
@@ -11,6 +13,7 @@ from app.models.product_image import ProductImage
 from app.models.seller import Seller
 from app.models.store import Store
 from app.models.user import User
+from app.seeds.legal import VERSION, seed_legal
 from tests.test_user import persist_user
 
 
@@ -144,10 +147,18 @@ def store_payload(document_type: str = "CPF") -> dict[str, str]:
         "logo_url": "https://example.com/logo.png",
         "document_type": document_type,
         "document_value": (
-            "123.456.789-00" if document_type == "CPF" else "12.345.678/0001-90"
+            "123.456.789-09" if document_type == "CPF" else "12.345.678/0001-95"
         ),
-        "terms_version": "v1.0",
+        "terms_version": VERSION,
     }
+
+
+@pytest.fixture(autouse=True)
+def contrato_publicado(db_session):
+    """O `store_payload` aceita o contrato, e a versão aceita tem que existir
+    em `legal_documents` (back-end#217). O seed publica a `v0`."""
+    seed_legal(db_session)
+    db_session.commit()
 
 
 def test_create_store_turns_user_into_seller_and_persists_terms(
@@ -165,7 +176,7 @@ def test_create_store_turns_user_into_seller_and_persists_terms(
     body = response.json()
     assert body["name"] == "Brechó do Teste"
     assert body["document_type"] == "CPF"
-    assert body["terms_version"] == "v1.0"
+    assert body["terms_version"] == VERSION
     assert body["terms_accepted_at"] is not None
     assert db_session.query(Seller).filter_by(user_id=user.id).count() == 1
     assert db_session.query(Store).filter_by(seller_id=body["seller_id"]).count() == 1
@@ -303,3 +314,49 @@ def test_get_own_store_devolve_o_selo(client, db_session, auth_headers):
 
         assert response.status_code == 200
         assert response.json()["verified"] is verified
+
+
+@pytest.mark.parametrize(
+    "document_type,document_value",
+    [
+        ("CPF", "123.456.789-00"),
+        ("CNPJ", "12.345.678/0001-90"),
+    ],
+    ids=["cpf", "cnpj"],
+)
+def test_create_store_rejects_document_with_wrong_check_digit(
+    client, db_session, auth_headers, document_type, document_value
+):
+    """Contar dígitos deixava passar documento inventado (back-end#217)."""
+    user = persist_user(db_session, email="wrong-digit@example.com")
+
+    response = client.post(
+        "/api/users/me/store",
+        headers=auth_headers(user.id),
+        json={
+            **store_payload(document_type),
+            "document_value": document_value,
+        },
+    )
+
+    assert response.status_code == 422
+    assert "document_value" in response.json()["error"]["fields"]
+    assert db_session.query(Seller).count() == 0
+
+
+@pytest.mark.parametrize("document_value", ["111.111.111-11", "00000000000"])
+def test_create_store_rejects_repeated_sequence(
+    client, db_session, auth_headers, document_value
+):
+    """Sequência repetida passa no cálculo do verificador, e `00000000000`
+    chegava a ganhar o selo Confiável (back-end#217)."""
+    user = persist_user(db_session, email="repeated@example.com")
+
+    response = client.post(
+        "/api/users/me/store",
+        headers=auth_headers(user.id),
+        json={**store_payload(), "document_value": document_value},
+    )
+
+    assert response.status_code == 422
+    assert "document_value" in response.json()["error"]["fields"]
