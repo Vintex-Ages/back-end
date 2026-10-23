@@ -11,7 +11,7 @@ override_resource {
 }
 run "horarios_brasilia_e_alvo_exclusivo" {
   command = plan
-  module { source = "../../modules/staging_schedule" }
+  module { source = "../modules/staging_schedule" }
   assert {
     condition     = output.schedules.start.expression == "cron(0 10 ? * MON-FRI *)" && output.schedules.stop.expression == "cron(0 22 ? * MON-FRI *)" && output.schedules.sweep.expression == "cron(0 2 * * ? *)"
     error_message = "Horários devem ser 10h/22h em dias úteis e 02h diariamente."

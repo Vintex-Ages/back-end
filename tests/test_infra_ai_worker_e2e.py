@@ -40,7 +40,9 @@ def _free_port():
         return sock.getsockname()[1]
 
 
-@pytest.mark.parametrize("outcome", ["success", "provider_error", "missing_key"])
+@pytest.mark.parametrize(
+    "outcome", ["success", "provider_error", "provider_413", "missing_key"]
+)
 def test_api_queue_worker_persistence_and_redrive(outcome):
     assert engine.dialect.name == "postgresql"
     resources = clients()
@@ -61,7 +63,11 @@ def test_api_queue_worker_persistence_and_redrive(outcome):
             provider_calls.append(
                 (self.path, self.headers.get("Authorization"), request)
             )
-            self.send_response(200 if outcome == "success" else 503)
+            self.send_response(
+                200
+                if outcome == "success"
+                else 413 if outcome == "provider_413" else 503
+            )
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(
@@ -242,7 +248,7 @@ def test_api_queue_worker_persistence_and_redrive(outcome):
                 )
                 assert len(dead) == 1
                 assert json.loads(dead[0]["Body"])["product_id"] == product_id
-                assert len(provider_calls) == (3 if outcome == "provider_error" else 0)
+                assert len(provider_calls) == (0 if outcome == "missing_key" else 3)
                 assert client.get("/health").status_code == 200
                 manual = client.post(
                     "/api/users/me/products",

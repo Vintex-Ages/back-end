@@ -21,7 +21,7 @@ variables {
 
 run "host_arm64_sem_ingress" {
   command = plan
-  module { source = "../../modules/staging_host" }
+  module { source = "../modules/staging_host" }
   assert {
     condition     = aws_instance.staging.instance_type == "t4g.small" && aws_instance.staging.ami == data.aws_ami.al2023.id && data.aws_ami.al2023.architecture == "arm64"
     error_message = "Host deve ser t4g.small com AMI ARM64 Amazon Linux."
@@ -54,7 +54,7 @@ run "host_arm64_sem_ingress" {
 
 run "iam_isola_staging_inclusive_policy_ssm" {
   command = plan
-  module { source = "../../modules/staging_host" }
+  module { source = "../modules/staging_host" }
   assert {
     condition     = jsondecode(aws_iam_role.instance.assume_role_policy).Statement[0].Principal.Service == "ec2.amazonaws.com" && aws_iam_role_policy_attachment.ssm.policy_arn == "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
     error_message = "Role deve ser de EC2 com agente SSM."

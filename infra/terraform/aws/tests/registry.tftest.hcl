@@ -3,7 +3,7 @@ mock_provider "aws" {}
 run "imagens_imutaveis_e_scan" {
   command = plan
   module {
-    source = "../../modules/container_registry"
+    source = "../modules/container_registry"
   }
 
   assert {

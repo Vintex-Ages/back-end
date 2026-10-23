@@ -73,7 +73,7 @@ services:
     volumes:
       - ./worker-health.py:/opt/vintex/worker-health.py:ro
     networks:
-      app: {ipv4_address: 172.30.73.4}
+      app: {ipv4_address: 172.30.73.4, gw_priority: 1}
       llm: {ipv4_address: 172.30.74.2}
     depends_on:
       db: {condition: service_healthy}
@@ -94,7 +94,7 @@ services:
         awslogs-group: /vintex/staging/freellmapi
         awslogs-stream: "${RELEASE_SHA:?Release SHA required}-freellmapi"
     image: ${FREELLMAPI_IMAGE:?FreeLLMAPI ECR digest required}
-    mem_limit: 128m
+    mem_limit: 512m
     ports: ["127.0.0.1:3001:3001"]
     env_file:
       - path: ${SECRETS_DIR:?Secrets directory required}/llm.env

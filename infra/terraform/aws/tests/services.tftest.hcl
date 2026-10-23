@@ -19,7 +19,7 @@ override_resource {
 
 run "midia_privada_sem_acls_e_com_tls" {
   command = plan
-  module { source = "../../modules/staging_services" }
+  module { source = "../modules/staging_services" }
   assert {
     condition     = module.media.bucket_name == "vintex-media-staging-123456789012" && module.media.public_access_block.block_public_acls && module.media.public_access_block.block_public_policy && module.media.public_access_block.ignore_public_acls && module.media.public_access_block.restrict_public_buckets
     error_message = "Mídia deve estar em bucket próprio e privado."
@@ -32,7 +32,7 @@ run "midia_privada_sem_acls_e_com_tls" {
 
 run "fila_contrato_worker_e_dlq_14_dias" {
   command = plan
-  module { source = "../../modules/staging_services" }
+  module { source = "../modules/staging_services" }
   assert {
     condition = module.messaging.delivery_settings == {
       visibility_timeout_seconds    = 180
@@ -55,7 +55,7 @@ run "fila_contrato_worker_e_dlq_14_dias" {
 
 run "parametros_e_logs_separados" {
   command = plan
-  module { source = "../../modules/staging_services" }
+  module { source = "../modules/staging_services" }
   assert {
     condition     = toset(keys(aws_ssm_parameter.runtime)) == toset(["db_password", "jwt_secret", "llm_encryption_key", "llm_admin_email", "llm_admin_password", "llm_api_key"]) && alltrue([for parameter in aws_ssm_parameter.runtime : parameter.type == "SecureString" && parameter.tier == "Standard" && startswith(parameter.name, "/vintex/staging/") && parameter.value == "REPLACE_MANUALLY_BEFORE_DEPLOY"])
     error_message = "Parâmetros devem ser provisórios, criptografados e no caminho staging."

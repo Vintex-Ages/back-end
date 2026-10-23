@@ -23,7 +23,7 @@ Sobe Postgres, API, LocalStack (`4566`) e MiniStack (`4567`) numa rede Docker pr
 
 | Alvo | O que faz |
 | --- | --- |
-| `make infra-qa` | Lint e format-check na imagem da API, mais `terraform fmt/init/validate`. Nunca executa `terraform apply`. |
+| `make infra-qa` | Lint e format-check na imagem da API, mais `terraform fmt` e validação com init sem backend em cache QA isolado. Nunca executa `terraform apply`. |
 | `make infra-up` | Reconstrói a imagem da API, sobe o Compose `vintex-infra`, aguarda os health checks, aplica migrations no Postgres e prepara recursos sintéticos. |
 | `make infra-down` | Derruba só os containers/rede/volume do projeto `vintex-infra`. |
 | `make infra-local-test` | Testes locais (unitários, Terraform mockado, PostgreSQL, LocalStack, SQS, mídia S3, MiniStack, interoperabilidade), sem derrubar o ambiente. |
@@ -137,4 +137,4 @@ make infra-complete  # repetição confirma isolamento entre execuções
 
 Base local ([VE-12, #163](https://github.com/Vintex-Ages/back-end/issues/163)) e estrutura Terraform ([VE-13, #164](https://github.com/Vintex-Ages/back-end/issues/164)) concluídas. As integrações LocalStack ([VE-20, #171](https://github.com/Vintex-Ages/back-end/issues/171)) e MiniStack ([VE-21, #172](https://github.com/Vintex-Ages/back-end/issues/172)) provisionam e testam os recursos sintéticos previstos nesta sprint. A interoperabilidade ([VE-22, #173](https://github.com/Vintex-Ages/back-end/issues/173)) cobre o fluxo local e o teardown. A rede e segurança ([VE-14, #165](https://github.com/Vintex-Ages/back-end/issues/165)) foi concluída na PR #192; a base PostgreSQL da VE-15 (#166) foi concluída na PR #193; o storage de mídia da VE-16 (#167), na PR #194; e o pgvector (#185), na PR #199.
 
-Mensageria assíncrona ([VE-17, #168](https://github.com/Vintex-Ages/back-end/issues/168)) incorporada pela PR #203; worker [VE-18, #169](https://github.com/Vintex-Ages/back-end/issues/169), pela PR #282. A staging manual segue #272 → #273 → #274, uma subissue e PR por vez. A [base AWS compartilhada](./aws-shared.md) usa provider e state separados; as ferramentas locais continuam sem apply. Computação e gates de CI/promoção seguem no backlog do épico VE-29.
+Mensageria assíncrona ([VE-17, #168](https://github.com/Vintex-Ages/back-end/issues/168)) incorporada pela PR #203; worker [VE-18, #169](https://github.com/Vintex-Ages/back-end/issues/169), pela PR #282. A staging manual segue #272 → #273 → #274, uma subissue e PR por vez. A [base AWS](./aws-shared.md) está integrada ao state completo da staging, com provider separado do local; as ferramentas locais continuam sem apply. Computação e gates de CI/promoção seguem no backlog do épico VE-29.
