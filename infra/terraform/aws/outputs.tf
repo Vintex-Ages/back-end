@@ -37,7 +37,7 @@ output "runtime_resources" {
     account_id      = var.expected_account_id
     media_bucket    = module.services.media_bucket
     queue_url       = module.services.queue_url
-    public_base_url = "http://localhost:8080"
+    public_base_url = coalesce(one(module.preview[*].public_url), "http://localhost:8080")
     parameter_path  = "/vintex/staging/"
   }
 }
@@ -57,4 +57,19 @@ output "schedules" {
 output "infrastructure_layout" {
   description = "Identifica o state completo da staging, sem state shared separado."
   value       = "staging-complete-v1"
+}
+
+output "preview_origin_dns" {
+  description = "DNS estável da origem do preview aberto; null com public_preview desligado."
+  value       = one(module.preview[*].origin_dns)
+}
+
+output "public_url" {
+  description = "URL pública do preview aberto; null com public_preview desligado."
+  value       = one(module.preview[*].public_url)
+}
+
+output "preview_origin_verify_parameter" {
+  description = "Nome do parâmetro com o segredo de origem; o valor nunca é exibido."
+  value       = one(module.preview[*].origin_verify_parameter)
 }

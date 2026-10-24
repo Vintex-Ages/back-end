@@ -23,7 +23,7 @@ REQUIRED_ACCOUNT_FIELDS = {
     "state_bucket",
     "budget_email_addresses",
 }
-OPTIONAL_ACCOUNT_FIELDS = {"enable_budget"}
+OPTIONAL_ACCOUNT_FIELDS = {"enable_budget", "public_preview"}
 
 
 def read_account(path: Path, environment: str) -> dict:
@@ -37,6 +37,8 @@ def read_account(path: Path, environment: str) -> dict:
     enable_budget = config.get("enable_budget", True)
     if not isinstance(enable_budget, bool):
         raise ValueError("enable_budget deve ser true ou false.")
+    if not isinstance(config.get("public_preview", False), bool):
+        raise ValueError("public_preview deve ser true ou false.")
     if not re.fullmatch(r"[0-9]{12}", str(config["expected_account_id"])):
         raise ValueError("expected_account_id deve ter 12 dígitos.")
     if not isinstance(config["state_bucket"], str) or not re.fullmatch(

@@ -40,6 +40,11 @@ variable "enable_budget" {
   default = true
 }
 
+variable "public_preview" {
+  type    = bool
+  default = false
+}
+
 variable "budget_email_addresses" {
   type    = set(string)
   default = []

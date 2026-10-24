@@ -76,3 +76,25 @@ run "iam_isola_staging_inclusive_policy_ssm" {
     error_message = "Logs restritos e sem poderes de produção, push de imagem ou IAM."
   }
 }
+
+run "preview_aberto_libera_so_http_do_cloudfront" {
+  command = plan
+  module { source = "../modules/staging_host" }
+  variables { public_http_from_cloudfront = true }
+  assert {
+    condition     = length(aws_security_group.staging.ingress) == 1 && one(aws_security_group.staging.ingress).from_port == 80 && one(aws_security_group.staging.ingress).to_port == 80 && one(aws_security_group.staging.ingress).protocol == "tcp"
+    error_message = "O preview deve abrir somente a porta 80/TCP."
+  }
+  assert {
+    condition     = length(one(aws_security_group.staging.ingress).cidr_blocks) == 0 && length(one(aws_security_group.staging.ingress).ipv6_cidr_blocks) == 0 && length(one(aws_security_group.staging.ingress).prefix_list_ids) == 1
+    error_message = "A origem deve ser apenas a lista gerenciada do CloudFront, nunca CIDR aberto."
+  }
+  assert {
+    condition     = data.aws_ec2_managed_prefix_list.cloudfront[0].name == "com.amazonaws.global.cloudfront.origin-facing"
+    error_message = "A lista deve ser a de origem do CloudFront."
+  }
+  assert {
+    condition     = one(aws_security_group.staging.egress).from_port == 443 && one(aws_security_group.staging.egress).to_port == 443
+    error_message = "A saída continua somente TCP 443."
+  }
+}

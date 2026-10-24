@@ -30,6 +30,9 @@ Não sobrescreva `account.tfvars.json` se já estiver preenchido. Informe soment
 - `enable_budget` (opcional, padrão `true`): defina `false` se a política da conta
   (SCP) não permitir criar Budgets; nesse caso `budget_email_addresses` pode ficar
   vazia e o Budget não é criado. Com `true`, os e-mails continuam obrigatórios.
+- `public_preview` (opcional, padrão `false`): abre a staging ao público enquanto a
+  instância está de pé (IP elástico e porta 80 só para o CloudFront). Desligado, a
+  staging continua sem ingress e acessível apenas por SSM.
 
 Use a identidade já autorizada na subconta da faculdade. SSO só é necessário
 se seu perfil institucional usa SSO; nesse caso renove com `aws sso login`.
