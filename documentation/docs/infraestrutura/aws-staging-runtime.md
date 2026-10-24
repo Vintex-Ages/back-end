@@ -6,7 +6,7 @@ sidebar_position: 6
 
 Esta entrega depende de #168/#169 e da base #272. O host e seus recursos AWS
 são definidos na [#274](./aws-staging.md). **Não há deploy nem recursos AWS criados nesta entrega.**
-O responsável realiza o primeiro deploy manualmente com sessão temporária SSO;
+O responsável realiza o primeiro deploy manualmente com o perfil AWS autorizado na subconta institucional;
 na EC2 os comandos utilizam a role da instância. O pipeline futuro pertence ao
 vintex-prod e não é implementado aqui.
 
@@ -85,12 +85,14 @@ Não existe auto-update nem Watchtower.
 
 ## Build e envio manual (máquina do responsável)
 
-Após preparar SSO/state e aplicar #272, usar os URLs ECR dos outputs. Exemplo
+Após selecionar o perfil AWS e executar `make infra-deploy staging`, usar os
+URLs ECR dos outputs. O comando conduz o bucket e a infraestrutura completa;
+não existe aplicação separada de shared. Exemplo
 com valores públicos fictícios, substituindo conta e SHA pelo release aprovado:
 
 ```bash
-aws sso login --profile vintex
-export AWS_PROFILE=vintex
+export AWS_PROFILE=vintex-terraform
+aws sts get-caller-identity
 export AWS_REGION=us-east-2
 export VINTEX_ACCOUNT_ID=123456789012
 export VINTEX_SHA=0000000000000000000000000000000000000000
@@ -178,7 +180,7 @@ Usar CloudWatch e comandos administrativos sem dump de env para diagnóstico.
 ## Acesso e validação manual após #274
 
 ```bash
-aws ssm start-session --profile vintex --region us-east-2 --target <INSTANCE_ID> \
+aws ssm start-session --profile vintex-terraform --region us-east-2 --target <INSTANCE_ID> \
   --document-name AWS-StartPortForwardingSession \
   --parameters '{"portNumber":["80"],"localPortNumber":["8080"]}'
 ```
