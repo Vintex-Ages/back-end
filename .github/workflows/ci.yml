@@ -31,13 +31,12 @@ jobs:
         with:
           terraform_version: "1.16.4"
       - name: Check Terraform formatting
-        run: terraform fmt -check -recursive infra/terraform
-      - name: Validate and test local, shared and staging without AWS credentials
+        run: make terraform-fmt
+      - name: Validate and test local, bootstrap and AWS without credentials
         run: |
-          for env in local shared staging; do
-            terraform -chdir="infra/terraform/envs/$env" init -backend=false -input=false -lockfile=readonly
-            terraform -chdir="infra/terraform/envs/$env" validate
-            terraform -chdir="infra/terraform/envs/$env" test
+          for environment in local bootstrap staging; do
+            make terraform-validate "$environment"
+            make terraform-test "$environment"
           done
 
   lint:

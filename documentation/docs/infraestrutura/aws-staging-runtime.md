@@ -6,13 +6,14 @@ sidebar_position: 6
 
 Esta entrega depende de #168/#169 e da base #272. O host e seus recursos AWS
 são definidos na [#274](./aws-staging.md). **Não há deploy nem recursos AWS criados nesta entrega.**
-O responsável realiza o primeiro deploy manualmente com sessão temporária SSO;
+O responsável realiza o primeiro deploy manualmente com o perfil AWS autorizado na subconta institucional;
 na EC2 os comandos utilizam a role da instância. O pipeline futuro pertence ao
 vintex-prod e não é implementado aqui.
 
 ## Runtime
 
-`infra/aws/staging/compose.yml` exige Docker Compose >=2.30 (env_file raw), ARM64
+`infra/aws/staging/compose.yml` exige Docker Engine API >=1.48 e Compose >=2.33.1
+(env_file raw e gw_priority), ARM64
 e cinco serviços. API/worker usam o mesmo SHA completo no ECR. Imagens públicas
 estão fixadas por versão e digest; não há build na instância.
 
@@ -21,11 +22,15 @@ estão fixadas por versão e digest; não há build na instância.
 | Nginx 1.28.0 Alpine | 64 MiB | app / 172.30.73.2 | Front estático, proxy API e rate limit |
 | API | 384 MiB | app / 172.30.73.3 | Aplicação existente, S3 e produtor SQS |
 | Worker | 256 MiB | app / 172.30.73.4; llm / 172.30.74.2 | Consumidor `app.workers.ai_analysis` existente |
-| FreeLLMAPI v0.14.2 | 128 MiB | llm / 172.30.74.3 | Imagem oficial espelhada no ECR |
+| FreeLLMAPI v0.14.2 | 512 MiB | llm / 172.30.74.3 | Imagem oficial espelhada no ECR; ajuste medido na #290 |
 | pgvector 0.8.1 / PostgreSQL 16 | 448 MiB | app / 172.30.73.5 | Banco local do Compose, dados persistentes no EBS |
 
 As redes são exclusivas deste runtime, com bridges `br-vintex-app` e
 `br-vintex-llm`. API não participa de llm; FreeLLMAPI não participa de app.
+O worker fixa `gw_priority: 1` em `app`: tráfego externo e IMDS saem pelo IP
+172.30.73.4, permitido no firewall. A interface llm continua acessível para o
+gateway, mas não recebe permissão de acesso aos metadados. `priority` não
+substitui `gw_priority`.
 Nenhuma aplicação usa host networking, modo privilegiado ou socket Docker.
 NET_RAW é removida dos cinco serviços para impedir falsificação de origem.
 API e banco não publicam portas. Proxy e dashboard publicam somente
@@ -40,7 +45,7 @@ privada: o transporte até a instância usa o túnel autenticado/criptografado S
 
 ## Recursos fornecidos pela #274
 
-- EC2 ARM64 com SSM, Docker Compose >=2.30, Python 3 e boto3 para o script host,
+- EC2 ARM64 com SSM, Docker Engine API >=1.48, Compose >=2.33.1, Python 3 e boto3 para o script host,
   iptables/ip6tables com backend compatível, 1 GiB de swap e disco para imagens.
 - IMDSv2 obrigatório, hop limit **2** para API/worker em bridge; IPv6 de IMDS
   desativado; nenhuma entrada de rede.
@@ -53,10 +58,27 @@ privada: o transporte até a instância usa o túnel autenticado/criptografado S
 
 O script recusa outra conta, fila fora de Ohio e credenciais de operador na EC2:
 SDK deve usar `iam-role`. Não existe backup de produção nem restauração na staging.
+Antes de ler parâmetros ou alterar serviços, verifica as versões do Engine e
+Compose. Em caso de incompatibilidade, informa os mínimos e orienta atualizar as
+ferramentas e repetir o mesmo comando de deploy. O bootstrap fixa Compose 5.6.0;
+a versão do Engine depende do pacote Docker instalado no Amazon Linux.
 Somente dados sintéticos. Seeds e limites de IA de produto seguem suas próprias
 features; esta task não inventa cotas ainda não implementadas no backend.
 
 ## Parâmetros e IA
+
+O FreeLLMAPI é um roteador hospedado **na própria EC2**, não uma API de inferência
+hospedada em freellmapi.co. Os modelos são executados pelos provedores externos;
+a instância Vintex não executa os modelos. O fluxo existente é
+**API → SQS → worker → FreeLLMAPI → provedor externo**. O worker usa
+`http://freellmapi:3001/v1/chat/completions` na rede Docker llm, com modelo `auto`.
+API, frontend e navegador não recebem as chaves dos provedores.
+
+Usar apenas as cotas gratuitas dos provedores habilitados, com contas/chaves
+próprias de staging. Não contratar Premium: ele altera a atualização do catálogo,
+não fornece inferência hospedada. O catálogo gratuito chega por snapshots mensais;
+aparecer nele não garante acesso, saldo ou capacidade de visão.
+Referência: [README v0.14.2](https://github.com/tashfeenahmed/freellmapi/blob/v0.14.2/README.md).
 
 Cadastrar via console, sem valores em Git, histórico de shell ou logs:
 
@@ -69,6 +91,14 @@ Cadastrar via console, sem valores em Git, histórico de shell ou logs:
 | `llm_admin_password` | SecureString, senha forte do administrador |
 | `llm_api_key` | SecureString, token unificado criado no dashboard; opcional no primeiro deploy |
 
+São credenciais diferentes: `llm_admin_email`/`llm_admin_password` autenticam o
+dashboard; `llm_encryption_key` protege as chaves no SQLite; as chaves dos
+provedores são cadastradas no dashboard; `llm_api_key` autentica o worker no
+roteador e vira `FREELLMAPI_API_KEY` em seu env file. Não colocar uma chave de
+provedor diretamente em `llm_api_key`. O destinatário do Budget é independente
+do administrador do dashboard. Para testes locais, `FREELLMAPI_API_KEY` continua
+sendo lida do `.env` pelo Compose local.
+
 O script gera quatro env files raw, separados por serviço, com modo 0600 em
 diretórios root 0700. A URL PostgreSQL usa **db:5432**, com senha percent-encoded;
 nenhum endpoint de emulador é utilizado. APP_ENV=production ativa a proteção JWT
@@ -77,32 +107,68 @@ AI_PROVIDER=unavailable mantém embedding, chat e sugestões síncronas de IA de
 FreeLLMAPI. O deploy ignora parâmetros provisórios da #274; os obrigatórios impedem o deploy até serem preenchidos. Sem token, o adaptador existente registra falha e a mensagem segue
 retry/DLQ, sem derrubar a API. Nenhum health check invoca inferência.
 
+O arquivo `llm.env` também recebe `REQUEST_BODY_LIMIT_MB=40`. O adaptador aceita
+8 MiB por imagem e 24 MiB no total; base64 transforma o total em aproximadamente
+32 MiB, além do JSON. Os 25 MiB padrão do gateway rejeitariam esse pedido com
+413 antes da normalização das imagens. Esse tráfego é interno entre worker e
+gateway; o limite de upload do Nginx permanece independente. Aumentar o parser
+não altera os limites do adaptador nem as cotas dos provedores.
+
 FreeLLMAPI recebe ENCRYPTION_KEY e FREEAPI_CONFIG_JSON para criar o administrador
-no primeiro boot; alterações posteriores da senha requerem o procedimento do
-dashboard. Seu SQLite persiste em volume próprio. Nunca trocar a chave de
-criptografia com SQLite existente. Nunca usar chaves/contas de produção na staging.
-Não existe auto-update nem Watchtower.
+antes de abrir o listener, somente enquanto não houver conta cadastrada.
+Alterações posteriores da senha requerem o procedimento do dashboard. Seu SQLite
+persiste em `/app/server/data`, no volume `vintex-staging-llmdata` sobre EBS;
+preservar banco e chave de criptografia juntos. A imagem é fixada por digest,
+sem Watchtower. `FREELLMAPI_UPDATE_CHECK=off` desliga a consulta de atualização do
+software, não a sincronização do catálogo.
+Referências: [instalação v0.14.2](https://github.com/tashfeenahmed/freellmapi/blob/v0.14.2/docs/en/install/01-install.md),
+[variáveis v0.14.2](https://github.com/tashfeenahmed/freellmapi/blob/v0.14.2/.env.example).
 
 ## Build e envio manual (máquina do responsável)
 
-Após preparar SSO/state e aplicar #272, usar os URLs ECR dos outputs. Exemplo
+Após selecionar o perfil AWS e executar `make infra-deploy staging`, usar os
+URLs ECR dos outputs. O comando conduz o bucket e a infraestrutura completa;
+não existe aplicação separada de shared. Exemplo
 com valores públicos fictícios, substituindo conta e SHA pelo release aprovado:
 
 ```bash
-aws sso login --profile vintex
-export AWS_PROFILE=vintex
+export AWS_PROFILE=vintex-terraform
+aws sts get-caller-identity
 export AWS_REGION=us-east-2
 export VINTEX_ACCOUNT_ID=123456789012
 export VINTEX_SHA=0000000000000000000000000000000000000000
 export VINTEX_ECR="$VINTEX_ACCOUNT_ID.dkr.ecr.us-east-2.amazonaws.com"
 aws sts get-caller-identity
 aws ecr get-login-password --region us-east-2 | docker login --username AWS --password-stdin "$VINTEX_ECR"
-docker buildx build --platform linux/arm64 --tag "$VINTEX_ECR/vintex-backend:$VINTEX_SHA" --push .
+docker buildx build --builder vintex-arm64 --platform linux/arm64 --tag "$VINTEX_ECR/vintex-backend:$VINTEX_SHA" --push .
 ```
 
 Fazer o build a partir do checkout do SHA informado; não usar tags mutáveis.
 Em host x86, preparar previamente Buildx/QEMU para ARM64. Verificar o scan ECR
 e o manifesto ARM64 antes de implantar.
+
+Antes de publicar artefatos, conferir na máquina do responsável:
+
+```bash
+docker buildx inspect vintex-arm64 --bootstrap
+skopeo --version
+session-manager-plugin --version
+```
+
+O builder precisa listar `linux/arm64`; possuir Buildx em um host x86 não
+garante emulação ARM64. Sem esse suporte, preparar QEMU ou um builder ARM64
+antes do build. Skopeo é usado pelo espelhamento abaixo e o Session Manager
+Plugin pelo acesso/túnel SSM. São pré-requisitos da publicação e do acesso;
+não são instalados pelo Terraform no computador do responsável.
+
+Na máquina preparada em 21/10/2026, Skopeo 1.24.1, Session Manager Plugin
+1.2.896.0 e QEMU user static/binfmt 11.1.2 já foram instalados. O builder dedicado
+`vintex-arm64` usa o driver docker-container e oferece `linux/arm64`; o builder
+padrão foi preservado. Em outra máquina, preparar um builder com esse nome ou
+substituí-lo pelo builder ARM64 disponível. QEMU permite executar binários ARM64
+durante o build no host x86_64; não é necessário instalar QEMU na EC2 ARM64.
+Os [resultados e limites do ensaio](./aws-staging.md#preparação-da-máquina-e-execução-arm64)
+não substituem o aceite operacional na AWS.
 
 Espelhar o manifesto ARM64 oficial FreeLLMAPI v0.14.2 preservando o digest, com
 Skopeo instalado. Credenciais do espelho são temporárias; nunca adicionar ao Git:
@@ -178,21 +244,50 @@ Usar CloudWatch e comandos administrativos sem dump de env para diagnóstico.
 ## Acesso e validação manual após #274
 
 ```bash
-aws ssm start-session --profile vintex --region us-east-2 --target <INSTANCE_ID> \
+aws ssm start-session --profile vintex-terraform --region us-east-2 --target <INSTANCE_ID> \
   --document-name AWS-StartPortForwardingSession \
   --parameters '{"portNumber":["80"],"localPortNumber":["8080"]}'
 ```
 
 Acessar http://localhost:8080 e /health; o frontend usa /api no mesmo domínio.
 Para o dashboard, outra sessão com portNumber 3001/localPortNumber 3001.
-Cadastrar provedores staging, gerar token unificado, gravar `llm_api_key` no
-Parameter Store e reexecutar deploy para atualizar worker.
+
+1. Acessar http://localhost:3001 com o administrador definido no Parameter Store.
+2. Na página **Keys**, cadastrar chaves de provedores com cota gratuita separada
+   da produção. Habilitar na cadeia de fallback ao menos um modelo com visão.
+3. Obter o token unificado na página **Keys**, gravá-lo em
+   `/vintex/staging/llm_api_key` como SecureString e reexecutar o deploy para
+   atualizar o env file privado do worker.
+4. Enviar uma imagem sintética pequena pelo fluxo da aplicação e conferir o
+   resultado persistido. `model=auto` seleciona modelos com visão; sem modelo
+   habilitado compatível, o gateway pode responder 422 (`no_vision_model`).
+
+`/api/ping` e `/v1/models` não comprovam inferência. A listagem
+`/v1/models?available=true` ajuda a conferir modelos disponíveis, mas a entrada
+virtual `auto` pode aparecer mesmo sem provedor utilizável. Exigir um job real
+com imagem e resposta no contrato do backend. Referência:
+[API v0.14.2](https://github.com/tashfeenahmed/freellmapi/blob/v0.14.2/docs/en/api/01-rest-api.md).
 
 Health worker verifica processo, banco e acesso à fila; não prova inferência nem
 processamento de um job. Validar separadamente upload/leitura de mídia, job
 sintético, retry/DLQ, logs e persistência após restart. A role e IMDSv2 reais
 só podem ser comprovados na EC2: token/credenciais devem ser alcançáveis em
 API/worker e inacessíveis em proxy/db/FreeLLMAPI. Não imprimir credenciais.
+
+### Pendências para o aceite de IA
+
+- **Memória:** o Compose mantém 128 MiB. Em ARM64 sob QEMU, o processo terminou
+  com exit 137/OOM nesse limite e passou com 512 MiB. Não foi medido o pico nem
+  testado um limite intermediário; não atribuir a diferença somente à emulação.
+  Validar na EC2 nativa antes de aprovar o dimensionamento. Como o deploy espera
+  os cinco serviços saudáveis, uma falha do contêiner FreeLLMAPI pode impedir o
+  deploy mesmo sem chave de IA. Chave opcional não torna o serviço opcional.
+- **Tamanho do payload:** o adaptador aceita até 8 MiB por imagem e 24 MiB no
+  total. A codificação base64 pode transformar 24 MiB em 32 MiB, mais o JSON,
+  ultrapassando o limite padrão `REQUEST_BODY_LIMIT_MB=25` do gateway e causando
+  413 antes da normalização das imagens. O runtime não sobrescreve esse limite.
+  Alinhar os limites e testar suas bordas em ajuste específico relacionado à
+  integração da #169; esta atualização apenas registra a divergência.
 
 ## Testes sem AWS
 
@@ -209,8 +304,76 @@ docker run --rm --privileged --network none vintex-staging-imds:test
 ```
 
 O teste permite API/worker e bloqueia proxy/db/FreeLLMAPI contra servidor metadata
-sintético; não acessa IMDS real nem instala regras no host.
+sintético; o worker tem as duas interfaces e o teste também força uma rota pela
+llm para confirmar seu bloqueio. Não acessa IMDS real nem instala regras no host.
+
+### Evidência ARM64 de memória e payload (#290)
+
+O limite original de 128 MiB falhou no ensaio ARM64 sob QEMU. Antes de aumentar
+o dimensionamento, foram medidos os candidatos de 256/384 MiB. Como nenhum
+atendeu à margem de 20%, o ensaio foi estendido a 512 MiB:
+
+| Limite | Resultado no host x86_64 com QEMU |
+| --- | --- |
+| 256 MiB | OOM na inicialização, exit 137 |
+| 384 MiB | Login, payload de 33.554.711 bytes e parser funcionando; pico 384 MiB, margem insuficiente |
+| 512 MiB | Mesmo payload, três requisições sequenciais, rejeição acima de 40 MiB e health saudável; pico 372,41 MiB, sem OOM |
+
+O Compose passa a 512 MiB para o gateway. A soma dos limites dos cinco serviços
+é **1.664 MiB**, deixando **384 MiB nominais** dos 2 GiB da t4g.small para host e
+agentes. Limites são tetos, não reservas; essa conta não comprova memória
+disponível nem o consumo nativo da EC2. Nenhuma instância maior foi configurada.
+
+Reproduzir em Linux com Docker, acesso ao GHCR e suporte ARM64 (QEMU somente
+quando o host for x86_64), com boto3 instalado conforme o runbook:
+
+```bash
+python -m scripts.infra.test_staging_llm
+```
+
+O comando testa 256, 384 e 512 MiB e retorna sucesso se algum candidato passar
+sem OOM e com pico abaixo de 80% do teto. Usa cgroup v2 (`memory.peak`), rede
+Docker interna sem saída, administrador/token sintéticos, SQLite descartável e
+health check igual ao Compose. Não usa AWS nem chaves de provedores. Desabilita
+swap **no contêiner de ensaio**, para não mascarar pressão de memória. Remove
+contêiner, volumes anônimos e rede ao terminar.
+
+O retorno 503 sem provedor comprova que autenticação e parser aceitaram o pedido;
+**não comprova inferência ou qualidade da análise**. O ensaio usa PNGs sintéticos
+preenchidos até 8 MiB, sem representar todas as dimensões/formatos de fotos reais.
+
+O ensaio conjunto dos cinco serviços ARM64 também passou com PostgreSQL/pgvector
+do próprio Compose, migrations até head, frontend sintético e SQS/S3 no LocalStack.
+Foram usados overrides **somente de teste**: logs locais em vez de awslogs,
+credenciais sintéticas, nomes/volumes descartáveis e health timeout do worker de
+60 s em vez de 10 s. Sob QEMU, esse check demorou aproximadamente 17–20 s. O
+timeout de produção permanece em 10 s e precisa ser confirmado no ARM64 nativo.
+Para evitar conflito entre plataformas no armazenamento clássico do Docker,
+o ensaio usou o manifesto ARM64 filho do índice Nginx fixado; mesma versão/binário.
+
+| Serviço | Pico cgroup no smoke conjunto (MiB) | Resultado |
+| --- | ---: | --- |
+| Nginx | 62,65 / 64 | Saudável, sem OOM |
+| API | 254,60 / 384 | Saudável, sem OOM |
+| Worker | 256,00 / 256 | Saudável, sem OOM; teto atingido, investigar no host nativo |
+| FreeLLMAPI | 344,64 / 512 | Saudável, sem OOM |
+| PostgreSQL | 153,71 / 448 | Saudável, sem OOM |
+
+Esses picos incluem cache e processos de health check e não ocorreram
+necessariamente ao mesmo tempo. Não são uma medição de `MemAvailable` da EC2.
+Separadamente, quatro cenários E2E com o código Python 3.12 em AMD64, banco ARM64
+e emuladores locais passaram: sucesso, erro do provedor, HTTP 413 e chave ausente.
+Os casos de falha preservaram a API, fizeram retry e chegaram à DLQ. O resultado
+do provedor nesses testes é sintético; eles não aprovam inferência externa.
+
+Na primeira EC2, validar os cinco serviços simultaneamente, com um job real e
+health checks ativos; registrar pico do gateway abaixo de 80%, ausência de OOM e
+pelo menos 384 MiB de `MemAvailable` no host durante o ensaio. Incluir o pico do
+worker ao serializar as imagens. Essa validação nativa permanece pendente até o
+deploy manual; o resultado em QEMU não a substitui.
 
 Referências: [FreeLLMAPI v0.14.2](https://github.com/tashfeenahmed/freellmapi/tree/v0.14.2),
 [IMDS](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-instance-metadata-service.html),
-[Docker e iptables](https://docs.docker.com/engine/network/firewall-iptables/).
+[Docker e iptables](https://docs.docker.com/engine/network/firewall-iptables/),
+[Compose gw_priority](https://docs.docker.com/reference/compose-file/services/#gw_priority),
+[Engine API GwPriority](https://docs.docker.com/reference/api/engine/version-history/#v148-api-changes).

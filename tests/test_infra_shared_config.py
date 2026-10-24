@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-SHARED = ROOT / "infra/terraform/envs/shared"
+SHARED = ROOT / "infra/terraform/aws"
 
 
 def test_shared_provider_uses_ohio_expected_account_and_standard_tags():
@@ -18,7 +18,7 @@ def test_shared_provider_uses_ohio_expected_account_and_standard_tags():
     assert re.search(r"region\s*=\s*local.aws_region", body)
     assert re.search(r"allowed_account_ids\s*=\s*\[var.expected_account_id\]", body)
     assert re.search(r'Project\s*=\s*"Vintex"', body)
-    assert re.search(r'Environment\s*=\s*"shared"', body)
+    assert re.search(r"Environment\s*=\s*var.deployment", body)
     assert re.search(r'ManagedBy\s*=\s*"Terraform"', body)
     for forbidden in (
         "access_key",
@@ -35,16 +35,22 @@ def test_shared_provider_uses_ohio_expected_account_and_standard_tags():
 
 def test_state_is_separate_encrypted_and_uses_native_lock():
     source = (SHARED / "versions.tf").read_text()
-    backend = re.search(r'backend "s3" \{(.*?)\n  \}', source, re.DOTALL)
-    assert backend is not None
-    body = backend.group(1)
-    assert re.search(r'key\s*=\s*"vintex/shared/terraform.tfstate"', body)
-    assert re.search(r'region\s*=\s*"us-east-2"', body)
-    assert re.search(r"encrypt\s*=\s*true", body)
-    assert re.search(r"use_lockfile\s*=\s*true", body)
-    assert not re.search(r"\b(bucket|access_key|secret_key|dynamodb_table)\s*=", body)
-    example = (SHARED / "backend.tfbackend.example").read_text()
-    assert "allowed_account_ids" in example
+    assert 'backend "s3" {}' in source
+    from scripts.infra.terraform_env import backend_config
+
+    account = {
+        "expected_account_id": "123456789012",
+        "state_bucket": "vintex-test-state",
+    }
+    backend = backend_config("staging", account, Path("/tmp/runtime"))
+    assert backend == {
+        "bucket": "vintex-test-state",
+        "key": "vintex/staging/terraform.tfstate",
+        "region": "us-east-2",
+        "encrypt": True,
+        "use_lockfile": True,
+        "allowed_account_ids": ["123456789012"],
+    }
 
 
 @pytest.mark.parametrize("test_file", sorted((SHARED / "tests").glob("*.tftest.hcl")))

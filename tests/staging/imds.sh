@@ -32,6 +32,15 @@ ip -n llm address add 172.30.74.3/24 dev guestllm
 ip -n llm link set guestllm up
 ip -n llm link set lo up
 ip -n llm route add default via 172.30.74.1
+# The real worker has both interfaces. Route metadata through app, retaining
+# the llm interface for the private gateway connection.
+ip link add hostworkerllm type veth peer name guestworkerllm
+ip link set hostworkerllm master br-vintex-llm
+ip link set hostworkerllm up
+ip link set guestworkerllm netns service4
+ip -n service4 address add 172.30.74.2/24 dev guestworkerllm
+ip -n service4 link set guestworkerllm up
+ip -n service4 route get 169.254.169.254 | grep -q 'src 172.30.73.4'
 sleep 1
 bash /guard.sh
 bash /guard.sh # Reapply must remain idempotent.
@@ -44,4 +53,12 @@ for denied in service2 service5 llm; do
         exit 1
     fi
 done
+# Even the worker cannot use its llm address to bypass the guard.
+ip -n service4 route replace default via 172.30.74.1
+if ip netns exec service4 curl -sf --max-time 1 http://169.254.169.254/ >/dev/null; then
+    echo 'IMDS unexpectedly reachable through worker llm interface' >&2
+    exit 1
+fi
+ip -n service4 route replace default via 172.30.73.1
+ip netns exec service4 curl -sf --max-time 2 http://169.254.169.254/ >/dev/null
 echo '[staging-imds] API/worker allowed; proxy/db/FreeLLMAPI blocked'
