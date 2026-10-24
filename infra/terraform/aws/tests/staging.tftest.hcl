@@ -1,4 +1,5 @@
 mock_provider "aws" {}
+mock_provider "random" {}
 variables {
   expected_account_id    = "123456789012"
   deployment             = "staging"
