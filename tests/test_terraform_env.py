@@ -241,15 +241,12 @@ def test_unknown_environment_and_local_apply_are_rejected(setup_runner):
     assert calls == []
 
 
-def test_bootstrap_lifecycle_moves_and_private_configuration_guards():
+def test_bootstrap_lifecycle_and_private_configuration_guards():
     root = Path(__file__).resolve().parents[1]
     bootstrap = (tf.BASE / "bootstrap/main.tf").read_text()
     assert "prevent_destroy = true" in bootstrap
     assert 'backend "local" {}' in bootstrap
-    moves = (tf.BASE / "aws/moved.tf").read_text()
-    for module in ("network", "registry", "budget", "services", "host", "scheduler"):
-        assert f"from = module.{module}\n" in moves
-        assert f"to   = module.{module}[0]" in moves
+    assert not (tf.BASE / "aws/moved.tf").exists()
     assert "infra/terraform/account.tfvars.json" in (root / ".dockerignore").read_text()
     assert "**/.terraform/" in (root / ".dockerignore").read_text()
     assert "infra/terraform/state/" in (root / ".dockerignore").read_text()

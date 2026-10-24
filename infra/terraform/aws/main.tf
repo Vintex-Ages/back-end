@@ -15,7 +15,6 @@ provider "aws" {
 }
 
 module "network" {
-  count             = 1
   source            = "../modules/shared_network"
   name_prefix       = "vintex-shared"
   vpc_cidr          = "10.80.0.0/16"
@@ -24,12 +23,10 @@ module "network" {
 }
 
 module "registry" {
-  count  = 1
   source = "../modules/container_registry"
 }
 
 module "budget" {
-  count           = 1
   source          = "../modules/project_budget"
   account_id      = var.expected_account_id
   email_addresses = var.budget_email_addresses
@@ -37,28 +34,25 @@ module "budget" {
 
 # One staging state owns the network, registry and runtime resources.
 module "services" {
-  count      = 1
   source     = "../modules/staging_services"
   account_id = var.expected_account_id
 }
 
 module "host" {
-  count               = 1
   source              = "../modules/staging_host"
   account_id          = var.expected_account_id
-  vpc_id              = module.network[0].vpc_id
-  subnet_id           = module.network[0].public_subnet_id
-  media_bucket        = module.services[0].media_bucket
-  queue_arn           = module.services[0].queue_arn
-  log_group_arns      = module.services[0].log_group_arns
+  vpc_id              = module.network.vpc_id
+  subnet_id           = module.network.public_subnet_id
+  media_bucket        = module.services.media_bucket
+  queue_arn           = module.services.queue_arn
+  log_group_arns      = module.services.log_group_arns
   depends_on          = [module.network]
-  ecr_repository_arns = [for repository in module.registry[0].repositories : repository.arn]
+  ecr_repository_arns = [for repository in module.registry.repositories : repository.arn]
 }
 
 module "scheduler" {
-  count        = 1
   source       = "../modules/staging_schedule"
   account_id   = var.expected_account_id
-  instance_id  = module.host[0].instance_id
-  instance_arn = module.host[0].instance_arn
+  instance_id  = module.host.instance_id
+  instance_arn = module.host.instance_arn
 }

@@ -7,51 +7,51 @@ output "account_id" {
 }
 
 output "vpc_id" {
-  value = module.network[0].vpc_id
+  value = module.network.vpc_id
 }
 
 output "public_subnet_id" {
-  value = module.network[0].public_subnet_id
+  value = module.network.public_subnet_id
 }
 
 output "ecr_repositories" {
-  value = module.registry[0].repositories
+  value = module.registry.repositories
 }
 
 output "budget" {
-  value = module.budget[0].budget
+  value = module.budget.budget
 }
 
 output "instance_id" {
   description = "Instância acessível somente por SSM; IP não é endpoint público."
-  value       = module.host[0].instance_id
+  value       = module.host.instance_id
 }
 
 output "instance_role_arn" {
-  value = module.host[0].instance_role_arn
+  value = module.host.instance_role_arn
 }
 
 output "runtime_resources" {
   description = "Configuração pública do runtime da #273. Sem segredos."
   value = {
     account_id      = var.expected_account_id
-    media_bucket    = module.services[0].media_bucket
-    queue_url       = module.services[0].queue_url
+    media_bucket    = module.services.media_bucket
+    queue_url       = module.services.queue_url
     public_base_url = "http://localhost:8080"
     parameter_path  = "/vintex/staging/"
   }
 }
 
 output "dead_letter_queue_url" {
-  value = module.services[0].dead_letter_queue_url
+  value = module.services.dead_letter_queue_url
 }
 
 output "log_groups" {
-  value = module.services[0].log_group_names
+  value = module.services.log_group_names
 }
 
 output "schedules" {
-  value = module.scheduler[0].schedules
+  value = module.scheduler.schedules
 }
 
 output "infrastructure_layout" {
