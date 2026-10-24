@@ -19,7 +19,7 @@ output "ecr_repositories" {
 }
 
 output "budget" {
-  value = module.budget.budget
+  value = one(module.budget[*].budget)
 }
 
 output "instance_id" {

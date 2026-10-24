@@ -22,15 +22,21 @@ variable "state_bucket" {
   }
 }
 
+# Desligue (false) se a política da conta não permitir criar Budgets.
+variable "enable_budget" {
+  type    = bool
+  default = true
+}
+
 variable "budget_email_addresses" {
   type    = set(string)
   default = []
   validation {
-    condition = (
+    condition = !var.enable_budget || (
       length(var.budget_email_addresses) > 0 && length(var.budget_email_addresses) <= 10 && alltrue([
         for email in var.budget_email_addresses : can(regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$", email))
       ])
     )
-    error_message = "Staging exige entre 1 e 10 e-mails válidos para os alertas do Budget."
+    error_message = "Com enable_budget=true, informe entre 1 e 10 e-mails válidos para os alertas do Budget."
   }
 }

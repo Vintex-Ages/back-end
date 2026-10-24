@@ -108,3 +108,23 @@ run "limite_de_destinatarios" {
   }
   expect_failures = [var.budget_email_addresses]
 }
+
+run "budget_desligado_dispensa_emails" {
+  command = plan
+  variables {
+    enable_budget          = false
+    budget_email_addresses = []
+  }
+  assert {
+    condition     = length(module.budget) == 0 && output.budget == null
+    error_message = "Com enable_budget=false nenhum Budget deve ser planejado."
+  }
+}
+
+run "budget_ligado_planeja_um_unico_budget" {
+  command = plan
+  assert {
+    condition     = length(module.budget) == 1 && output.budget.name == "vintex-monthly"
+    error_message = "Por padrão o Budget da conta deve ser planejado."
+  }
+}
