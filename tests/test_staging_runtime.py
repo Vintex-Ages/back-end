@@ -48,6 +48,9 @@ def test_render_secrets_encodes_database_password_and_limits_exposure(
     assert "FREELLMAPI_API_KEY=\n" in (tmp_path / "worker.env").read_text()
     assert "ENCRYPTION_KEY" not in (tmp_path / "api.env").read_text()
     assert "JWT_SECRET" not in (tmp_path / "llm.env").read_text()
+    assert "REQUEST_BODY_LIMIT_MB=40\n" in (tmp_path / "llm.env").read_text()
+    for name in ("api", "worker", "db"):
+        assert "REQUEST_BODY_LIMIT_MB" not in (tmp_path / f"{name}.env").read_text()
     assert "AWS_ACCESS_KEY_ID" not in (tmp_path / "worker.env").read_text()
     assert (
         "POSTGRES_PASSWORD=password$with:'special" in (tmp_path / "db.env").read_text()
@@ -79,6 +82,53 @@ def test_private_write_refuses_symlink(tmp_path):
     with pytest.raises(FileExistsError):
         deploy.private_write(link, "changed")
     assert protected.read_text() == "original"
+
+
+@pytest.mark.parametrize(
+    "engine,compose,valid",
+    [
+        ("1.44", "2.30.0", True),
+        ("1.44", "5.6.0", True),
+        ("1.56", "v5.6.0", True),
+        ("1.44", "2.30.0+vendor", True),
+        ("1.43", "5.6.0", False),
+        ("1.44", "2.29.7", False),
+        ("unknown", "5.6.0", False),
+        ("1.48", "", False),
+    ],
+)
+def test_runtime_versions_support_amazon_linux_and_reject_old_tools(
+    monkeypatch, engine, compose, valid
+):
+    monkeypatch.setattr(deploy, "run", Mock(side_effect=[engine, compose]))
+    if valid:
+        deploy.validate_runtime_versions()
+    else:
+        with pytest.raises(deploy.RuntimeCompatibilityError, match="rerun the same"):
+            deploy.validate_runtime_versions()
+
+
+def test_incompatible_runtime_stops_before_reading_aws(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    monkeypatch.setattr("sys.argv", ["deploy", "--config", str(tmp_path / "absent")])
+    monkeypatch.setattr(deploy.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(deploy.os, "uname", lambda: SimpleNamespace(machine="aarch64"))
+    monkeypatch.setattr(deploy, "run", Mock(side_effect=["", "", "1.43"]))
+    session = Mock()
+    monkeypatch.setattr(deploy.boto3, "Session", session)
+    with pytest.raises(deploy.RuntimeCompatibilityError):
+        deploy.main()
+    session.assert_not_called()
+
+
+def test_missing_runtime_tool_returns_safe_operator_guidance(monkeypatch):
+    monkeypatch.setattr(deploy, "run", Mock(side_effect=RuntimeError("secret output")))
+    with pytest.raises(
+        deploy.RuntimeCompatibilityError, match="rerun the same"
+    ) as error:
+        deploy.validate_runtime_versions()
+    assert "secret output" not in str(error.value)
 
 
 def test_parameters_paginate_and_decrypt_only_staging():
@@ -159,7 +209,7 @@ def release(tmp_path, sha):
     }
 
 
-@pytest.mark.parametrize("failure", ["migration", "up", "health", None])
+@pytest.mark.parametrize("failure", ["stop", "db", "migration", "up", "health", None])
 def test_deploy_sequence_and_rollback_preserve_schema_and_state(
     tmp_path, monkeypatch, failure
 ):
@@ -171,7 +221,12 @@ def test_deploy_sequence_and_rollback_preserve_schema_and_state(
     def compose(item, *args):
         calls.append((item["sha"], args))
         if item == target and (
-            (failure == "migration" and args[:2] == ("exec", "-T"))
+            (failure == "stop" and args == ("stop", "proxy", "worker", "api"))
+            or (
+                failure == "db"
+                and args == ("up", "-d", "--wait", "--wait-timeout", "120", "db")
+            )
+            or (failure == "migration" and args[:2] == ("exec", "-T"))
             or (
                 failure == "up"
                 and args == ("up", "-d", "--wait", "--wait-timeout", "120")
@@ -196,29 +251,45 @@ def test_deploy_sequence_and_rollback_preserve_schema_and_state(
         instance.deploy(target)
         assert json.loads((tmp_path / "current.json").read_text()) == target
         assert json.loads((tmp_path / "previous.json").read_text()) == previous
-    migrate = next(i for i, (_, args) in enumerate(calls) if "alembic" in args)
-    assert calls[migrate - 1][1] == ("up", "-d", "--no-deps", "api")
+    assert calls[2][1] == ("stop", "proxy", "worker", "api")
+    if failure != "stop":
+        assert calls[3][1] == ("up", "-d", "--wait", "--wait-timeout", "120", "db")
+    if failure not in {"stop", "db"}:
+        migrate = next(i for i, (_, args) in enumerate(calls) if "alembic" in args)
+        assert calls[migrate - 1][1] == ("up", "-d", "--no-deps", "api")
     assert not any("downgrade" in args or "down" in args for _, args in calls)
 
 
+@pytest.mark.parametrize("failure", ["stop", "db", "health"])
 def test_first_deploy_failure_stops_application_but_preserves_database(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, failure
 ):
     target = release(tmp_path, "a" * 40)
     instance = deploy.Deployment(tmp_path)
-    compose = Mock(return_value="")
+    calls = []
+
+    def compose(item, *args):
+        calls.append(args)
+        if (failure == "stop" and args == ("stop", "proxy", "worker", "api")) or (
+            failure == "db"
+            and args == ("up", "-d", "--wait", "--wait-timeout", "120", "db")
+        ):
+            raise RuntimeError("synthetic partial failure")
+        return ""
+
     monkeypatch.setattr(instance, "compose", compose)
     monkeypatch.setattr(instance, "healthy", lambda: False)
     monkeypatch.setattr(deploy, "run", lambda *a, **k: "arm64")
     with pytest.raises(RuntimeError):
         instance.deploy(target)
-    assert compose.call_args.args[1:] == (
+    assert calls[-1] == (
         "stop",
         "proxy",
         "api",
         "worker",
         "freellmapi",
     )
+    assert not any("down" in args or "rm" in args for args in calls)
     assert not (tmp_path / "current.json").exists()
 
 
@@ -270,8 +341,10 @@ def test_command_errors_do_not_leak_output(monkeypatch):
 def test_guard_bootstrap_is_persistent_and_before_docker():
     guard = (RUNTIME / "imds-guard.sh").read_text()
     assert "169.254.169.254" in guard and "fd00:ec2::254" in guard
-    assert "-s 172.30.73.3 -j RETURN" in guard
-    assert "-s 172.30.73.4 -j RETURN" in guard
+    assert "-i br-vintex-app -s 172.30.73.3 -j RETURN" in guard
+    assert "-i br-vintex-app -s 172.30.73.4 -j RETURN" in guard
+    assert "-i br-vintex-llm -s 172.30.74.2 -j RETURN" in guard
+    assert guard.count("-j RETURN") == 3
     assert "-A VINTEX_IMDS -j DROP" in guard
     assert (
         "Before=docker.service" in (RUNTIME / "vintex-imds-guard.service").read_text()
@@ -353,7 +426,13 @@ def test_host_bootstrap_checks_identity_and_uses_instance_role(
     )
     monkeypatch.setattr(deploy.os, "geteuid", lambda: 0)
     monkeypatch.setattr(deploy.os, "uname", lambda: SimpleNamespace(machine="aarch64"))
-    runner = Mock(return_value="")
+    runner = Mock(
+        side_effect=lambda args: (
+            "1.44"
+            if args[:2] == ["docker", "version"]
+            else "5.6.0" if args[:2] == ["docker", "compose"] else ""
+        )
+    )
     monkeypatch.setattr(deploy, "run", runner)
     session = Mock()
     session.get_credentials.return_value = SimpleNamespace(method=method)
