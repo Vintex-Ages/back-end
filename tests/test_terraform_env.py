@@ -183,6 +183,8 @@ def test_environment_overrides_are_rejected(setup_runner, monkeypatch, variable,
         ("budget_email_addresses", ["not-email"]),
         ("budget_email_addresses", [f"a{i}@example.test" for i in range(11)]),
         ("access_key", "not-allowed"),
+        ("enable_budget", "nao"),
+        ("enable_budget", 1),
     ],
 )
 def test_invalid_account_configuration_is_rejected(setup_runner, field, value):
@@ -191,6 +193,29 @@ def test_invalid_account_configuration_is_rejected(setup_runner, field, value):
     config[field] = value
     tf.write_private(account, config)
     with pytest.raises(ValueError):
+        tf.execute("staging", "init", account, base)
+    assert calls == []
+
+
+def test_staging_works_without_budget_emails_when_budget_is_disabled(setup_runner):
+    base, account, calls = setup_runner
+    config = json.loads(account.read_text())
+    config["enable_budget"] = False
+    config["budget_email_addresses"] = []
+    tf.write_private(account, config)
+    tf.execute("staging", "init", account, base)
+    assert len(calls) == 1
+
+
+def test_budget_emails_are_still_required_when_budget_is_explicitly_enabled(
+    setup_runner,
+):
+    base, account, calls = setup_runner
+    config = json.loads(account.read_text())
+    config["enable_budget"] = True
+    config["budget_email_addresses"] = []
+    tf.write_private(account, config)
+    with pytest.raises(ValueError, match="e-mails reais"):
         tf.execute("staging", "init", account, base)
     assert calls == []
 

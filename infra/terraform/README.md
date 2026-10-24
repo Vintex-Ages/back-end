@@ -27,6 +27,9 @@ Não sobrescreva `account.tfvars.json` se já estiver preenchido. Informe soment
 - `expected_account_id`: os 12 dígitos da conta confirmada pelo STS.
 - `state_bucket`: nome S3 globalmente único, como `vintex-terraform-state-<CONTA>`.
 - `budget_email_addresses`: de 1 a 10 e-mails reais dos responsáveis pelo Budget.
+- `enable_budget` (opcional, padrão `true`): defina `false` se a política da conta
+  (SCP) não permitir criar Budgets; nesse caso `budget_email_addresses` pode ficar
+  vazia e o Budget não é criado. Com `true`, os e-mails continuam obrigatórios.
 
 Use a identidade já autorizada na subconta da faculdade. SSO só é necessário
 se seu perfil institucional usa SSO; nesse caso renove com `aws sso login`.

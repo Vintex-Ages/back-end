@@ -18,7 +18,7 @@ Não é mais necessário executar um ambiente `shared` separado nem copiar IDs.
 | Saída | Internet Gateway, rota pública e associação da subnet |
 | ECR | vintex-backend e freellmapi, privados, AES256, tags imutáveis e scan no push |
 | Retenção ECR | Dez imagens; sem exclusão forçada |
-| Budget | vintex-monthly, teto US$35, toda a conta, alertas reais 28/30/35 e previsão 30 |
+| Budget | vintex-monthly, teto US$35, toda a conta, alertas reais 28/30/35 e previsão 30; opcional (`enable_budget`) |
 | Tags | Project=Vintex, Environment=staging, ManagedBy=Terraform |
 
 O nome do módulo de rede ainda contém “shared” por reutilização do código.
@@ -38,7 +38,8 @@ make infra-deploy staging
 
 O comando de infraestrutura conduz a criação do bucket pelo Terraform e o plano
 completo da staging, com revisão/confirmação antes de cada apply. Não é preciso
-criar bucket no console. Conta, nome do bucket e 1–10 e-mails reais do Budget são
+criar bucket no console. Conta, nome do bucket e 1–10 e-mails reais do Budget (ou
+`enable_budget: false`, se a política da conta não permitir Budgets) são
 configurados uma vez; credenciais ficam apenas no perfil local.
 
 O state inicial do bucket fica em `infra/terraform/state/bootstrap/`, fora do

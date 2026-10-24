@@ -18,14 +18,25 @@ ENVIRONMENTS = ("bootstrap", "staging")
 ACTIONS = ("init", "plan", "apply", "output", "show", "validate", "test", "deploy")
 
 
+REQUIRED_ACCOUNT_FIELDS = {
+    "expected_account_id",
+    "state_bucket",
+    "budget_email_addresses",
+}
+OPTIONAL_ACCOUNT_FIELDS = {"enable_budget"}
+
+
 def read_account(path: Path, environment: str) -> dict:
     config = json.loads(path.read_text())
-    if not isinstance(config, dict) or set(config) != {
-        "expected_account_id",
-        "state_bucket",
-        "budget_email_addresses",
-    }:
-        raise ValueError("Use somente os três campos de account.tfvars.json.example.")
+    if not isinstance(config, dict) or not (
+        REQUIRED_ACCOUNT_FIELDS
+        <= set(config)
+        <= REQUIRED_ACCOUNT_FIELDS | OPTIONAL_ACCOUNT_FIELDS
+    ):
+        raise ValueError("Use somente os campos de account.tfvars.json.example.")
+    enable_budget = config.get("enable_budget", True)
+    if not isinstance(enable_budget, bool):
+        raise ValueError("enable_budget deve ser true ou false.")
     if not re.fullmatch(r"[0-9]{12}", str(config["expected_account_id"])):
         raise ValueError("expected_account_id deve ter 12 dígitos.")
     if not isinstance(config["state_bucket"], str) or not re.fullmatch(
@@ -41,7 +52,7 @@ def read_account(path: Path, environment: str) -> dict:
         raise ValueError(
             "budget_email_addresses deve ser uma lista de e-mails válidos."
         )
-    if environment == "staging" and not 1 <= len(set(emails)) <= 10:
+    if environment == "staging" and enable_budget and not 1 <= len(set(emails)) <= 10:
         raise ValueError("Informe de 1 a 10 e-mails reais para o Budget da staging.")
     return config
 

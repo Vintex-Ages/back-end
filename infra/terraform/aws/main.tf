@@ -27,6 +27,7 @@ module "registry" {
 }
 
 module "budget" {
+  count           = var.enable_budget ? 1 : 0
   source          = "../modules/project_budget"
   account_id      = var.expected_account_id
   email_addresses = var.budget_email_addresses
