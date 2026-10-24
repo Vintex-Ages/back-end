@@ -5,20 +5,20 @@ sidebar_position: 7
 # Ambiente AWS real de staging (#274)
 
 A [#274](https://github.com/Vintex-Ages/back-end/issues/274), parte do
-[épico #180](https://github.com/Vintex-Ages/back-end/issues/180), conecta a
-[base compartilhada #272](./aws-shared.md) ao
+[épico #180](https://github.com/Vintex-Ages/back-end/issues/180), reúne a
+[base #272](./aws-shared.md) e o
 [runtime e deploy manual #273](./aws-staging-runtime.md).
-O responsável executa bootstrap, apply e deploy com sessão temporária SSO.
+O responsável executa bootstrap, apply e deploy com o perfil AWS autorizado na subconta institucional.
 **Os testes e o CI não provisionam recursos AWS.**
 
 ## Recursos e contratos
 
 | Componente | Configuração |
 | --- | --- |
-| State | Mesmo bucket administrativo do shared, chave independente `vintex/staging/terraform.tfstate`, criptografia e lock nativo S3 |
+| State | Bucket administrativo criado pelo Terraform, chave `vintex/staging/terraform.tfstate`, criptografia e lock nativo S3 |
 | Provider | Ohio `us-east-2`, `allowed_account_ids`, sem endpoints locais ou access keys |
 | EC2 | `t4g.small`, Amazon Linux 2023 ARM64, EBS gp3 criptografado de 10 GB e swap de 1 GiB |
-| Rede | VPC/subnet recebidas do shared, IPv4 automático, nenhum ingress, saída TCP 443 |
+| Rede | VPC/subnet criadas no mesmo plano, IPv4 automático, nenhum ingress, saída TCP 443 |
 | Metadados | IMDSv2 obrigatório, hop limit 2, IPv6 desativado; guard da #273 instalado antes do Docker |
 | Mídia | `vintex-media-staging-<CONTA>`, privado, AES256, ACLs desativadas e HTTP negado |
 | Mensageria | `vintex-ai-staging` e DLQ, SSE-SQS, polling 20 s, visibilidade 180 s, redrive após 3 entregas, DLQ 14 dias |
@@ -46,7 +46,7 @@ permanecem na #273; não há mudança de firewall na máquina do desenvolvedor.
 ## IAM e isolamento
 
 `VintexStagingInstanceRole` permite autenticação ECR, pull dos dois repositórios
-shared, acesso apenas à mídia/fila/parâmetros/logs staging e agente SSM.
+da staging, acesso apenas à mídia/fila/parâmetros/logs staging e agente SSM.
 Não permite push de imagens, leitura de backups/recursos prod nem consumo da DLQ.
 A inspeção da DLQ é uma operação humana.
 
@@ -63,52 +63,29 @@ Os alvos universais EC2 têm janela flexível desativada, retry limitado a 2
 vezes e idade máxima 300 s, para evitar ligar horas depois do horário.
 Agendamento de desligamento após ativação sob demanda pertence ao pipeline futuro.
 
-## Conta vazia: sequência manual
+## Conta vazia: infraestrutura e aplicação
 
-1. Seguir o [bootstrap da #272](./aws-shared.md#preparação-manual-de-uma-conta-vazia):
-   IAM Identity Center/MFA, sessão SSO e bucket administrativo de state privado,
-   versionado e criptografado em Ohio. Não é necessário ter nenhum bucket da
-   aplicação previamente criado.
-2. Revisar/aplicar `envs/shared`. Confirmar Budget, rede e dois repositórios ECR.
-3. Conceder ao responsável acesso também à chave `vintex/staging/terraform.tfstate`
-   e ao seu `.tflock` no bucket administrativo. A role da EC2 não acessa state.
-4. Preparar staging na raiz do backend:
+Configure o perfil institucional e o único `account.tfvars.json` conforme o
+[README Terraform](https://github.com/Vintex-Ages/back-end/blob/develop/infra/terraform/README.md),
+incluindo os e-mails reais do Budget. Na raiz do backend, execute com Terraform
+nativo, primeiro o root `bootstrap` (cria o bucket do state, com state local) e
+depois o root `aws` (rede, ECR, Budget e runtime AWS), sempre com `plan -out`,
+`show` e `apply` do plano salvo, revisando cada plano antes de aplicar. Não é
+necessário criar o bucket no console, e falha em uma etapa interrompe a
+sequência: corrija a causa e gere um novo plano sobre o state preservado.
 
-   ```bash
-   cp infra/terraform/envs/staging/backend.tfbackend.example infra/terraform/envs/staging/backend.tfbackend
-   cp infra/terraform/envs/staging/terraform.tfvars.example infra/terraform/envs/staging/terraform.tfvars
-   aws sso login --profile vintex
-   export AWS_PROFILE=vintex
-   aws sts get-caller-identity
-   terraform -chdir=infra/terraform/envs/shared output
-   ```
+O state completo da staging usa `vintex/staging/terraform.tfstate`, com lock S3.
+Faça backup privado do `terraform.tfstate` do bootstrap. Estados antigos
+separados exigem migração revisada. A role EC2 não acessa state. States/plans
+podem conter SecureString após refresh, mesmo com ignore_changes; nunca os
+anexe à issue, Git ou imagem.
 
-   Informar o bucket e a conta real em `backend.tfbackend`; em `terraform.tfvars`,
-   preencher `expected_account_id`, `shared_vpc_id` e `shared_public_subnet_id`
-   com os outputs shared. Os exemplos são fictícios. Ambos os arquivos reais
-   são ignorados pelo Git e pelo contexto de build Docker. O plano recusa
-   VPC/subnet de outra conta, projeto/ambiente ou subnet sem IPv4 automático.
+Depois da infraestrutura, publicar a aplicação pelo procedimento #273:
 
-5. Inicializar o backend real e revisar o plano salvo antes de aplicar:
+1. Aguardar a instância ficar `Online` no Systems Manager. Abrir sessão:
 
    ```bash
-   terraform -chdir=infra/terraform/envs/staging init -input=false -backend-config=backend.tfbackend
-   terraform -chdir=infra/terraform/envs/staging plan -out=staging.tfplan
-   terraform -chdir=infra/terraform/envs/staging show staging.tfplan
-   terraform -chdir=infra/terraform/envs/staging apply staging.tfplan
-   terraform -chdir=infra/terraform/envs/staging output
-   ```
-
-   Confirmar conta, região, ausência de ingress e recursos exclusivos de staging.
-   O primeiro apply pode criar somente os recursos desta issue; ele não faz deploy.
-   **State/plan podem conter valores SecureString após refresh**, mesmo com
-   `ignore_changes`. Proteger bucket, arquivos e acesso humano; não anexar
-   state/plan reais à issue nem imprimir seus conteúdos em logs públicos.
-
-6. Aguardar a instância ficar `Online` no Systems Manager. Abrir sessão:
-
-   ```bash
-   aws ssm start-session --profile vintex --region us-east-2 --target <INSTANCE_ID>
+   aws ssm start-session --profile vintex-terraform --region us-east-2 --target <INSTANCE_ID>
    ```
 
    Na EC2, verificar bootstrap sem imprimir env/segredos:
@@ -179,15 +156,17 @@ Após o primeiro deploy, anexar evidências sem segredos:
 
 Não usar `terraform destroy` para rollback de release. Destruir staging remove
 seu disco; esvaziar mídia sintética é uma operação manual explícita se necessária
-antes de remover bucket. Shared tem state próprio e não é destruído junto.
+antes de remover bucket. Rede, ECR e Budget agora pertencem ao mesmo state da
+staging; um destroy completo também os alcança. O bucket administrativo tem
+state próprio e proteção contra destruição.
 
 ## Verificações sem AWS
 
 ```bash
 terraform fmt -check -recursive infra/terraform
-terraform -chdir=infra/terraform/envs/staging init -backend=false -input=false -lockfile=readonly
-terraform -chdir=infra/terraform/envs/staging validate
-terraform -chdir=infra/terraform/envs/staging test
+terraform -chdir=infra/terraform/aws init -backend=false -input=false -lockfile=readonly
+terraform -chdir=infra/terraform/aws validate
+terraform -chdir=infra/terraform/aws test
 pytest tests/test_infra_staging_config.py tests/test_staging_runtime.py -v
 ```
 
@@ -195,7 +174,7 @@ Usar checkout separado se o diretório já foi inicializado com backend real.
 Todos os testes Terraform usam provider mockado e plan: host, IAM, serviços,
 Scheduler, outputs e recusa de inputs/rede incorretos. Pytest cobre contratos de
 backend/provider, lifecycle, sintaxe/ordem do bootstrap e parâmetros provisórios.
-CI valida `local`, `shared` e `staging`, sem credenciais ou apply. Downloads do
+CI valida `local`, `bootstrap` e `aws`, sem credenciais ou apply. Downloads do
 registry são necessários no init; isso não é acesso à conta AWS.
 
 ## Referências

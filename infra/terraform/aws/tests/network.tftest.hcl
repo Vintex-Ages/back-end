@@ -3,7 +3,7 @@ mock_provider "aws" {}
 run "rede_publica_ec2" {
   command = plan
   module {
-    source = "../../modules/shared_network"
+    source = "../modules/shared_network"
   }
   variables {
     name_prefix       = "vintex-shared"
