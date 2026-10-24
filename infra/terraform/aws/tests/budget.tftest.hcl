@@ -3,7 +3,7 @@ mock_provider "aws" {}
 run "teto_e_alertas_da_conta_vintex" {
   command = plan
   module {
-    source = "../../modules/project_budget"
+    source = "../modules/project_budget"
   }
   variables {
     account_id      = "123456789012"
