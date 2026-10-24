@@ -35,6 +35,16 @@ def test_staging_provider_and_state_are_real_isolated_and_locked():
     backend = (STAGING / "versions.tf").read_text()
     assert 'backend "s3" {}' in backend
     assert re.search(r"Environment\s*=\s*var.deployment", source)
+    from scripts.infra.terraform_env import backend_config
+
+    config = backend_config(
+        "staging",
+        {"expected_account_id": "123456789012", "state_bucket": "vintex-test-state"},
+        Path("/tmp/runtime"),
+    )
+    assert config["key"] == "vintex/staging/terraform.tfstate"
+    assert config["encrypt"] and config["use_lockfile"]
+    assert config["allowed_account_ids"] == ["123456789012"]
     assert 'required_version = ">= 1.16"' in backend
 
 

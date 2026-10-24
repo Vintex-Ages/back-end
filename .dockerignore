@@ -48,3 +48,6 @@ infra/terraform/**/*.tfstate*
 
 # Conta e backend AWS: configuração local, nunca imagem/Git.
 infra/terraform/account.tfvars.json
+
+# State e identificação do bootstrap persistem fora do cache.
+infra/terraform/state/

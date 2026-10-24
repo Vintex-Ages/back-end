@@ -9,19 +9,19 @@ variables {
 }
 
 override_resource {
-  target          = module.network[0].aws_vpc.this
+  target          = module.network.aws_vpc.this
   override_during = plan
   values          = { id = "vpc-shared-test" }
 }
 
 override_resource {
-  target          = module.network[0].aws_subnet.public
+  target          = module.network.aws_subnet.public
   override_during = plan
   values          = { id = "subnet-shared-test" }
 }
 
 override_resource {
-  target          = module.registry[0].aws_ecr_repository.this["vintex-backend"]
+  target          = module.registry.aws_ecr_repository.this["vintex-backend"]
   override_during = plan
   values = {
     arn            = "arn:aws:ecr:us-east-2:123456789012:repository/vintex-backend"
@@ -30,7 +30,7 @@ override_resource {
 }
 
 override_resource {
-  target          = module.registry[0].aws_ecr_repository.this["freellmapi"]
+  target          = module.registry.aws_ecr_repository.this["freellmapi"]
   override_during = plan
   values = {
     arn            = "arn:aws:ecr:us-east-2:123456789012:repository/freellmapi"
@@ -39,12 +39,12 @@ override_resource {
 }
 
 override_data {
-  target          = module.host[0].data.aws_ssm_parameter.al2023
+  target          = module.host.data.aws_ssm_parameter.al2023
   override_during = plan
   values          = { value = "ami-00000000000000001" }
 }
 override_data {
-  target          = module.host[0].data.aws_ami.al2023
+  target          = module.host.data.aws_ami.al2023
   override_during = plan
   values          = { id = "ami-00000000000000001", architecture = "arm64" }
 }
@@ -107,4 +107,24 @@ run "limite_de_destinatarios" {
     budget_email_addresses = [for i in range(11) : "infra${i}@example.test"]
   }
   expect_failures = [var.budget_email_addresses]
+}
+
+run "budget_desligado_dispensa_emails" {
+  command = plan
+  variables {
+    enable_budget          = false
+    budget_email_addresses = []
+  }
+  assert {
+    condition     = length(module.budget) == 0 && output.budget == null
+    error_message = "Com enable_budget=false nenhum Budget deve ser planejado."
+  }
+}
+
+run "budget_ligado_planeja_um_unico_budget" {
+  command = plan
+  assert {
+    condition     = length(module.budget) == 1 && output.budget.name == "vintex-monthly"
+    error_message = "Por padrão o Budget da conta deve ser planejado."
+  }
 }

@@ -67,18 +67,29 @@ Agendamento de desligamento após ativação sob demanda pertence ao pipeline fu
 
 Configure o perfil institucional e o único `account.tfvars.json` conforme o
 [README Terraform](https://github.com/Vintex-Ages/back-end/blob/develop/infra/terraform/README.md),
-incluindo os e-mails reais do Budget. Na raiz do backend, execute com Terraform
-nativo, primeiro o root `bootstrap` (cria o bucket do state, com state local) e
-depois o root `aws` (rede, ECR, Budget e runtime AWS), sempre com `plan -out`,
-`show` e `apply` do plano salvo, revisando cada plano antes de aplicar. Não é
-necessário criar o bucket no console, e falha em uma etapa interrompe a
-sequência: corrija a causa e gere um novo plano sobre o state preservado.
+incluindo os e-mails reais do Budget. Na raiz do backend:
 
-O state completo da staging usa `vintex/staging/terraform.tfstate`, com lock S3.
-Faça backup privado do `terraform.tfstate` do bootstrap. Estados antigos
-separados exigem migração revisada. A role EC2 não acessa state. States/plans
-podem conter SecureString após refresh, mesmo com ignore_changes; nunca os
-anexe à issue, Git ou imagem.
+```bash
+make terraform-validate staging
+make infra-deploy staging
+```
+
+O primeiro comando não exige credenciais e usa cache QA com backend desativado.
+O segundo verifica a conta em us-east-2 e conduz dois planos/applies revisados:
+criação/proteção do bucket administrativo e staging completa (rede, ECR, Budget e
+runtime AWS). Cada apply pede o nome da etapa; falha interrompe a sequência.
+Reexecutar o mesmo comando após corrigir a causa gera novos planos sobre o state
+preservado. Não há retry automático nem criação manual de bucket.
+
+`state/bootstrap/` conserva state e identidade do bucket fora do cache; faça
+backup privado. O state completo da staging usa `vintex/staging/terraform.tfstate`,
+com lock S3. Estados antigos separados exigem migração revisada. A role EC2 não
+acessa state. States/plans podem conter SecureString após refresh, mesmo com
+ignore_changes; nunca os anexe à issue, Git ou imagem.
+
+Os comandos granulares `make terraform-{init,plan,show,apply,output} staging`
+continuam disponíveis para operação por etapa após preparar o bucket. Comandos
+Terraform nativos e as diferenças em relação ao runner estão no README.
 
 Depois da infraestrutura, publicar a aplicação pelo procedimento #273:
 
@@ -163,18 +174,17 @@ state próprio e proteção contra destruição.
 ## Verificações sem AWS
 
 ```bash
-terraform fmt -check -recursive infra/terraform
-terraform -chdir=infra/terraform/aws init -backend=false -input=false -lockfile=readonly
-terraform -chdir=infra/terraform/aws validate
-terraform -chdir=infra/terraform/aws test
-pytest tests/test_infra_staging_config.py tests/test_staging_runtime.py -v
+make terraform-fmt
+make terraform-validate staging
+make terraform-test staging
+pytest tests/test_terraform_env.py tests/test_terraform_make.py tests/test_infra_staging_config.py tests/test_staging_runtime.py -v
 ```
 
 Usar checkout separado se o diretório já foi inicializado com backend real.
 Todos os testes Terraform usam provider mockado e plan: host, IAM, serviços,
 Scheduler, outputs e recusa de inputs/rede incorretos. Pytest cobre contratos de
 backend/provider, lifecycle, sintaxe/ordem do bootstrap e parâmetros provisórios.
-CI valida `local`, `bootstrap` e `aws`, sem credenciais ou apply. Downloads do
+CI valida `local`, `shared` e `staging`, sem credenciais ou apply. Downloads do
 registry são necessários no init; isso não é acesso à conta AWS.
 
 ## Referências

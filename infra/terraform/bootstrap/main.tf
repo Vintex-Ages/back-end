@@ -35,6 +35,11 @@ variable "state_bucket" {
 }
 
 # Accepted so bootstrap and AWS use exactly the same account var-file.
+variable "enable_budget" {
+  type    = bool
+  default = true
+}
+
 variable "budget_email_addresses" {
   type    = set(string)
   default = []
