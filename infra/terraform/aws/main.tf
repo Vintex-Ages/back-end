@@ -63,5 +63,6 @@ module "scheduler" {
 module "preview" {
   count       = var.public_preview ? 1 : 0
   source      = "../modules/staging_preview"
+  account_id  = var.expected_account_id
   instance_id = module.host.instance_id
 }

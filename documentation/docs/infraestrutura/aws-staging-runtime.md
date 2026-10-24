@@ -172,8 +172,7 @@ Na máquina preparada em 21/10/2026, Skopeo 1.24.1, Session Manager Plugin
 padrão foi preservado. Em outra máquina, preparar um builder com esse nome ou
 substituí-lo pelo builder ARM64 disponível. QEMU permite executar binários ARM64
 durante o build no host x86_64; não é necessário instalar QEMU na EC2 ARM64.
-Os [resultados e limites do ensaio](./aws-staging.md#preparação-da-máquina-e-execução-arm64)
-não substituem o aceite operacional na AWS.
+Os resultados desse ensaio local não substituem o aceite operacional na AWS.
 
 Espelhar o manifesto ARM64 oficial FreeLLMAPI v0.14.2 preservando o digest, com
 Skopeo instalado. Credenciais do espelho são temporárias; nunca adicionar ao Git:

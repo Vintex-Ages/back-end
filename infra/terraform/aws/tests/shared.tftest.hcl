@@ -1,5 +1,6 @@
 # Todos os planos usam o provider mockado: nenhuma credencial ou API AWS.
 mock_provider "aws" {}
+mock_provider "random" {}
 
 variables {
   deployment             = "staging"
