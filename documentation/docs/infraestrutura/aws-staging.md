@@ -171,6 +171,42 @@ antes de remover bucket. Rede, ECR e Budget agora pertencem ao mesmo state da
 staging; um destroy completo também os alcança. O bucket administrativo tem
 state próprio e proteção contra destruição.
 
+## Preview aberto (opcional)
+
+Por padrão a staging é fechada: o security group não tem ingress e o acesso é por
+túnel SSM. Com `"public_preview": true` no `account.tfvars.json`, o Terraform
+abre a staging ao público **enquanto a instância está de pé** (seg–sex, 10h–22h,
+Brasília), sem domínio próprio:
+
+| Recurso | Função |
+| --- | --- |
+| IP elástico | Nome de origem estável: o DNS público da EC2 muda a cada stop/start |
+| Regra do security group | TCP 80 somente da lista gerenciada de origem do CloudFront; nenhum CIDR aberto |
+| CloudFront (`*.cloudfront.net`) | HTTPS com o certificado padrão; API e SPA sem cache, `/assets/*` com cache |
+| Página offline (S3 privado, OAC) | Mostrada nos erros 502/503/504, ou seja, fora do horário; não depende da instância |
+| CloudFront Function | Fecha `POST /api/auth/register`; as contas de demo são criadas dentro da instância |
+| `/vintex/staging/origin_verify` | Segredo gerado pelo Terraform (SecureString); só o CloudFront desta distribuição o envia |
+
+Com `false` (padrão) nada disso existe e o security group volta a ficar sem ingress.
+A URL sai em `terraform output public_url` e a distribuição pode levar alguns
+minutos para ficar pronta. O custo adicional principal é o IPv4 público fixo
+(cerca de US$ 0,005 por hora, a qualquer hora, com a instância ligada ou não).
+
+**Limites.** A SCP da organização restringe serviços regionais a us-east-2:
+não há WAF para CloudFront nem certificado ACM (por isso a URL é a do
+CloudFront). O trecho CloudFront → EC2 é HTTP, porque o DNS da EC2 não aceita
+certificado público; use senhas descartáveis nas contas de demo e dados
+sintéticos. O deploy fixa `AI_PROVIDER=unavailable`, então chat e sugestão
+síncrona de IA ficam degradados no preview.
+
+**O que este módulo não faz.** Ele só provisiona o lado AWS. Para o preview
+responder, o release da staging ainda precisa de três ajustes que **não estão
+neste módulo**: publicar o Nginx fora do loopback, exigir o header
+`X-Origin-Verify` e usar o IP real do cliente no rate limit (além de bloquear o
+cadastro também no Nginx), e aceitar a URL `https://….cloudfront.net` em
+`public_base_url` no deploy. Esses ajustes seguem em PR separado, depois de
+validados na instância real.
+
 ## Verificações sem AWS
 
 ```bash
