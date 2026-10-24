@@ -58,3 +58,8 @@ output "infrastructure_layout" {
   description = "Identifica o state completo da staging, sem state shared separado."
   value       = "staging-complete-v1"
 }
+
+output "preview_origin_dns" {
+  description = "DNS estável da origem do preview aberto; null com public_preview desligado."
+  value       = one(module.preview[*].origin_dns)
+}

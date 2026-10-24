@@ -82,3 +82,24 @@ run "host_recebe_rede_e_ecr_dos_modulos" {
     error_message = "State precisa identificar a composição completa."
   }
 }
+
+run "preview_desligado_por_padrao" {
+  command = plan
+  assert {
+    condition     = length(module.preview) == 0 && output.preview_origin_dns == null
+    error_message = "Por padrão não há IP elástico nem preview aberto."
+  }
+  assert {
+    condition     = output.runtime_resources.public_base_url == "http://localhost:8080"
+    error_message = "Sem preview o acesso continua pelo túnel SSM."
+  }
+}
+
+run "preview_ligado_cria_o_modulo_e_abre_o_sg" {
+  command = plan
+  variables { public_preview = true }
+  assert {
+    condition     = length(module.preview) == 1
+    error_message = "Com public_preview=true o módulo de preview deve existir."
+  }
+}

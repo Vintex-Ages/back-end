@@ -68,6 +68,10 @@ EC2 segue #272 → #273 → #274; a computação local ECS permanece em hold.
   IMDSv2, role mínima isolada e bootstrap do runtime #273, sem deploy.
 - `staging_schedule`: start 10h/stop 22h seg–sex e sweep 02h diário, Brasília,
   role limitada ao ARN/tags da instância e trust da conta/grupo Scheduler.
+- `staging_preview` (opcional, `public_preview`): IP elástico associado à instância,
+  para o CloudFront ter uma origem estável apesar do stop/start. O `staging_host` só
+  abre a porta 80 (somente para a lista gerenciada de origem do CloudFront) quando
+  `public_http_from_cloudfront` é verdadeiro; por padrão continua sem ingress.
 
 Os tempos opcionais de `ai_messaging` preservam defaults locais e expõem o
 contrato efetivo em `delivery_settings`. Staging usa `aws` com `config/staging.tfvars` no mesmo state de rede/ECR/Budget; [procedimento manual](../../../documentation/docs/infraestrutura/aws-staging.md).

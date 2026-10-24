@@ -185,6 +185,8 @@ def test_environment_overrides_are_rejected(setup_runner, monkeypatch, variable,
         ("access_key", "not-allowed"),
         ("enable_budget", "nao"),
         ("enable_budget", 1),
+        ("public_preview", "sim"),
+        ("public_preview", 1),
     ],
 )
 def test_invalid_account_configuration_is_rejected(setup_runner, field, value):
@@ -195,6 +197,15 @@ def test_invalid_account_configuration_is_rejected(setup_runner, field, value):
     with pytest.raises(ValueError):
         tf.execute("staging", "init", account, base)
     assert calls == []
+
+
+def test_public_preview_flag_is_an_accepted_optional_boolean(setup_runner):
+    base, account, calls = setup_runner
+    config = json.loads(account.read_text())
+    config["public_preview"] = True
+    tf.write_private(account, config)
+    tf.execute("staging", "init", account, base)
+    assert len(calls) == 1
 
 
 def test_staging_works_without_budget_emails_when_budget_is_disabled(setup_runner):

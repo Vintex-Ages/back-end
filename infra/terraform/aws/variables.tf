@@ -40,3 +40,10 @@ variable "budget_email_addresses" {
     error_message = "Com enable_budget=true, informe entre 1 e 10 e-mails válidos para os alertas do Budget."
   }
 }
+
+# Abre a staging ao público durante a janela de funcionamento, por CloudFront.
+# Desligado por padrão: a staging continua sem ingress e acessível por SSM.
+variable "public_preview" {
+  type    = bool
+  default = false
+}

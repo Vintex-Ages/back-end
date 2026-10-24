@@ -49,6 +49,8 @@ module "host" {
   log_group_arns      = module.services.log_group_arns
   depends_on          = [module.network]
   ecr_repository_arns = [for repository in module.registry.repositories : repository.arn]
+
+  public_http_from_cloudfront = var.public_preview
 }
 
 module "scheduler" {
@@ -56,4 +58,10 @@ module "scheduler" {
   account_id   = var.expected_account_id
   instance_id  = module.host.instance_id
   instance_arn = module.host.instance_arn
+}
+
+module "preview" {
+  count       = var.public_preview ? 1 : 0
+  source      = "../modules/staging_preview"
+  instance_id = module.host.instance_id
 }

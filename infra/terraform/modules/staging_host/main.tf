@@ -14,11 +14,27 @@ data "aws_ami" "al2023" {
   }
 }
 
+data "aws_ec2_managed_prefix_list" "cloudfront" {
+  count = var.public_http_from_cloudfront ? 1 : 0
+  name  = "com.amazonaws.global.cloudfront.origin-facing"
+}
+
 resource "aws_security_group" "staging" {
   name        = "vintex-staging"
   description = "No ingress; SSM only; HTTPS egress"
   vpc_id      = var.vpc_id
-  ingress     = []
+  # Lista autoritativa: sem o preview aberto não há nenhum ingress.
+  ingress = var.public_http_from_cloudfront ? [{
+    description      = "HTTP somente do CloudFront"
+    from_port        = 80
+    to_port          = 80
+    protocol         = "tcp"
+    cidr_blocks      = []
+    ipv6_cidr_blocks = []
+    prefix_list_ids  = [data.aws_ec2_managed_prefix_list.cloudfront[0].id]
+    security_groups  = []
+    self             = false
+  }] : []
   egress {
     from_port   = 443
     to_port     = 443
