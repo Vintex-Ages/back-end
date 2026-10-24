@@ -6,27 +6,27 @@ variables {
   budget_email_addresses = ["infra@example.test"]
 }
 override_resource {
-  target          = module.network[0].aws_vpc.this
+  target          = module.network.aws_vpc.this
   override_during = plan
   values          = { id = "vpc-00000000000000001" }
 }
 override_resource {
-  target          = module.network[0].aws_subnet.public
+  target          = module.network.aws_subnet.public
   override_during = plan
   values          = { id = "subnet-00000000000000001" }
 }
 override_data {
-  target          = module.host[0].data.aws_ssm_parameter.al2023
+  target          = module.host.data.aws_ssm_parameter.al2023
   override_during = plan
   values          = { value = "ami-00000000000000001" }
 }
 override_data {
-  target          = module.host[0].data.aws_ami.al2023
+  target          = module.host.data.aws_ami.al2023
   override_during = plan
   values          = { id = "ami-00000000000000001", architecture = "arm64" }
 }
 override_resource {
-  target          = module.host[0].aws_instance.staging
+  target          = module.host.aws_instance.staging
   override_during = plan
   values = {
     id  = "i-00000000000000001"
@@ -34,7 +34,7 @@ override_resource {
   }
 }
 override_resource {
-  target          = module.services[0].module.messaging.aws_sqs_queue.processing
+  target          = module.services.module.messaging.aws_sqs_queue.processing
   override_during = plan
   values = {
     arn = "arn:aws:sqs:us-east-2:123456789012:vintex-ai-staging"
@@ -44,7 +44,7 @@ override_resource {
 run "staging_completa_conecta_runtime_e_agendamento" {
   command = plan
   assert {
-    condition     = length(module.network) == 1 && length(module.registry) == 1 && length(module.budget) == 1
+    condition     = output.public_subnet_id == module.network.public_subnet_id && length(output.ecr_repositories) == 2 && output.budget.name == "vintex-monthly"
     error_message = "Staging deve incluir rede, registro e orçamento no mesmo state."
   }
   assert {
@@ -74,7 +74,7 @@ run "conta_invalida" {
 run "host_recebe_rede_e_ecr_dos_modulos" {
   command = plan
   assert {
-    condition     = module.host[0].vpc_id == module.network[0].vpc_id && module.host[0].subnet_id == module.network[0].public_subnet_id
+    condition     = module.host.vpc_id == module.network.vpc_id && module.host.subnet_id == module.network.public_subnet_id
     error_message = "Host deve receber a rede do mesmo plano, sem IDs copiados ou remote state."
   }
   assert {
