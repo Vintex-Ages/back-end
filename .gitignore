@@ -44,3 +44,6 @@ terraform.rc
 
 # Conta e backend AWS: configuração local, nunca imagem/Git.
 infra/terraform/account.tfvars.json
+
+# State persistente do bootstrap, identificação e locks locais (não é cache).
+/infra/terraform/state/

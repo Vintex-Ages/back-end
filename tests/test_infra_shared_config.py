@@ -36,6 +36,21 @@ def test_shared_provider_uses_ohio_expected_account_and_standard_tags():
 def test_state_is_separate_encrypted_and_uses_native_lock():
     source = (SHARED / "versions.tf").read_text()
     assert 'backend "s3" {}' in source
+    from scripts.infra.terraform_env import backend_config
+
+    account = {
+        "expected_account_id": "123456789012",
+        "state_bucket": "vintex-test-state",
+    }
+    backend = backend_config("staging", account, Path("/tmp/runtime"))
+    assert backend == {
+        "bucket": "vintex-test-state",
+        "key": "vintex/staging/terraform.tfstate",
+        "region": "us-east-2",
+        "encrypt": True,
+        "use_lockfile": True,
+        "allowed_account_ids": ["123456789012"],
+    }
 
 
 @pytest.mark.parametrize("test_file", sorted((SHARED / "tests").glob("*.tftest.hcl")))
