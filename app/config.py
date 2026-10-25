@@ -20,6 +20,14 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
+
+    # Conta da administradora criada por `python -m app.seeds.admin`
+    # (back-end#61). Vazio em desenvolvimento usa a senha documentada no
+    # README; em produção o seed recusa rodar sem ela. O domínio é o
+    # `example.com` (RFC 2606) e não o `.local` das contas de `lojas.py`: o
+    # `EmailStr` do login recusa `.local`, e esta conta precisa entrar.
+    SEED_ADMIN_EMAIL: str = "admin@vintex.example.com"
+    SEED_ADMIN_PASSWORD: str = ""
     # Provedor de IA ativo (chave registrada em app/services/ai/factory.py).
     # Nenhum fornecedor foi escolhido ainda (ver .ai/architecture.md); o
     # padrão "unavailable" degrada sem erro fatal (VE-06).

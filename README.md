@@ -96,9 +96,24 @@ Dados sintéticos para desenvolvimento e demo. Rode **depois** de `alembic upgra
 python -m app.seeds.lojas   # endereços, vendedores e lojas (RS)
 python -m app.seeds.pecas   # peças e imagens, distribuídas entre as lojas
 python -m app.seeds.legal   # v0 dos termos de uso e do contrato de venda
+python -m app.seeds.admin   # conta da administradora
 ```
 
 Todos são idempotentes — rodar de novo não duplica.
+
+### Conta da administradora
+
+As contas das lojas não fazem login. A da administradora faz: é com ela que se
+entra nas rotas de `/api/admin`, como a fila de comprovantes.
+
+| | |
+| --- | --- |
+| E-mail | `admin@vintex.example.com` (`SEED_ADMIN_EMAIL`) |
+| Senha em desenvolvimento | `vintex-admin-dev` |
+| Senha em produção | obrigatória em `SEED_ADMIN_PASSWORD`; sem ela o seed recusa rodar |
+
+Se a conta já existe, o seed só garante o papel de administradora e não troca a
+senha.
 
 ## Testes
 
