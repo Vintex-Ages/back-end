@@ -296,6 +296,24 @@ class ProductRepository:
         )
         return result.rowcount
 
+    def sell_for_order(self, order_id: int, sold_at: datetime) -> int:
+        """`reservado -> vendido` para as peças do pedido, com a data da venda,
+        e devolve quantas mudaram (back-end#251).
+
+        É a aprovação do comprovante que confirma a venda, e não o checkout: a
+        partir daqui a peça conta no resumo do vendedor (RN-95), que lê
+        `sold_at`.
+        """
+        pecas_do_pedido = select(OrderItem.product_id).where(
+            OrderItem.order_id == order_id
+        )
+        result = self.db.execute(
+            update(Product)
+            .where(Product.id.in_(pecas_do_pedido), Product.status == "reservado")
+            .values(status="vendido", sold_at=sold_at)
+        )
+        return result.rowcount
+
     def create(self, product: Product) -> Product:
         self.db.add(product)
         self.db.flush()
