@@ -23,7 +23,7 @@ from app.schemas.order_schema import (
 
 # Prazo para o comprovante ser aprovado. Vencido, o pedido expira e a peça
 # volta a `ativo` (back-end#243).
-_PRAZO_DO_COMPROVANTE = timedelta(days=3)
+PRAZO_DO_COMPROVANTE = timedelta(days=3)
 _STATUS_INICIAL = "aguardando_comprovante"
 
 
@@ -120,7 +120,7 @@ class OrderController:
             commission_rate=COMISSAO_VINTEX,
             platform_fee=comissao,
             total_amount=bruto,
-            expires_at=utcnow_naive() + _PRAZO_DO_COMPROVANTE,
+            expires_at=utcnow_naive() + PRAZO_DO_COMPROVANTE,
             delivery_street=endereco.street,
             delivery_number=endereco.number,
             delivery_complement=endereco.complement,
