@@ -6,6 +6,7 @@ login (RN-27), não exige ser vendedor.
 
 from fastapi import APIRouter, Depends, File, UploadFile, status
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from app.controllers.media_controller import ArquivoRecebido
 from app.controllers.order_controller import OrderController
@@ -87,7 +88,13 @@ async def submit_receipt(
         content_type=file.content_type,
         conteudo=conteudo,
     )
-    return controller.submit_receipt(user_id, order_id, arquivo, storage)
+    # A rota é `async` só para o `await file.read`. O resto (Postgres e upload
+    # no S3) é síncrono: chamado direto, seguraria o event loop e pararia
+    # todas as outras requisições do servidor enquanto o comprovante sobe. No
+    # threadpool ele roda como uma rota `def` comum.
+    return await run_in_threadpool(
+        controller.submit_receipt, user_id, order_id, arquivo, storage
+    )
 
 
 @router.get(
