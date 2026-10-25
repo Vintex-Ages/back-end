@@ -125,6 +125,50 @@ def test_termo_sem_nenhuma_relacao_ainda_devolve_o_catalogo(
     assert len(corpo["suggestions"]["items"]) == 1
 
 
+def test_busca_sem_resultado_mantem_os_filtros_nas_alternativas(
+    pg_client: TestClient, pg_session: Session
+) -> None:
+    """Quem busca "zzzzz" em calcas ve calcas, nao o catalogo inteiro (#108).
+
+    Os filtros so caem quando nem o catalogo com eles tem peca.
+    """
+    loja = criar_loja(pg_session, "Brechó Leste")
+    criar_peca(pg_session, loja, "Calça Pantalona", categoria="Calças")
+    criar_peca(pg_session, loja, "Jaqueta de Couro", categoria="Jaquetas")
+    pg_session.commit()
+
+    resposta = pg_client.get(
+        "/api/products", params={"q": "zzzzz", "category": "Calças"}
+    )
+
+    assert resposta.status_code == 200
+    corpo = resposta.json()
+    assert corpo["match_type"] == "fallback"
+    assert corpo["applied_filters"] == {"category": "Calças"}
+    assert [item["name"] for item in corpo["suggestions"]["items"]] == [
+        "Calça Pantalona"
+    ]
+
+
+def test_busca_e_filtro_sem_resultado_caem_no_catalogo_inteiro(
+    pg_client: TestClient, pg_session: Session
+) -> None:
+    loja = criar_loja(pg_session, "Brechó Oeste")
+    criar_peca(pg_session, loja, "Jaqueta de Couro", categoria="Jaquetas")
+    pg_session.commit()
+
+    resposta = pg_client.get(
+        "/api/products", params={"q": "zzzzz", "category": "Calças"}
+    )
+
+    assert resposta.status_code == 200
+    corpo = resposta.json()
+    assert corpo["match_type"] == "fallback"
+    assert [item["name"] for item in corpo["suggestions"]["items"]] == [
+        "Jaqueta de Couro"
+    ]
+
+
 def test_catalogo_vazio_devolve_vazio_sem_erro(
     pg_client: TestClient, pg_session: Session
 ) -> None:

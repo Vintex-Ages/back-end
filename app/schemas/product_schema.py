@@ -32,6 +32,9 @@ class ProductFilters(BaseModel):
     brand: str | None = None
     condition: str | None = None
     color: str | None = None
+    store_id: int | None = Field(default=None, gt=0)
+    city: str | None = None
+    state: str | None = None
 
     @model_validator(mode="after")
     def validate_price_range(self) -> "ProductFilters":
@@ -43,7 +46,7 @@ class ProductFilters(BaseModel):
             raise ValueError("price_min deve ser menor ou igual a price_max")
         return self
 
-    def applied(self) -> dict[str, str | float]:
+    def applied(self) -> dict[str, str | float | int]:
         """Os filtros que de fato entraram, para a resposta ecoar.
 
         `Decimal` dentro de dict nao passa por `field_serializer`: sairia como
