@@ -68,6 +68,12 @@ class Payment(BaseModel):
     # comprovante não é público e o upload não devolve endereço para ele
     # (back-end#220).
     receipt_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Nome original e tipo do arquivo, gravados no envio (back-end#244). A
+    # chave é um uuid sem extensão: sem estas colunas o nome é irrecuperável, e
+    # o tipo só sairia baixando o arquivo inteiro do storage, um download por
+    # linha na fila da administradora. Nulos só nas linhas anteriores a elas.
+    receipt_name: Mapped[str | None] = mapped_column(String(255))
+    receipt_content_type: Mapped[str | None] = mapped_column(String(100))
     submitted_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, server_default=func.now()
     )

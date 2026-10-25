@@ -35,6 +35,14 @@ Depois de `confirmado`, as etapas `preparando`, `enviado` e `concluido` não vir
 - **Duas validações do mesmo comprovante: só a primeira passa.** A troca de status é um `UPDATE … WHERE status = 'em_analise'`, como na reserva das peças. A segunda responde `409 ORDER_NOT_IN_REVIEW`.
 - **Pedido, pagamento, histórico e peças mudam no mesmo commit.**
 
+## O arquivo do comprovante
+
+- **Imagem ou PDF** (RN-20): `image/jpeg`, `image/png`, `image/webp`, `image/heic` e `application/pdf`, até **8 MiB** (`app/services/media_rules.py`). PDF vale só para comprovante; foto de peça continua só imagem ([#244](https://github.com/Vintex-Ages/back-end/issues/244)).
+- **Só a administradora abre o arquivo**, por `GET /api/admin/payments/{order_id}/receipt`, que devolve o comprovante vigente com o tipo original. Comprovante de Pix tem dado bancário: o comprador, inclusive o dono do pedido, recebe 403. Ele vê o nome e a situação no detalhe do pedido, nunca a URL.
+- A resposta sai com `Cache-Control: private, no-store` e `X-Content-Type-Options: nosniff`.
+- `payments.receipt_name` e `payments.receipt_content_type` são gravados no envio. A chave do storage é um uuid sem extensão: sem essas colunas o nome seria irrecuperável, e o tipo só sairia baixando o arquivo, um download por linha na fila da administradora.
+- O prefixo `payments/receipts/` fica fora da rota pública de mídia (`/api/media/...`).
+
 ## Erros
 
 | Status | Código | Quando |
@@ -42,5 +50,6 @@ Depois de `confirmado`, as etapas `preparando`, `enviado` e `concluido` não vir
 | 401 | `AUTH_REQUIRED` | sem sessão |
 | 403 | `ADMIN_REQUIRED` | quem não é administradora (ver [Fundação HTTP](../arquitetura/fundacao-http#autorização-por-papel)) |
 | 404 | `ORDER_NOT_FOUND` | pedido inexistente |
+| 404 | `RECEIPT_NOT_FOUND` | pedido sem comprovante, na rota do arquivo |
 | 409 | `ORDER_NOT_IN_REVIEW` | o pedido não está em `em_analise`, inclusive na segunda validação |
 | 422 | `VALIDATION_ERROR` | rejeitar com motivo vazio |

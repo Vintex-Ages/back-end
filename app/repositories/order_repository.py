@@ -117,6 +117,15 @@ class OrderRepository:
         self.db.flush()
         return True
 
+    def latest_payment(self, order_id: int) -> Payment | None:
+        """O comprovante vigente, em qualquer situação: o envio mais recente."""
+        return self.db.scalar(
+            select(Payment)
+            .where(Payment.order_id == order_id)
+            .order_by(Payment.id.desc())
+            .limit(1)
+        )
+
     def pending_payment(self, order_id: int) -> Payment | None:
         """O comprovante que espera validação: o envio mais recente, pendente."""
         return self.db.scalar(

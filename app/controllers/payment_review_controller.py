@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 
 from sqlalchemy.orm import Session
@@ -14,6 +15,9 @@ from app.schemas.admin_payment_schema import (
     ReviewedPayment,
     ValidatedBy,
 )
+from app.services.media_storage import MediaStorage
+
+logger = logging.getLogger(__name__)
 
 
 class PaymentReviewController:
@@ -66,6 +70,38 @@ class PaymentReviewController:
         return self._to_response(
             order_id, "aguardando_comprovante", payment, admin, agora
         )
+
+    def read_receipt(self, order_id: int, storage: MediaStorage) -> tuple[bytes, str]:
+        """Bytes e tipo do comprovante vigente do pedido (back-end#244).
+
+        Só a administradora chega aqui (guarda do router). Comprovante de Pix
+        tem dado bancário: nem o comprador dono do pedido lê o arquivo por
+        aqui; ele já o tem, foi ele quem enviou.
+
+        O tipo vem da coluna gravada no envio. Linha anterior a ela cai no
+        `Content-Type` guardado no próprio objeto.
+        """
+        if self.orders.get(order_id) is None:
+            raise NotFound("Pedido não encontrado.", code=ErrorCode.ORDER_NOT_FOUND)
+        payment = self.orders.latest_payment(order_id)
+        if payment is None:
+            raise NotFound(
+                "Este pedido ainda não tem comprovante.",
+                code=ErrorCode.RECEIPT_NOT_FOUND,
+            )
+        try:
+            conteudo, tipo_no_storage = storage.read_with_type(payment.receipt_key)
+        except Exception:  # noqa: BLE001 - objeto sumido vira 404 de domínio
+            logger.warning(
+                "Comprovante do pedido %s não está no storage: %s",
+                order_id,
+                payment.receipt_key,
+            )
+            raise NotFound(
+                "O arquivo do comprovante não foi encontrado.",
+                code=ErrorCode.RECEIPT_NOT_FOUND,
+            ) from None
+        return conteudo, payment.receipt_content_type or tipo_no_storage
 
     def _em_analise(self, order_id: int, para: str, **valores: object) -> Payment:
         """Tira o pedido de `em_analise` e devolve o comprovante a validar.
