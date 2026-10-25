@@ -1,15 +1,18 @@
+import logging
 from datetime import datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
+from app.controllers.media_controller import ArquivoRecebido
 from app.core.clock import utcnow_naive
 from app.core.comissao import COMISSAO_VINTEX, dividir
-from app.core.errors import Conflict, ErrorCode, NotFound
+from app.core.errors import AppError, Conflict, ErrorCode, NotFound, ValidationError
 from app.core.pagination import Page, PageParams
 from app.models.order import Order
 from app.models.order_item import OrderItem
 from app.models.order_status_history import OrderStatusHistory
+from app.models.payment import Payment
 from app.models.product import Product
 from app.repositories.order_repository import OrderRepository
 from app.repositories.product_repository import ProductRepository
@@ -22,9 +25,14 @@ from app.schemas.order_schema import (
     OrderListPaymentResponse,
     OrderListStoreResponse,
     OrderPaymentResponse,
+    OrderReceiptResponse,
     OrderResponse,
     OrderStoreResponse,
 )
+from app.services import media_rules
+from app.services.media_storage import MediaStorage
+
+logger = logging.getLogger(__name__)
 
 # Prazo para o comprovante ser aprovado. Vencido, o pedido expira e a peça
 # volta a `ativo` (back-end#243).
@@ -124,6 +132,86 @@ class OrderController:
         if order is None:
             raise NotFound("Pedido não encontrado.", code=ErrorCode.ORDER_NOT_FOUND)
         return self._to_response(order)
+
+    def submit_receipt(
+        self,
+        user_id: int,
+        order_id: int,
+        arquivo: ArquivoRecebido,
+        storage: MediaStorage,
+    ) -> OrderReceiptResponse:
+        """Recebe o comprovante do Pix e põe o pedido em análise (back-end#249).
+
+        Serve para o primeiro envio e para o reenvio depois de uma rejeição,
+        que devolve o pedido a `aguardando_comprovante` (RN-23). Reenviar cria
+        um pagamento novo e não apaga o anterior (RN-22).
+
+        Quem avança o pedido daqui em diante é a administradora (RN-21).
+        """
+        order = self.orders.get_for_buyer(order_id, user_id)
+        if order is None:
+            raise NotFound("Pedido não encontrado.", code=ErrorCode.ORDER_NOT_FOUND)
+
+        agora = utcnow_naive()
+        if order.status == _STATUS_INICIAL and order.expires_at <= agora:
+            # Venceu e ninguém expirou ainda: não há rotina periódica, e o
+            # `expire_overdue` pede para ser chamado antes de outra operação.
+            # Comprovante fora do prazo não entra; as peças voltam à venda.
+            self.expire_overdue()
+            raise self._nao_aguarda_comprovante()
+        if order.status != _STATUS_INICIAL:
+            raise self._nao_aguarda_comprovante()
+
+        content_type = _validar_comprovante(arquivo)
+        key = storage.upload("receipt", arquivo.conteudo, content_type)
+        try:
+            # Condicional como as outras transições: dois envios ao mesmo
+            # tempo, só o primeiro encontra `aguardando_comprovante`.
+            if not self.orders.transition(
+                order_id, de=_STATUS_INICIAL, para="em_analise"
+            ):
+                raise self._nao_aguarda_comprovante()
+            self.orders.add_payment(
+                Payment(
+                    order_id=order_id,
+                    receipt_key=key,
+                    receipt_name=_nome_do_arquivo(arquivo.nome),
+                    receipt_content_type=content_type,
+                )
+            )
+            self.orders.commit()
+        except Exception:
+            self.orders.rollback()
+            # O arquivo já subiu: sem a linha que aponta para ele, vira objeto
+            # órfão no bucket. Falha ao apagar não esconde o erro original.
+            try:
+                storage.delete(key)
+            except Exception:  # noqa: BLE001
+                logger.warning("Comprovante órfão no storage: %s", key)
+            raise
+
+        enviado = self.orders.get_for_buyer(order_id, user_id)
+        payment = _comprovante(enviado) if enviado is not None else None
+        if enviado is None or payment is None:
+            raise RuntimeError(f"Pedido {order_id} sumiu logo depois do envio.")
+        # Só a etapa que o envio criou, como no contrato: a resposta é parcial,
+        # e o histórico inteiro está no detalhe.
+        nova_etapa = enviado.status_history[-1]
+        return OrderReceiptResponse(
+            id=enviado.id,
+            status=enviado.status,
+            payment=payment,
+            history=[
+                OrderHistoryResponse(status=nova_etapa.status, at=nova_etapa.changed_at)
+            ],
+        )
+
+    @staticmethod
+    def _nao_aguarda_comprovante() -> Conflict:
+        return Conflict(
+            "Este pedido não está aguardando comprovante.",
+            code=ErrorCode.ORDER_NOT_AWAITING_RECEIPT,
+        )
 
     @staticmethod
     def _indisponivel() -> Conflict:
@@ -238,6 +326,43 @@ def _linha_do_tempo(
         history.append(OrderHistoryResponse(status=etapa, at=atingida_em))
         status = etapa
     return status, history
+
+
+def _validar_comprovante(arquivo: ArquivoRecebido) -> str:
+    """Tipo normalizado do comprovante, ou o erro que o front espera.
+
+    As regras são as de `media_rules` (imagem ou PDF, 8 MiB), mas os status
+    não: aqui o contrato é 415 para tipo e 413 para tamanho (back-end#249),
+    que o front traduz em mensagens próprias. A rota genérica de mídia
+    continua respondendo 422.
+    """
+    tipo = (arquivo.content_type or "").split(";")[0].strip().lower()
+    if tipo not in media_rules.ALLOWED_RECEIPT_TYPES:
+        raise AppError(
+            "O comprovante deve ser uma imagem ou um PDF.",
+            code=ErrorCode.RECEIPT_INVALID_TYPE,
+            status_code=415,
+        )
+    if not arquivo.conteudo:
+        raise ValidationError("O arquivo do comprovante está vazio.")
+    if len(arquivo.conteudo) > media_rules.MAX_BYTES_PER_FILE:
+        raise AppError(
+            f"O comprovante passa do limite de "
+            f"{media_rules.MAX_BYTES_PER_FILE // (1024 * 1024)}MiB.",
+            code=ErrorCode.RECEIPT_TOO_LARGE,
+            status_code=413,
+        )
+    return tipo
+
+
+def _nome_do_arquivo(nome: str) -> str:
+    """O nome que o comprador vê no pedido, sem caminho e cabendo na coluna.
+
+    Navegador antigo manda `C:\\fakepath\\comprovante.pdf`; o que interessa é
+    só o último pedaço.
+    """
+    base = nome.replace("\\", "/").rsplit("/", 1)[-1].strip()
+    return base[:255] or "comprovante"
 
 
 def _comprovante(order: Order) -> OrderPaymentResponse | None:

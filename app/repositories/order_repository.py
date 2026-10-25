@@ -117,6 +117,12 @@ class OrderRepository:
         self.db.flush()
         return True
 
+    def add_payment(self, payment: Payment) -> Payment:
+        """Um envio de comprovante. Reenviar cria linha nova (RN-22)."""
+        self.db.add(payment)
+        self.db.flush()
+        return payment
+
     def latest_payment(self, order_id: int) -> Payment | None:
         """O comprovante vigente, em qualquer situação: o envio mais recente."""
         return self.db.scalar(

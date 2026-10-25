@@ -19,7 +19,7 @@ aguardando_comprovante ──prazo vencido (#280)──▶ expirado
 
 | Transição | Quem | O que muda além do status |
 | --- | --- | --- |
-| `aguardando_comprovante → em_analise` | comprador, ao anexar o comprovante ([#249](https://github.com/Vintex-Ages/back-end/issues/249)) | um pagamento novo, `pendente` |
+| `aguardando_comprovante → em_analise` | comprador, `POST /api/users/me/orders/{order_id}/receipt` ([#249](https://github.com/Vintex-Ages/back-end/issues/249)) | um pagamento novo, `pendente`, com nome e tipo do arquivo |
 | `em_analise → confirmado` | administradora, `POST /api/admin/payments/{order_id}/approve` | pagamento `aprovado` com quem e quando; peças `reservado → vendido` com `sold_at` |
 | `em_analise → aguardando_comprovante` | administradora, `POST /api/admin/payments/{order_id}/reject` | pagamento `rejeitado` com o motivo; **prazo renovado em 3 dias**; peças continuam reservadas |
 | `aguardando_comprovante → expirado` | rotina de expiração ([#280](https://github.com/Vintex-Ages/back-end/issues/280)) | peças voltam a `ativo` |
@@ -34,6 +34,16 @@ Depois de `confirmado`, as etapas `preparando`, `enviado` e `concluido` não vir
 - **Reenviar não apaga o comprovante anterior.** Cada envio é uma linha em `payments`; o vigente é o mais recente (RN-22).
 - **Duas validações do mesmo comprovante: só a primeira passa.** A troca de status é um `UPDATE … WHERE status = 'em_analise'`, como na reserva das peças. A segunda responde `409 ORDER_NOT_IN_REVIEW`.
 - **Pedido, pagamento, histórico e peças mudam no mesmo commit.**
+
+## O envio pelo comprador
+
+`POST /api/users/me/orders/{order_id}/receipt`, multipart com o campo `file`. Serve para o primeiro envio e para o reenvio depois de uma rejeição: rejeitar devolve o pedido para `aguardando_comprovante`, e o estado permite enviar de novo.
+
+- **Só sai de `aguardando_comprovante`.** Pedido já em análise responde `409 ORDER_NOT_AWAITING_RECEIPT`: não dá para empilhar comprovante. A troca é condicional, como as outras; dois envios ao mesmo tempo, só o primeiro passa.
+- **O pedido é conferido antes do arquivo, e o arquivo antes do upload.** Tipo fora da lista responde `415 RECEIPT_INVALID_TYPE`, acima de 8 MiB responde `413 RECEIPT_TOO_LARGE`, e nos dois casos nada muda e nada sobe. A rota genérica de mídia continua respondendo 422 para os mesmos casos; aqui o contrato é o do front.
+- **Pedido vencido não recebe comprovante.** Não há rotina periódica de expiração, então o próprio envio é o gatilho: pedido em `aguardando_comprovante` com o prazo passado é expirado na hora (as peças voltam a `ativo`) e responde 409.
+- **Se a gravação falhar depois do upload, o arquivo é apagado**, para não ficar objeto órfão no bucket.
+- A resposta é parcial: `payment` e só a etapa que o envio criou em `history`. O detalhe do pedido tem o resto.
 
 ## O arquivo do comprovante
 
@@ -52,4 +62,7 @@ Depois de `confirmado`, as etapas `preparando`, `enviado` e `concluido` não vir
 | 404 | `ORDER_NOT_FOUND` | pedido inexistente |
 | 404 | `RECEIPT_NOT_FOUND` | pedido sem comprovante, na rota do arquivo |
 | 409 | `ORDER_NOT_IN_REVIEW` | o pedido não está em `em_analise`, inclusive na segunda validação |
+| 409 | `ORDER_NOT_AWAITING_RECEIPT` | envio com o pedido fora de `aguardando_comprovante`, ou vencido |
+| 413 | `RECEIPT_TOO_LARGE` | comprovante acima de 8 MiB |
+| 415 | `RECEIPT_INVALID_TYPE` | comprovante que não é imagem nem PDF |
 | 422 | `VALIDATION_ERROR` | rejeitar com motivo vazio |
