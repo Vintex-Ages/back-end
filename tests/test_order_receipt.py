@@ -5,9 +5,12 @@ S3 dublado em memória, como em `test_media_upload.py`.
 
 from __future__ import annotations
 
+import time
 from datetime import timedelta
 from decimal import Decimal
 
+import anyio
+import httpx
 import pytest
 
 from app.controllers.media_controller import ArquivoRecebido
@@ -325,3 +328,49 @@ def test_nome_com_caminho_do_navegador_vira_so_o_arquivo(client, db_session, cen
 
     [pagamento] = pagamentos(db_session, cenario)
     assert pagamento.receipt_name == "comprovante-nubank.png"
+
+
+# --- o envio não trava o servidor ------------------------------------------------
+
+
+def test_envio_nao_trava_as_outras_requisicoes(client, cenario, monkeypatch):
+    """Postgres e S3 são síncronos. Chamados direto da rota `async`, seguravam
+    o event loop: enquanto o comprovante subia, nenhuma outra requisição do
+    servidor era atendida. Aqui o upload leva 1,5 s, e o `/health` pedido no
+    meio dele precisa responder antes de o upload acabar."""
+    s3 = cenario["storage"].client
+    put_original = s3.put_object
+
+    def put_lento(**kwargs) -> None:
+        time.sleep(1.5)
+        put_original(**kwargs)
+
+    monkeypatch.setattr(s3, "put_object", put_lento)
+    resultado: dict[str, object] = {}
+
+    async def principal() -> None:
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as ac:
+
+            async def enviar_devagar() -> None:
+                resultado["envio"] = await ac.post(
+                    f"/api/users/me/orders/{cenario['pedido'].id}/receipt",
+                    headers=cenario["como_compradora"],
+                    files={"file": ("c.jpg", JPEG, "image/jpeg")},
+                )
+
+            async with anyio.create_task_group() as tg:
+                tg.start_soon(enviar_devagar)
+                # O cronômetro começa antes da pausa: com o event loop preso,
+                # nem o `sleep` acorda antes de o upload terminar.
+                inicio = time.monotonic()
+                await anyio.sleep(0.3)  # o envio já está no upload
+                resultado["health"] = await ac.get("/health")
+                resultado["espera"] = time.monotonic() - inicio
+
+    anyio.run(principal)
+
+    assert resultado["health"].status_code == 200
+    # 0,3 s da pausa mais a resposta; preso no upload, seria 1,5 s ou mais.
+    assert resultado["espera"] < 1.0, f"/health esperou {resultado['espera']:.2f}s"
+    assert resultado["envio"].status_code == 200
