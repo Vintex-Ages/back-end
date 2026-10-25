@@ -90,9 +90,6 @@ class ProductRepository:
             .where(Product.id == product_id, Seller.user_id == user_id)
         )
 
-    def get_store(self, store_id: int) -> Store | None:
-        return self.db.get(Store, store_id)
-
     def get_active_feed(
         self, params: PageParams, filters: ProductFilters, q: str | None = None
     ) -> tuple[list[ProductFeedRow], int]:

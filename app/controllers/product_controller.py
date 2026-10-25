@@ -11,6 +11,7 @@ from app.models.product import Product
 from app.models.product_ai_correction import ProductAiCorrection
 from app.models.product_image import ProductImage
 from app.repositories.product_repository import ProductFeedRow, ProductRepository
+from app.repositories.store_repository import StoreRepository
 from app.schemas.product_management_schema import ProductManagementPage
 from app.schemas.product_schema import (
     AiCorrectionResponse,
@@ -36,13 +37,14 @@ from app.services.ai.queue import ImageAnalysisQueueError, enqueue_image_analysi
 class ProductController:
     def __init__(self, db: Session):
         self.repository = ProductRepository(db)
+        self.stores = StoreRepository(db)
 
     def get_feed(
         self, params: PageParams, filters: ProductFilters, q: str | None = None
     ) -> FeedResponse:
         if (
             filters.store_id is not None
-            and self.repository.get_store(filters.store_id) is None
+            and self.stores.get_by_id(filters.store_id) is None
         ):
             raise NotFound("Loja não encontrada.", code=ErrorCode.STORE_NOT_FOUND)
 
@@ -64,19 +66,27 @@ class ProductController:
     ) -> FeedResponse:
         """Filtro ou busca sem correspondencia: devolve pecas alternativas.
 
-        Para busca textual, tenta cada palavra do termo isoladamente
-        ("jaqueta jeans" vira "jaqueta" e depois "jeans"), mantendo os
-        filtros selecionados. Se ainda nao houver resultado, relaxa todos os
-        filtros e a busca para exibir o catalogo disponivel. Catalogo vazio
-        devolve vazio, sem erro.
+        Relaxa um passo de cada vez, do mais proximo ao mais distante:
+
+        1. busca textual: cada palavra do termo isoladamente ("jaqueta jeans"
+           vira "jaqueta" e depois "jeans"), mantendo os filtros;
+        2. busca textual: o catalogo sem o termo, mantendo os filtros. Quem
+           busca "xyz" em calcas ve calcas, nao o catalogo inteiro;
+        3. o catalogo sem filtro nenhum. So aqui um filtro sem resultado (ex.:
+           cidade sem peca) passa a mostrar alguma coisa.
+
+        Catalogo vazio devolve vazio, sem erro.
         """
+        rows: list[ProductFeedRow] = []
         if q:
             for palavra in self._palavras(q):
                 rows, _ = self.repository.get_active_feed(params, filters, q=palavra)
                 if rows:
                     return self._alternativas(params, filters, q, rows)
+            rows, _ = self.repository.get_active_feed(params, filters)
 
-        rows, _ = self.repository.get_active_feed(params, ProductFilters())
+        if not rows and filters.applied():
+            rows, _ = self.repository.get_active_feed(params, ProductFilters())
         if not rows:
             return FeedResponse(
                 items=[],
