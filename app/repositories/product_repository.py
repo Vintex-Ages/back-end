@@ -5,6 +5,7 @@ from typing import TypedDict, cast
 
 from sqlalchemy import ScalarSelect, Select, func, select, update
 from sqlalchemy.orm import Session, joinedload, selectinload, with_expression
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.core.pagination import Page, PageParams, paginate
 from app.models.address import Address
@@ -41,6 +42,13 @@ class ProductFeedRow(TypedDict):
     store_id: int
     store_name: str
     store_verified: bool
+
+
+class ProductSimilarRow(ProductFeedRow):
+    """Linha do feed mais a distância de cosseno até o vetor da busca
+    (back-end#246): 0 é idêntica, e quanto maior, menos parecida."""
+
+    distance: float
 
 
 def _cover_image_url() -> ScalarSelect[str | None]:
@@ -99,7 +107,40 @@ class ProductRepository:
     def get_active_feed(
         self, params: PageParams, filters: ProductFilters, q: str | None = None
     ) -> tuple[list[ProductFeedRow], int]:
-        conditions = [Product.status == "ativo"]
+        stmt = (
+            _feed_select()
+            .join(Store, Store.id == Product.store_id)
+            # A localizacao e da loja. O outer join preserva lojas sem endereco
+            # quando city/state nao foram informados.
+            .outerjoin(Address, Store.address_id == Address.id)
+            .where(*self._condicoes_do_catalogo(filters))
+            .order_by(Product.created_at.desc(), Product.id.desc())
+        )
+
+        if q:
+            stmt = stmt.where(
+                TEXTO_BUSCAVEL.contains(func.immutable_unaccent(func.lower(q)))
+            )
+
+        count_stmt = select(func.count()).select_from(stmt.order_by(None).subquery())
+        total = self.db.scalar(count_stmt) or 0
+        rows = (
+            self.db.execute(stmt.offset(params.offset).limit(params.limit))
+            .mappings()
+            .all()
+        )
+        return [cast(ProductFeedRow, dict(row)) for row in rows], total
+
+    def _condicoes_do_catalogo(
+        self, filters: ProductFilters
+    ) -> list[ColumnElement[bool]]:
+        """Peça ativa mais os filtros do catálogo, somados por E lógico.
+
+        Compartilhado pelo feed e pela busca por semelhança (back-end#246),
+        para os dois filtrarem do mesmo jeito. Quem chama junta `Store` e,
+        por outer join, `Address`.
+        """
+        conditions: list[ColumnElement[bool]] = [Product.status == "ativo"]
         filter_columns = {
             "category": Product.category,
             "size": Product.size,
@@ -124,30 +165,7 @@ class ProductRepository:
             conditions.append(Product.price <= filters.price_max)
         if filters.store_id is not None:
             conditions.append(Store.id == filters.store_id)
-
-        stmt = (
-            _feed_select()
-            .join(Store, Store.id == Product.store_id)
-            # A localizacao e da loja. O outer join preserva lojas sem endereco
-            # quando city/state nao foram informados.
-            .outerjoin(Address, Store.address_id == Address.id)
-            .where(*conditions)
-            .order_by(Product.created_at.desc(), Product.id.desc())
-        )
-
-        if q:
-            stmt = stmt.where(
-                TEXTO_BUSCAVEL.contains(func.immutable_unaccent(func.lower(q)))
-            )
-
-        count_stmt = select(func.count()).select_from(stmt.order_by(None).subquery())
-        total = self.db.scalar(count_stmt) or 0
-        rows = (
-            self.db.execute(stmt.offset(params.offset).limit(params.limit))
-            .mappings()
-            .all()
-        )
-        return [cast(ProductFeedRow, dict(row)) for row in rows], total
+        return conditions
 
     def list_for_seller(
         self, user_id: int, params: PageParams, status: str | None = None
@@ -209,24 +227,50 @@ class ProductRepository:
         return self.db.scalars(stmt).first()
 
     def find_similar(
-        self, query_embedding: Sequence[float], limit: int = 5
-    ) -> list[ProductFeedRow]:
-        """Peças ativas mais próximas do vetor da pergunta (BE-US027-3, back-end#149).
+        self,
+        query_embedding: Sequence[float],
+        embedding_model: str,
+        params: PageParams,
+        filters: ProductFilters | None = None,
+    ) -> tuple[list[ProductSimilarRow], int]:
+        """Peças ativas mais próximas do vetor da busca, paginadas, e o total
+        (BE-US027-3, back-end#149; paginação, filtros e distância na #246).
 
-        Só peças com embedding entram na ordenação — sem isso, `ORDER BY
-        cosine_distance(NULL, ...)` derruba peças sem posição pro fim de
-        forma indefinida em vez de excluí-las. Nunca inventa peça: só o que
-        já existe no catálogo real pode aparecer aqui.
+        - **Só vetores do mesmo modelo** (`embedding_model`): distância entre
+          espaços vetoriais de modelos diferentes é ruído com cara de
+          resultado. Peça sem embedding, ou de outro modelo, não entra.
+        - **Os filtros do catálogo somam por E** com a semelhança, os mesmos
+          do feed (`_condicoes_do_catalogo`).
+        - **A distância volta em cada linha**, e quem chama decide como
+          rotular. Não há limiar aqui dentro: uma busca sem nada parecido
+          ainda devolve as mais próximas, e a lista não volta vazia enquanto
+          houver catálogo (RN-61).
+
+        Nunca inventa peça: só o que já existe no catálogo real (RN-65).
         """
+        distancia = Product.embedding.cosine_distance(list(query_embedding))
         stmt = (
             _feed_select()
+            .add_columns(distancia.label("distance"))
             .join(Store, Store.id == Product.store_id)
-            .where(Product.status == "ativo", Product.embedding.is_not(None))
-            .order_by(Product.embedding.cosine_distance(list(query_embedding)))
-            .limit(limit)
+            .outerjoin(Address, Store.address_id == Address.id)
+            .where(
+                *self._condicoes_do_catalogo(filters or ProductFilters()),
+                Product.embedding.is_not(None),
+                Product.embedding_model == embedding_model,
+            )
         )
-        rows = self.db.execute(stmt).mappings().all()
-        return [cast(ProductFeedRow, dict(row)) for row in rows]
+        total = self.db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+        rows = (
+            self.db.execute(
+                stmt.order_by(distancia, Product.id)
+                .offset(params.offset)
+                .limit(params.limit)
+            )
+            .mappings()
+            .all()
+        )
+        return [cast(ProductSimilarRow, dict(row)) for row in rows], total
 
     def get_detail_by_id(self, product_id: int) -> Product | None:
         stmt = (
