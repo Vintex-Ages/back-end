@@ -20,17 +20,11 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.models.product import Product
 from app.services.ai import AIProviderError, get_ai_provider, modelo_de_embedding
+from app.services.product_embedding import texto_da_peca
 
 logger = logging.getLogger("vintex.scripts.backfill_embeddings")
 
 BATCH_SIZE = 10
-
-_FIELDS = ("name", "description", "brand", "color", "size", "style")
-
-
-def _build_text(product: Product) -> str:
-    values = (getattr(product, field) for field in _FIELDS)
-    return " ".join(value for value in values if value)
 
 
 def run() -> None:
@@ -56,7 +50,8 @@ def run() -> None:
         logger.info("%s peças pendentes de embedding.", len(pending))
         for start in range(0, len(pending), BATCH_SIZE):
             batch = pending[start : start + BATCH_SIZE]
-            texts = [_build_text(product) for product in batch]
+            # O mesmo texto que a publicação usa (back-end#245): vetores comparáveis.
+            texts = [texto_da_peca(product) for product in batch]
             try:
                 vectors = provider.embed(texts)
             except AIProviderError:

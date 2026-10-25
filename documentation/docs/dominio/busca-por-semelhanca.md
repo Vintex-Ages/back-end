@@ -18,6 +18,23 @@ Cada peça pode ter um **embedding**: um vetor que representa o que ela é (nome
 - **Só peça ativa**, como o feed. Rascunho, reservada, vendida e despublicada ficam de fora ([Situações da peça](./situacoes-da-peca)).
 - **Ordem estável**: distância e, no empate, o `id`. A paginação não repete nem pula peça.
 
+## Quando a peça ganha vetor
+
+Desde a [#245](https://github.com/Vintex-Ages/back-end/issues/245), quem grava o vetor é a própria publicação (`app/services/product_embedding.py`). Antes, só o backfill gravava, rodado à mão, e a peça que o vendedor publicava ficava fora do chat sem erro nenhum.
+
+| Momento | O que acontece com o vetor |
+|---|---|
+| Publicar (rascunho ou despublicada → ativo) | gera, se a peça não tem vetor ou tem vetor de outro modelo; republicar com vetor do modelo ativo **não chama a IA** |
+| Despublicar | fica como está (RN-52) |
+| Editar nome, descrição, marca, cor, tamanho ou estilo de peça **ativa** | gera de novo na hora |
+| Editar esses campos com a peça **fora do ar** | apaga; gera ao publicar |
+| Editar só preço, categoria ou fotos | nada muda: não entram no texto do vetor |
+
+- **O texto que vira vetor é um só** (`texto_da_peca`), usado pela publicação e pelo backfill: os vetores dos dois são comparáveis.
+- **Falha da IA não bloqueia** a publicação nem a edição (RN-57): a peça fica sem vetor, e o motivo vai para o log. Sem vetor, o backfill a encontra depois. Um vetor antigo, mantido depois de uma edição que falhou, descreveria a peça de antes, e o backfill não o encontraria.
+- **Sem IA configurada** (`AI_PROVIDER=unavailable`, como na staging hoje), a peça publica normalmente, sem vetor, e o log registra em nível informativo, sem alarme. Para a busca por significado funcionar num ambiente, ele precisa de um provedor de embedding e do backfill do catálogo.
+- O vetor é gerado na própria requisição, e não pela fila: o worker da fila (`AI_WORKER_PROVIDER`, FreeLLMAPI) só faz análise de imagem. As rotas de publicar e editar são `def`, então a espera pelo provedor não trava o servidor.
+
 ## Só vetores do mesmo modelo
 
 Vetores de modelos diferentes vivem em espaços diferentes: a distância entre eles é ruído com cara de resultado. A consulta só compara peças cujo `embedding_model` é o modelo ativo, o que `modelo_de_embedding()` devolve a partir de `GOOGLE_EMBEDDING_MODEL`. Peça sem vetor, ou com vetor de outro modelo, não entra.

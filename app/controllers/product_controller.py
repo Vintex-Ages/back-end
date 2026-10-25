@@ -32,6 +32,12 @@ from app.schemas.product_schema import (
 )
 from app.services.ai.base import ImageAnalysisResult
 from app.services.ai.queue import ImageAnalysisQueueError, enqueue_image_analysis
+from app.services.product_embedding import (
+    apagar_embedding,
+    gravar_embedding,
+    precisa_de_embedding,
+    texto_da_peca,
+)
 
 
 class ProductController:
@@ -265,11 +271,19 @@ class ProductController:
                 fields={"images": "Mantenha ao menos uma foto."},
             )
 
+        texto_antes = texto_da_peca(product)
         updates = data.model_dump(
             exclude_unset=True, exclude={"images", "ai_corrections"}
         )
         for field, value in updates.items():
             setattr(product, field, value)
+        if texto_da_peca(product) != texto_antes:
+            # O vetor descreve o texto de antes (back-end#245). Ativa entra na
+            # busca agora; rascunho e despublicada ganham vetor ao publicar.
+            if product.status == "ativo":
+                gravar_embedding(product)
+            else:
+                apagar_embedding(product)
 
         if data.images is not None:
             product.images = [
@@ -307,6 +321,11 @@ class ProductController:
             )
 
         product.status = "ativo"
+        # Entra na busca por significado (back-end#245). Republicar uma peça
+        # que já tem vetor do modelo ativo não chama a IA de novo; falha da IA
+        # publica sem vetor (RN-57).
+        if precisa_de_embedding(product):
+            gravar_embedding(product)
         self.repository.commit()
         return self._to_response(product)
 

@@ -13,6 +13,10 @@ from sqlalchemy.pool import StaticPool
 
 SQLALCHEMY_DATABASE_URL = "sqlite://"
 os.environ.setdefault("DATABASE_URL", SQLALCHEMY_DATABASE_URL)
+# Sem isto os testes herdavam o `AI_PROVIDER` do `.env` de quem roda: com
+# `google` e uma chave real, publicar uma peça num teste chamava o Gemini
+# (back-end#245). Teste que precisa de IA troca o provider por um dublê.
+os.environ.setdefault("AI_PROVIDER", "unavailable")
 
 RAIZ = Path(__file__).resolve().parents[1]
 
