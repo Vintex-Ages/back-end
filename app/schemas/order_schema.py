@@ -74,8 +74,8 @@ class OrderPaymentResponse(BaseModel):
     """
 
     status: str
-    # Nulo até a back-end#244 gravar o nome original do arquivo no envio: a
-    # chave do storage é um uuid, sem o nome que o comprador mandou.
+    # Nome original do arquivo, gravado no envio (back-end#244). Nulo só em
+    # comprovante anterior à coluna: a chave do storage é um uuid sem nome.
     receipt_name: str | None = None
     submitted_at: datetime
     rejection_reason: str | None = None

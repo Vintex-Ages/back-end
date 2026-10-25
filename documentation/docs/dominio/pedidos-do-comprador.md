@@ -19,7 +19,7 @@ Um pedido é a compra das peças de **uma loja só**: o comprador paga direto na
 - **A lista não traz `pix_key` nem `history`.** Só o detalhe traz; ele é a única rota que devolve a chave Pix ao comprador.
 - **A lista traz o endereço de entrega de cada pedido.** O endereço do comprador só existe dentro do pedido (nenhuma rota preenche `users.address_id`), e é da lista que o checkout pré-preenche a próxima compra.
 - **Pedido de outra pessoa responde 404**, igual a inexistente: um 403 confirmaria que o id existe.
-- **O comprovante aparece com nome e situação, nunca com URL.** Comprovante de Pix tem dado bancário, e quem abre o arquivo é só a administradora. O `receipt_name` fica nulo até a [#244](https://github.com/Vintex-Ages/back-end/issues/244) gravar o nome original no envio.
+- **O comprovante aparece com nome e situação, nunca com URL.** Comprovante de Pix tem dado bancário, e quem abre o arquivo é só a administradora. O `receipt_name` é o nome original do arquivo, gravado no envio ([#244](https://github.com/Vintex-Ages/back-end/issues/244)).
 - O comprovante mostrado é o envio mais recente; reenviar não apaga o anterior (RN-22). Pedido rejeitado traz o motivo (RN-23).
 - Valores saem como **número**, nunca string (#212).
 - A página inteira da lista são cinco consultas, qualquer que seja o tamanho: pedidos, contagem, e uma por coleção (itens, pagamentos, histórico).

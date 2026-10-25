@@ -248,6 +248,8 @@ def _comprovante(order: Order) -> OrderPaymentResponse | None:
     payment = order.payments[-1]
     return OrderPaymentResponse(
         status=payment.status,
+        # Da coluna gravada no envio (back-end#244), nunca a chave do storage.
+        receipt_name=payment.receipt_name,
         submitted_at=payment.submitted_at,
         rejection_reason=payment.rejection_reason,
     )

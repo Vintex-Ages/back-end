@@ -48,6 +48,8 @@ class ErrorCode:
     # Validação do comprovante pela administradora (back-end#251).
     ORDER_NOT_FOUND = "ORDER_NOT_FOUND"
     ORDER_NOT_IN_REVIEW = "ORDER_NOT_IN_REVIEW"
+    # Pedido sem comprovante enviado, na rota que serve o arquivo (back-end#244).
+    RECEIPT_NOT_FOUND = "RECEIPT_NOT_FOUND"
     STORE_NOT_FOUND = "STORE_NOT_FOUND"
     LEGAL_DOCUMENT_NOT_FOUND = "LEGAL_DOCUMENT_NOT_FOUND"
     STORE_ALREADY_EXISTS = "STORE_ALREADY_EXISTS"
