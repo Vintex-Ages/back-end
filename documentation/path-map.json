@@ -5,6 +5,7 @@
     { "pattern": "app/schemas/admin_payment_schema.py", "page": "dominio/validacao-de-comprovante" },
     { "pattern": "tests/test_payment_review.py", "page": "dominio/validacao-de-comprovante" },
     { "pattern": "tests/test_receipt_file.py", "page": "dominio/validacao-de-comprovante" },
+    { "pattern": "tests/test_receipt_queue.py", "page": "dominio/validacao-de-comprovante" },
     { "pattern": "app/models/payment.py", "page": "dominio/validacao-de-comprovante" },
     { "pattern": "app/services/media_*.py", "page": "dominio/midia" },
     { "pattern": "app/views/media_routes.py", "page": "dominio/midia" },

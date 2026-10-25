@@ -45,6 +45,17 @@ Depois de `confirmado`, as etapas `preparando`, `enviado` e `concluido` não vir
 - **Se a gravação falhar depois do upload, o arquivo é apagado**, para não ficar objeto órfão no bucket.
 - A resposta é parcial: `payment` e só a etapa que o envio criou em `history`. O detalhe do pedido tem o resto.
 
+## A fila da administradora
+
+`GET /api/admin/payments` ([#250](https://github.com/Vintex-Ages/back-end/issues/250)) lista os pedidos com comprovante enviado, **mais antigo primeiro** pela data do envio. É uma linha por pedido, com o comprovante vigente (o envio mais recente).
+
+- **`status`** filtra pela situação do comprovante vigente: `pendente`, `aprovado` ou `rejeitado`. **`q`** casa parte do nome do comprador ou da loja, sem diferenciar maiúscula e, no Postgres, sem diferenciar acento. **`page`** e **`page_size`** como em toda paginação.
+- **O contato do comprador vem na linha** (nome, e-mail, telefone): sem chat direto na PoC, é a administradora quem intermedia um pagamento duvidoso (RN-79).
+- **Valores discriminados** (RN-16): `total_amount`, `platform_fee` (a comissão de 9% gravada na compra) e `seller_net_amount`, que é o total menos a comissão. O líquido é só exibição: a plataforma não movimenta esse dinheiro.
+- **`receipt_url`** é a URL absoluta da rota autenticada do arquivo, nunca o prefixo público de mídia. **`receipt_type`** é `image` ou `pdf`, lido da coluna gravada no envio, sem baixar o arquivo.
+- **`rejection_reason` é a rejeição mais recente do pedido**, mesmo quando o vigente é um reenvio pendente: a administradora vê o que já foi dito ao comprador (RN-23).
+- A página tem número fixo de consultas, qualquer que seja o tamanho: comprador, loja e vendedor por join; itens e pagamentos por coleção.
+
 ## O arquivo do comprovante
 
 - **Imagem ou PDF** (RN-20): `image/jpeg`, `image/png`, `image/webp`, `image/heic` e `application/pdf`, até **8 MiB** (`app/services/media_rules.py`). PDF vale só para comprovante; foto de peça continua só imagem ([#244](https://github.com/Vintex-Ages/back-end/issues/244)).

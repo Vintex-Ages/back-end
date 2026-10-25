@@ -6,12 +6,19 @@ from sqlalchemy.orm import Session
 from app.controllers.order_controller import PRAZO_DO_COMPROVANTE
 from app.core.clock import utcnow_naive
 from app.core.errors import Conflict, ErrorCode, NotFound
+from app.core.pagination import Page, PageParams
+from app.models.order import Order
 from app.models.payment import Payment
 from app.models.user import User
 from app.repositories.order_repository import OrderRepository
 from app.repositories.product_repository import ProductRepository
 from app.schemas.admin_payment_schema import (
     PaymentReviewResponse,
+    QueueBuyer,
+    QueueItem,
+    QueuePayment,
+    QueueStore,
+    ReceiptQueueEntry,
     ReviewedPayment,
     ValidatedBy,
 )
@@ -21,7 +28,8 @@ logger = logging.getLogger(__name__)
 
 
 class PaymentReviewController:
-    """A administradora aprova ou rejeita o comprovante (back-end#251).
+    """A administradora vê a fila (back-end#250), abre o arquivo (back-end#244)
+    e aprova ou rejeita o comprovante (back-end#251).
 
     São as duas únicas saídas de `em_analise` (RN-82), e nenhuma é automática:
     a plataforma não processa o Pix, quem confere o arquivo é uma pessoa
@@ -69,6 +77,25 @@ class PaymentReviewController:
         self.orders.commit()
         return self._to_response(
             order_id, "aguardando_comprovante", payment, admin, agora
+        )
+
+    def receipt_queue(
+        self,
+        params: PageParams,
+        status: str | None,
+        q: str | None,
+        base_url: str,
+    ) -> Page[ReceiptQueueEntry]:
+        """A fila de validação (back-end#250): pedidos com comprovante, mais
+        antigo primeiro. `base_url` monta o `receipt_url` absoluto, como a
+        URL de mídia: o front pode estar em outra origem que a API."""
+        orders, total = self.orders.receipt_queue(params, status, q)
+        base = base_url.rstrip("/")
+        return Page[ReceiptQueueEntry](
+            items=[_entrada_da_fila(order, base) for order in orders],
+            page=params.page,
+            page_size=params.page_size,
+            total=total,
         )
 
     def read_receipt(self, order_id: int, storage: MediaStorage) -> tuple[bytes, str]:
@@ -141,3 +168,49 @@ class PaymentReviewController:
                 rejection_reason=payment.rejection_reason,
             ),
         )
+
+
+def _entrada_da_fila(order: Order, base_url: str) -> ReceiptQueueEntry:
+    vigente = order.payments[-1]
+    rejeicoes = [p for p in order.payments if p.status == "rejeitado"]
+    tipo = vigente.receipt_content_type or ""
+    seller = order.store.seller
+    return ReceiptQueueEntry(
+        order_id=order.id,
+        buyer=QueueBuyer(
+            name=order.buyer.name, email=order.buyer.email, phone=order.buyer.phone
+        ),
+        store=QueueStore(
+            id=order.store.id,
+            name=order.store.name,
+            seller_name=seller.user.name,
+            pix_key=order.store.pix_key,
+        ),
+        items=[
+            QueueItem(
+                product_id=item.product_id,
+                name=item.name,
+                price=item.price,
+                cover_image_url=item.cover_image_url,
+            )
+            for item in order.items
+        ],
+        total_amount=order.total_amount,
+        platform_fee=order.platform_fee,
+        seller_net_amount=order.total_amount - order.platform_fee,
+        payment=QueuePayment(
+            status=vigente.status,
+            receipt_url=f"{base_url}/api/admin/payments/{order.id}/receipt",
+            # Linha anterior à coluna de tipo (#244) não tem como dizer; a
+            # imagem é o caso comum, e a rota do arquivo devolve o tipo certo.
+            receipt_type="pdf" if tipo == "application/pdf" else "image",
+            submitted_at=vigente.submitted_at,
+            validated_by=(
+                ValidatedBy(id=vigente.validated_by.id, name=vigente.validated_by.name)
+                if vigente.validated_by
+                else None
+            ),
+            validated_at=vigente.validated_at,
+            rejection_reason=rejeicoes[-1].rejection_reason if rejeicoes else None,
+        ),
+    )

@@ -6,17 +6,23 @@ da #244) nasce exigindo o papel.
 Esquecer o `Depends` numa rota nova não abre a rota (RN-32).
 """
 
-from typing import Any
+from typing import Any, Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.controllers.payment_review_controller import PaymentReviewController
+from app.core.pagination import Page, PageParams, page_params
 from app.core.security import require_admin
 from app.database import get_db
 from app.models.user import User
-from app.schemas.admin_payment_schema import PaymentReviewResponse, RejectRequest
+from app.schemas.admin_payment_schema import (
+    PaymentReviewResponse,
+    ReceiptQueueEntry,
+    RejectRequest,
+)
 from app.services.media_storage import MediaStorage
 from app.views.media_routes import get_media_storage
 
@@ -53,6 +59,27 @@ def approve_payment(
     controller: PaymentReviewController = Depends(get_review_controller),
 ) -> PaymentReviewResponse:
     return controller.approve(order_id, admin)
+
+
+@router.get(
+    "/payments",
+    response_model=Page[ReceiptQueueEntry],
+    summary="Fila de comprovantes enviados, mais antigo primeiro",
+    responses={403: {"description": "ADMIN_REQUIRED"}},
+)
+def list_payments(
+    request: Request,
+    status: Literal["pendente", "aprovado", "rejeitado"] | None = Query(
+        None, description="Situação do comprovante vigente."
+    ),
+    q: str | None = Query(
+        None, max_length=100, description="Parte do nome do comprador ou da loja."
+    ),
+    params: PageParams = Depends(page_params),
+    controller: PaymentReviewController = Depends(get_review_controller),
+) -> Page[ReceiptQueueEntry]:
+    base = settings.PUBLIC_BASE_URL or str(request.base_url)
+    return controller.receipt_queue(params, status, (q or "").strip() or None, base)
 
 
 @router.get(
