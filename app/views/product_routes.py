@@ -21,12 +21,18 @@ from app.schemas.product_schema import (
     ProductDraftResponse,
     ProductDraftUpdate,
     ProductFilters,
+    SalesSummaryResponse,
 )
 
 router = APIRouter(prefix="/products", tags=["Products"])
 
 # Recurso do usuário logado (ADR 0001 §4): peças do próprio vendedor.
 me_router = APIRouter(prefix="/users/me/products", tags=["Products"])
+
+# Vendas do próprio vendedor. Router separado porque o caminho é outro
+# (`/users/me/sales`), e no mesmo arquivo porque o dado é peça — o
+# `ProductController` e o `get_controller` daqui são os mesmos.
+sales_router = APIRouter(prefix="/users/me/sales", tags=["Sales"])
 
 
 def get_controller(db: Session = Depends(get_db)) -> ProductController:
@@ -83,6 +89,27 @@ def list_seller_products(
     controller: ProductController = Depends(get_controller),
 ) -> ProductManagementPage:
     return controller.list_for_seller(user_id, params, status)
+
+
+# Antes de `/products/{id}`: a tela de edição precisa da peça em qualquer
+# situação, e o detalhe público responde 404 para despublicada e não traz
+# rascunho. Mesmo schema das transições, que é o que o mapeador do front lê.
+@me_router.get("/{product_id}", response_model=ProductDraftResponse)
+def get_seller_product(
+    product_id: int,
+    user_id: int = Depends(get_current_user_id),
+    controller: ProductController = Depends(get_controller),
+) -> ProductDraftResponse:
+    return controller.get_owned_detail(user_id, product_id)
+
+
+@sales_router.get("/summary", response_model=SalesSummaryResponse)
+def get_sales_summary(
+    period: Literal["month", "30d", "all"] = Query("month"),
+    user_id: int = Depends(get_current_user_id),
+    controller: ProductController = Depends(get_controller),
+) -> SalesSummaryResponse:
+    return controller.sales_summary(user_id, period)
 
 
 @router.get(

@@ -155,3 +155,57 @@ def test_cadastro_com_corrida_na_unicidade_retorna_409_nao_500(db_session, monke
         controller.register(data)
 
     assert exc_info.value.code == "EMAIL_TAKEN"
+
+
+def test_cadastro_grava_a_versao_dos_termos_aceita(client, db_session):
+    """RN-93: os termos são versionados, e o aceite precisa dizer qual versão a
+    pessoa aceitou, não só que aceitou (back-end#259)."""
+    response = client.post(ROTA, json=_payload(accepted_terms_version="2026-09"))
+
+    assert response.status_code == 201
+    user = db_session.query(User).filter_by(email="nova@example.com").one()
+    assert user.terms_version == "2026-09"
+    assert user.terms_accepted_at is not None
+
+
+def test_cadastro_sem_versao_dos_termos_nao_grava_data_de_aceite(client, db_session):
+    """Data sem versão registraria um aceite que ninguém deu: sem versão, as
+    duas colunas ficam vazias, como no cadastro da loja."""
+    response = client.post(ROTA, json=_payload())
+
+    assert response.status_code == 201
+    user = db_session.query(User).filter_by(email="nova@example.com").one()
+    assert user.terms_version is None
+    assert user.terms_accepted_at is None
+
+
+def test_versao_dos_termos_vazia_ou_longa_demais_retorna_422(client):
+    for versao in ("", "v" * 21):
+        response = client.post(ROTA, json=_payload(accepted_terms_version=versao))
+        assert response.status_code == 422, versao
+
+
+def test_usuario_cadastrado_antes_da_versao_dos_termos_continua_entrando(
+    client, db_session
+):
+    """Quem se cadastrou antes da back-end#259 não tem versão gravada. A
+    leitura desse usuário não pode quebrar: login e `/users/me` seguem 200."""
+    antigo = User(
+        name="Antiga",
+        email="antiga@example.com",
+        password_hash=hash_password("Senha123"),
+    )
+    db_session.add(antigo)
+    db_session.commit()
+
+    login = client.post(
+        "/api/auth/login",
+        json={"email": "antiga@example.com", "password": "Senha123"},
+    )
+    assert login.status_code == 200
+    me = client.get(
+        "/api/users/me",
+        headers={"Authorization": f"Bearer {login.json()['access_token']}"},
+    )
+    assert me.status_code == 200
+    assert antigo.terms_version is None

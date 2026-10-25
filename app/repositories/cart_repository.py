@@ -4,10 +4,21 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.pagination import PageParams
+from app.models.address import Address
 from app.models.cart import CartItem
 from app.models.product import Product
 from app.models.store import Store
 from app.repositories.product_repository import ProductFeedRow, _feed_select
+
+
+class CartRow(ProductFeedRow):
+    """Linha do carrinho: a da listagem de peça, mais o que o checkout precisa
+    da loja (back-end#259). Fica fora da `ProductFeedRow` porque o feed é
+    público e não pode expor a chave Pix do vendedor."""
+
+    store_pix_key: str | None
+    store_logo_url: str | None
+    store_city: str | None
 
 
 class CartRepository:
@@ -66,17 +77,26 @@ class CartRepository:
 
     def list_items_for_stores(
         self, user_id: int, store_ids: list[int]
-    ) -> list[ProductFeedRow]:
+    ) -> list[CartRow]:
         """Peças do carrinho dessas lojas, numa consulta só (nunca uma por
-        loja). Reusa a base de listagem de peça do `ProductRepository`."""
+        loja). Reusa a base de listagem de peça do `ProductRepository`.
+
+        `outerjoin` no endereço: loja sem endereço continua no carrinho, com
+        cidade `None`."""
         if not store_ids:
             return []
         stmt = (
             _feed_select()
+            .add_columns(
+                Store.pix_key.label("store_pix_key"),
+                Store.logo_url.label("store_logo_url"),
+                Address.city.label("store_city"),
+            )
             .join(Store, Store.id == Product.store_id)
+            .outerjoin(Address, Address.id == Store.address_id)
             .join(CartItem, CartItem.product_id == Product.id)
             .where(CartItem.user_id == user_id, Store.id.in_(store_ids))
             .order_by(CartItem.created_at.asc(), CartItem.id.asc())
         )
         rows = self.db.execute(stmt).mappings().all()
-        return [cast(ProductFeedRow, dict(row)) for row in rows]
+        return [cast(CartRow, dict(row)) for row in rows]

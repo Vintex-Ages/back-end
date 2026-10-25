@@ -10,6 +10,35 @@ permissions:
   contents: read
 
 jobs:
+  staging-runtime:
+    name: Staging Runtime Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test real Nginx against synthetic backend
+        run: python3 scripts/infra/test_staging_proxy.py
+      - name: Test IMDS guard in isolated container namespaces
+        run: |
+          docker build -f tests/staging/Dockerfile.imds -t vintex-staging-imds:test .
+          docker run --rm --privileged --network none vintex-staging-imds:test
+
+  terraform:
+    name: Terraform Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.16.4"
+      - name: Check Terraform formatting
+        run: make terraform-fmt
+      - name: Validate and test local, bootstrap and AWS without credentials
+        run: |
+          for environment in local bootstrap staging; do
+            make terraform-validate "$environment"
+            make terraform-test "$environment"
+          done
+
   lint:
     name: Lint & Format
     runs-on: ubuntu-latest
@@ -52,7 +81,6 @@ jobs:
   type-check:
     name: Type Check
     runs-on: ubuntu-latest
-    needs: lint
     steps:
       - uses: actions/checkout@v4
 
@@ -71,7 +99,6 @@ jobs:
   migrations:
     name: Migrations
     runs-on: ubuntu-latest
-    needs: lint
     services:
       postgres:
         # pgvector/pgvector:pg16 — ver docker-compose.yml (BE-US027-1, back-end#92)
@@ -117,7 +144,6 @@ jobs:
   test:
     name: Tests
     runs-on: ubuntu-latest
-    needs: [lint, type-check]
     steps:
       - uses: actions/checkout@v4
 
@@ -136,7 +162,6 @@ jobs:
   test-postgres:
     name: Tests (Postgres)
     runs-on: ubuntu-latest
-    needs: [lint, type-check]
     services:
       postgres:
         # pgvector/pgvector:pg16 — esta fixture roda `alembic upgrade head`
@@ -175,7 +200,15 @@ jobs:
   docker:
     name: Build Docker Image
     runs-on: ubuntu-latest
-    needs: [test, test-postgres, migrations]
+    needs:
+      - staging-runtime
+      - terraform
+      - lint
+      - audit
+      - type-check
+      - migrations
+      - test
+      - test-postgres
     steps:
       - uses: actions/checkout@v4
 

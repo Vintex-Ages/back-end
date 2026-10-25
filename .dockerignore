@@ -24,6 +24,8 @@ build/
 .coverage
 htmlcov/
 **/.terraform/
+infra/aws/staging/*.json
+infra/aws/staging/*.env
 
 # Bancos locais
 *.db
@@ -36,3 +38,16 @@ htmlcov/
 .agents/
 .claude/
 docker-compose.yml
+
+# Configuração privada, planos e states nunca entram na imagem.
+# Perfis públicos config/*.tfvars também são excluídos: o runtime não os usa.
+infra/terraform/**/*.tfvars
+infra/terraform/**/*.tfbackend
+infra/terraform/**/*.tfplan
+infra/terraform/**/*.tfstate*
+
+# Conta e backend AWS: configuração local, nunca imagem/Git.
+infra/terraform/account.tfvars.json
+
+# State e identificação do bootstrap persistem fora do cache.
+infra/terraform/state/

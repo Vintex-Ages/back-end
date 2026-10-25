@@ -1,9 +1,11 @@
+from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Literal
 
 from sqlalchemy import (
     JSON,
     CheckConstraint,
+    DateTime,
     ForeignKey,
     Index,
     Integer,
@@ -29,8 +31,13 @@ class Product(BaseModel):
     __tablename__ = "products"
     __table_args__ = (
         CheckConstraint("quantity = 1", name="ck_products_quantity"),
+        # `reservado`: peça num pedido aberto, ainda sem comprovante aprovado
+        # (back-end#243). Nas leituras se comporta como `vendido` — sai do
+        # catálogo e da busca, continua no detalhe, dá 409 no carrinho — porque
+        # todas elas já filtram por `ativo`. Não é `vendido` porque o resumo
+        # financeiro soma `vendido` como dinheiro recebido.
         CheckConstraint(
-            "status IN ('rascunho', 'ativo', 'vendido', 'despublicado')",
+            "status IN ('rascunho', 'ativo', 'reservado', 'vendido', 'despublicado')",
             name="ck_products_status",
         ),
         CheckConstraint(
@@ -44,6 +51,7 @@ class Product(BaseModel):
         Index("ix_products_color", "color"),
         Index("ix_products_price", "price"),
         Index("ix_products_ai_status", "ai_status"),
+        Index("ix_products_sold_at", "sold_at"),
     )
 
     store_id: Mapped[int] = mapped_column(ForeignKey("stores.id"), nullable=False)
@@ -60,6 +68,11 @@ class Product(BaseModel):
     status: Mapped[str] = mapped_column(
         String(30), nullable=False, default="ativo", server_default="ativo"
     )
+    # Quando a peça foi vendida. Nada nesta sprint transforma peça em vendida:
+    # não existe checkout (VS-022, #44), então quem preenche é o seed. Sem esta
+    # coluna não existe "no período" — a data de última alteração não serve,
+    # porque muda a cada edição (back-end#146).
+    sold_at: Mapped[datetime | None] = mapped_column(DateTime)
 
     # Pipeline assíncrono de ingestão de IA (VE-05, back-end#62).
     # `ai_status` nulo significa "nenhuma análise de IA foi solicitada para

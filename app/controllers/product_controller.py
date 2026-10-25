@@ -1,5 +1,10 @@
+from datetime import timedelta
+from typing import Literal
+
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow_naive
+from app.core.comissao import dividir
 from app.core.errors import AppError, Conflict, ErrorCode, NotFound, ValidationError
 from app.core.pagination import PageParams
 from app.models.product import Product
@@ -21,9 +26,11 @@ from app.schemas.product_schema import (
     ProductFilters,
     ProductMediaResponse,
     ProductStoreResponse,
+    SalesSummaryResponse,
     SuggestionsResponse,
 )
 from app.services.ai.base import ImageAnalysisResult
+from app.services.ai.queue import ImageAnalysisQueueError, enqueue_image_analysis
 
 
 class ProductController:
@@ -188,19 +195,42 @@ class ProductController:
                 for correction in data.ai_corrections
             ],
         )
+        if data.images:
+            product.ai_status = "pending"
+            product.ai_error = None
         self.repository.create(product)
         self.repository.commit()
+        if data.images:
+            try:
+                enqueue_image_analysis(
+                    product.id, [image.image_url for image in product.images]
+                )
+            except ImageAnalysisQueueError:
+                # IA é complementar ao cadastro: indisponibilidade da fila
+                # registra a falha sem desfazer a peça já persistida.
+                product.ai_status = "failed"
+                product.ai_error = "Não foi possível agendar a análise de IA."
+                self.repository.commit()
         return self._to_response(product)
 
     def update(
         self, user_id: int, product_id: int, data: ProductDraftUpdate
     ) -> ProductDraftResponse:
-        """Edita rascunho ou peça publicada/despublicada; vendida é imutável."""
+        """Edita rascunho ou peça publicada/despublicada; vendida é imutável,
+        e reservada também, enquanto o pedido estiver aberto."""
         product = self._get_owned(user_id, product_id)
         if product.status == "vendido":
             raise AppError(
                 "Peça vendida não pode ser editada.",
                 code=ErrorCode.PRODUCT_SOLD,
+                status_code=409,
+            )
+        if product.status == "reservado":
+            # O comprador fechou o pedido com esta peça (back-end#247): editar
+            # agora a faria diferente do que ele comprou.
+            raise AppError(
+                "Peça reservada em um pedido não pode ser editada.",
+                code=ErrorCode.PRODUCT_NOT_EDITABLE,
                 status_code=409,
             )
         if product.status != "rascunho" and data.images == []:
@@ -260,13 +290,21 @@ class ProductController:
 
         Vendida responde com o codigo proprio e nao com o conflito generico
         (RN-53) -- quem chama precisa distinguir "ja esta no ar" de "nao mexe
-        mais nesta".
+        mais nesta". Reservada tambem e recusada: esta num pedido aberto.
         """
         product = self._get_owned(user_id, product_id)
         if product.status == "vendido":
             raise AppError(
                 "Peça vendida não pode mudar de situação.",
                 code=ErrorCode.PRODUCT_SOLD,
+                status_code=409,
+            )
+        if product.status == "reservado":
+            # Peça num pedido aberto (RN-46): voltar para `ativo` a poria no
+            # feed e no carrinho de outra pessoa enquanto o pedido corre.
+            raise AppError(
+                "Peça reservada em um pedido não pode mudar de situação.",
+                code=ErrorCode.PRODUCT_NOT_EDITABLE,
                 status_code=409,
             )
         if product.status == "ativo":
@@ -344,6 +382,46 @@ class ProductController:
             total=page.total,
         )
 
+    def get_owned_detail(self, user_id: int, product_id: int) -> ProductDraftResponse:
+        """Peça do vendedor em qualquer situação (back-end#234).
+
+        O detalhe público (`get_detail`) não serve para a tela de edição: ele
+        responde 404 para peça despublicada e não devolve rascunho. Peça de
+        outro vendedor responde 404 pela regra do `_get_owned`.
+        """
+        return self._to_response(self._get_owned(user_id, product_id))
+
+    def sales_summary(
+        self, user_id: int, period: Literal["month", "30d", "all"]
+    ) -> SalesSummaryResponse:
+        """Bruto, comissão de 9% e líquido do vendedor no período (#146).
+
+        `month` é o mês corrente, do dia 1; `30d` são os últimos 30 dias;
+        `all` não tem corte. Sem venda no período devolve zero, não erro.
+
+        O corte é em UTC, como todo datetime deste projeto (`utcnow_naive`).
+        Para um produto do RS isso desloca a fronteira do mês em três horas: uma
+        venda de 30/09 às 21:30 BRT é 01/10 em UTC e cai no resumo de outubro.
+        Enquanto não houver fuso na base, a alternativa seria converter aqui só
+        para esta conta, e uma conversão isolada mente sobre o resto.
+        """
+        agora = utcnow_naive()
+        if period == "month":
+            desde = agora.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        elif period == "30d":
+            desde = agora - timedelta(days=30)
+        else:
+            desde = None
+        quantidade, bruto = self.repository.sales_summary(user_id, desde)
+        comissao, liquido = dividir(bruto)
+        return SalesSummaryResponse(
+            period=period,
+            sold_count=quantidade,
+            gross=bruto,
+            commission=comissao,
+            net=liquido,
+        )
+
     def unpublish(self, user_id: int, product_id: int) -> ProductDraftResponse:
         """`ativo -> despublicado`: sai da vitrine, historico preservado (RN-52).
 
@@ -360,6 +438,14 @@ class ProductController:
             raise AppError(
                 "Peça vendida não pode mudar de situação.",
                 code=ErrorCode.PRODUCT_SOLD,
+                status_code=409,
+            )
+        if product.status == "reservado":
+            # Recusa explícita, e não pelo `!= "ativo"` abaixo: publicar e
+            # despublicar tratam a peça reservada da mesma forma.
+            raise AppError(
+                "Peça reservada em um pedido não pode mudar de situação.",
+                code=ErrorCode.PRODUCT_NOT_EDITABLE,
                 status_code=409,
             )
         if product.status != "ativo":

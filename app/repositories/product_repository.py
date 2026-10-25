@@ -1,11 +1,13 @@
 from collections.abc import Sequence
+from datetime import datetime
 from decimal import Decimal
 from typing import TypedDict, cast
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, func, select, update
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.pagination import Page, PageParams, paginate
+from app.models.order_item import OrderItem
 from app.models.product import Product
 from app.models.product_image import ProductImage
 from app.models.seller import Seller
@@ -152,6 +154,32 @@ class ProductRepository:
             item_schema=ProductManagementResponse,
         )
 
+    def sales_summary(
+        self, user_id: int, desde: datetime | None
+    ) -> tuple[int, Decimal]:
+        """`(quantidade, bruto)` das peças vendidas da loja de quem pede.
+
+        `desde=None` é "tudo". Vendedor sem venda no período recebe
+        `(0, Decimal("0"))` e não erro (back-end#146).
+
+        Só entram peças com `sold_at` preenchido quando há corte de período:
+        peça vendida sem data não pode ser contada num intervalo sem que a
+        conta minta. No "tudo" ela entra, porque ali não há intervalo.
+        """
+        stmt = (
+            select(
+                func.count(Product.id),
+                func.coalesce(func.sum(Product.price), 0),
+            )
+            .join(Store, Store.id == Product.store_id)
+            .join(Seller, Seller.id == Store.seller_id)
+            .where(Seller.user_id == user_id, Product.status == "vendido")
+        )
+        if desde is not None:
+            stmt = stmt.where(Product.sold_at.is_not(None), Product.sold_at >= desde)
+        quantidade, bruto = self.db.execute(stmt).one()
+        return int(quantidade), Decimal(bruto)
+
     def get_store_for_user(self, user_id: int) -> Store | None:
         """Loja de quem está criando/editando — um vendedor, uma loja."""
         stmt = (
@@ -208,6 +236,46 @@ class ProductRepository:
             .where(Product.id == product_id)
         )
         return self.db.scalars(stmt).one_or_none()
+
+    def get_many_for_order(self, product_ids: Sequence[int]) -> list[Product]:
+        """Peças do pedido com loja e fotos. Id que não existe não volta: quem
+        chama compara a quantidade."""
+        stmt = (
+            select(Product)
+            .options(joinedload(Product.store), selectinload(Product.images))
+            .where(Product.id.in_(product_ids))
+        )
+        return list(self.db.scalars(stmt).unique())
+
+    def reserve(self, product_ids: Sequence[int]) -> int:
+        """`ativo -> reservado` num comando só, e devolve quantas mudaram.
+
+        Conferir e trocar no mesmo UPDATE é o que resolve duas pessoas pedindo
+        a mesma peça ao mesmo tempo: o banco aplica um UPDATE por vez na linha,
+        e o segundo já não encontra `ativo`. Ler o status antes e gravar depois
+        deixaria as duas passarem pela conferência.
+        """
+        result = self.db.execute(
+            update(Product)
+            .where(Product.id.in_(product_ids), Product.status == "ativo")
+            .values(status="reservado")
+        )
+        return result.rowcount
+
+    def release_for_orders(self, order_ids: Sequence[int]) -> int:
+        """`reservado -> ativo` para as peças desses pedidos, e devolve quantas
+        mudaram. O caminho de volta do `reserve` (back-end#280)."""
+        if not order_ids:
+            return 0
+        pecas_dos_pedidos = select(OrderItem.product_id).where(
+            OrderItem.order_id.in_(order_ids)
+        )
+        result = self.db.execute(
+            update(Product)
+            .where(Product.id.in_(pecas_dos_pedidos), Product.status == "reservado")
+            .values(status="ativo")
+        )
+        return result.rowcount
 
     def create(self, product: Product) -> Product:
         self.db.add(product)

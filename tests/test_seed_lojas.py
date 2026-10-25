@@ -1,3 +1,4 @@
+from app.core.documento import is_valid_cnpj
 from app.models import Store
 from app.seeds.lojas import seed_lojas
 
@@ -42,3 +43,14 @@ def test_rodar_duas_vezes_nao_duplica(db_session):
     segunda = db_session.query(Store).count()
 
     assert primeira == segunda
+
+
+def test_documentos_do_seed_sao_cnpjs_validos_e_distintos(db_session):
+    """O seed dá selo a algumas lojas: o documento tem que passar na mesma regra
+    do cadastro (back-end#217)."""
+    stores = seed_lojas(db_session)
+    db_session.commit()
+
+    documentos = [store.seller.document_value for store in stores]
+    assert all(is_valid_cnpj(documento) for documento in documentos), documentos
+    assert len(set(documentos)) == len(documentos)

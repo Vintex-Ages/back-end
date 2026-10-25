@@ -4,6 +4,8 @@ merge; nao ha sobreposicao de nomes entre eles."""
 
 from decimal import Decimal
 
+import pytest
+
 from app.core.security import create_access_token
 from app.models.address import Address
 from app.models.product import Product
@@ -11,6 +13,7 @@ from app.models.product_image import ProductImage
 from app.models.seller import Seller
 from app.models.store import Store
 from app.models.user import User
+from app.seeds.legal import VERSION, seed_legal
 from tests.test_user import persist_user
 
 
@@ -144,18 +147,28 @@ def store_payload(document_type: str = "CPF") -> dict[str, str]:
         "logo_url": "https://example.com/logo.png",
         "document_type": document_type,
         "document_value": (
-            "123.456.789-00" if document_type == "CPF" else "12.345.678/0001-90"
+            "123.456.789-09" if document_type == "CPF" else "12.345.678/0001-95"
         ),
-        "terms_version": "v1.0",
+        "terms_version": VERSION,
     }
 
 
-def test_create_store_turns_user_into_seller_and_persists_terms(client, db_session):
+@pytest.fixture(autouse=True)
+def contrato_publicado(db_session):
+    """O `store_payload` aceita o contrato, e a versão aceita tem que existir
+    em `legal_documents` (back-end#217). O seed publica a `v0`."""
+    seed_legal(db_session)
+    db_session.commit()
+
+
+def test_create_store_turns_user_into_seller_and_persists_terms(
+    client, db_session, auth_headers
+):
     user = persist_user(db_session, email="store-owner@example.com")
 
     response = client.post(
         "/api/users/me/store",
-        headers={"X-User-Id": str(user.id)},
+        headers=auth_headers(user.id),
         json=store_payload(),
     )
 
@@ -163,7 +176,7 @@ def test_create_store_turns_user_into_seller_and_persists_terms(client, db_sessi
     body = response.json()
     assert body["name"] == "Brechó do Teste"
     assert body["document_type"] == "CPF"
-    assert body["terms_version"] == "v1.0"
+    assert body["terms_version"] == VERSION
     assert body["terms_accepted_at"] is not None
     assert db_session.query(Seller).filter_by(user_id=user.id).count() == 1
     assert db_session.query(Store).filter_by(seller_id=body["seller_id"]).count() == 1
@@ -173,7 +186,7 @@ def test_create_store_turns_user_into_seller_and_persists_terms(client, db_sessi
     assert me_response.json()["is_seller"] is True
 
 
-def test_create_store_sem_logo_e_aceito(client, db_session):
+def test_create_store_sem_logo_e_aceito(client, db_session, auth_headers):
     """Brecho sem logo ainda e brecho: `Store.logo_url` e anulavel no modelo, e
     nao existe tela de upload de logo para exigir uma."""
     user = persist_user(db_session, email="sem-logo@example.com")
@@ -181,19 +194,19 @@ def test_create_store_sem_logo_e_aceito(client, db_session):
     del corpo["logo_url"]
 
     response = client.post(
-        "/api/users/me/store", headers={"X-User-Id": str(user.id)}, json=corpo
+        "/api/users/me/store", headers=auth_headers(user.id), json=corpo
     )
 
     assert response.status_code == 201
     assert response.json()["logo_url"] is None
 
 
-def test_create_store_accepts_cnpj(client, db_session):
+def test_create_store_accepts_cnpj(client, db_session, auth_headers):
     user = persist_user(db_session, email="cnpj-owner@example.com")
 
     response = client.post(
         "/api/users/me/store",
-        headers={"X-User-Id": str(user.id)},
+        headers=auth_headers(user.id),
         json=store_payload("CNPJ"),
     )
 
@@ -201,12 +214,14 @@ def test_create_store_accepts_cnpj(client, db_session):
     assert response.json()["document_type"] == "CNPJ"
 
 
-def test_create_store_rejects_cpf_with_wrong_digit_count(client, db_session):
+def test_create_store_rejects_cpf_with_wrong_digit_count(
+    client, db_session, auth_headers
+):
     user = persist_user(db_session, email="bad-cpf@example.com")
 
     response = client.post(
         "/api/users/me/store",
-        headers={"X-User-Id": str(user.id)},
+        headers=auth_headers(user.id),
         json={**store_payload(), "document_value": "123.456.789-0"},
     )
 
@@ -214,18 +229,20 @@ def test_create_store_rejects_cpf_with_wrong_digit_count(client, db_session):
     assert response.json()["error"]["code"] == "VALIDATION_ERROR"
 
 
-def test_create_store_rejects_document_registered_by_another_seller(client, db_session):
+def test_create_store_rejects_document_registered_by_another_seller(
+    client, db_session, auth_headers
+):
     owner = persist_user(db_session, email="doc-owner@example.com")
     client.post(
         "/api/users/me/store",
-        headers={"X-User-Id": str(owner.id)},
+        headers=auth_headers(owner.id),
         json=store_payload(),
     )
 
     other_user = persist_user(db_session, email="doc-thief@example.com")
     response = client.post(
         "/api/users/me/store",
-        headers={"X-User-Id": str(other_user.id)},
+        headers=auth_headers(other_user.id),
         json={**store_payload(), "name": "Outra loja"},
     )
 
@@ -235,10 +252,12 @@ def test_create_store_rejects_document_registered_by_another_seller(client, db_s
 
 
 def test_second_store_creation_returns_conflict_without_creating_store(
-    client, db_session
+    client,
+    db_session,
+    auth_headers,
 ):
     user = persist_user(db_session, email="duplicate-store@example.com")
-    headers = {"X-User-Id": str(user.id)}
+    headers = auth_headers(user.id)
     first_response = client.post(
         "/api/users/me/store", headers=headers, json=store_payload()
     )
@@ -256,10 +275,12 @@ def test_second_store_creation_returns_conflict_without_creating_store(
     assert db_session.query(Seller).count() == 1
 
 
-def test_get_own_store_returns_not_found_for_user_without_store(client, db_session):
+def test_get_own_store_returns_not_found_for_user_without_store(
+    client, db_session, auth_headers
+):
     user = persist_user(db_session, email="buyer@example.com")
 
-    response = client.get("/api/users/me/store", headers={"X-User-Id": str(user.id)})
+    response = client.get("/api/users/me/store", headers=auth_headers(user.id))
 
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "STORE_NOT_FOUND"
@@ -269,9 +290,9 @@ def test_get_own_store_returns_not_found_for_user_without_store(client, db_sessi
     assert me_response.json()["is_seller"] is False
 
 
-def test_get_own_store_returns_created_store(client, db_session):
+def test_get_own_store_returns_created_store(client, db_session, auth_headers):
     user = persist_user(db_session, email="read-store@example.com")
-    headers = {"X-User-Id": str(user.id)}
+    headers = auth_headers(user.id)
     client.post("/api/users/me/store", headers=headers, json=store_payload())
 
     response = client.get("/api/users/me/store", headers=headers)
@@ -279,3 +300,63 @@ def test_get_own_store_returns_created_store(client, db_session):
     assert response.status_code == 200
     assert response.json()["name"] == "Brechó do Teste"
     assert response.json()["logo_url"] == "https://example.com/logo.png"
+
+
+def test_get_own_store_devolve_o_selo(client, db_session, auth_headers):
+    """O painel do vendedor mostra o proprio selo (RN-73). Antes da
+    back-end#259 ele precisava de uma segunda requisicao, a da loja publica."""
+    for verified in (True, False):
+        store = make_store(db_session, f"Selo {verified}", verified=verified)
+
+        response = client.get(
+            "/api/users/me/store", headers=auth_headers(store.seller.user_id)
+        )
+
+        assert response.status_code == 200
+        assert response.json()["verified"] is verified
+
+
+@pytest.mark.parametrize(
+    "document_type,document_value",
+    [
+        ("CPF", "123.456.789-00"),
+        ("CNPJ", "12.345.678/0001-90"),
+    ],
+    ids=["cpf", "cnpj"],
+)
+def test_create_store_rejects_document_with_wrong_check_digit(
+    client, db_session, auth_headers, document_type, document_value
+):
+    """Contar dígitos deixava passar documento inventado (back-end#217)."""
+    user = persist_user(db_session, email="wrong-digit@example.com")
+
+    response = client.post(
+        "/api/users/me/store",
+        headers=auth_headers(user.id),
+        json={
+            **store_payload(document_type),
+            "document_value": document_value,
+        },
+    )
+
+    assert response.status_code == 422
+    assert "document_value" in response.json()["error"]["fields"]
+    assert db_session.query(Seller).count() == 0
+
+
+@pytest.mark.parametrize("document_value", ["111.111.111-11", "00000000000"])
+def test_create_store_rejects_repeated_sequence(
+    client, db_session, auth_headers, document_value
+):
+    """Sequência repetida passa no cálculo do verificador, e `00000000000`
+    chegava a ganhar o selo Confiável (back-end#217)."""
+    user = persist_user(db_session, email="repeated@example.com")
+
+    response = client.post(
+        "/api/users/me/store",
+        headers=auth_headers(user.id),
+        json={**store_payload(), "document_value": document_value},
+    )
+
+    assert response.status_code == 422
+    assert "document_value" in response.json()["error"]["fields"]
