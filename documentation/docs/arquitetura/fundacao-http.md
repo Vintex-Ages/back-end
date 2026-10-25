@@ -8,7 +8,7 @@ Fonte de verdade: [`ADR 0001`](https://github.com/Vintex-Ages/back-end/blob/deve
 
 ## Prefixo de rota
 
-Todas as rotas ficam sob `/api`, sem `/v1` (não existe uma segunda versão da API ainda).
+Todas as rotas ficam sob `/api`, sem `/v1` (não existe uma segunda versão da API ainda). Os routers de domínio são agregados em `app/views/__init__.py`, sob esse prefixo, e incluídos uma vez pelo `create_app` de `app/main.py`.
 
 ## Envelope de erro
 
