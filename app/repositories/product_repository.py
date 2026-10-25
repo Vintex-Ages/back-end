@@ -3,10 +3,12 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TypedDict, cast
 
-from sqlalchemy import ScalarSelect, Select, func, select
+from sqlalchemy import ScalarSelect, Select, func, select, update
 from sqlalchemy.orm import Session, joinedload, selectinload, with_expression
 
 from app.core.pagination import Page, PageParams, paginate
+from app.models.address import Address
+from app.models.order_item import OrderItem
 from app.models.product import Product
 from app.models.product_image import ProductImage
 from app.models.seller import Seller
@@ -104,6 +106,8 @@ class ProductRepository:
             "brand": Product.brand,
             "condition": Product.condition,
             "color": Product.color,
+            "city": Address.city,
+            "state": Address.state,
         }
         for field_name, column in filter_columns.items():
             value = getattr(filters, field_name)
@@ -118,10 +122,15 @@ class ProductRepository:
             conditions.append(Product.price >= filters.price_min)
         if filters.price_max is not None:
             conditions.append(Product.price <= filters.price_max)
+        if filters.store_id is not None:
+            conditions.append(Store.id == filters.store_id)
 
         stmt = (
             _feed_select()
             .join(Store, Store.id == Product.store_id)
+            # A localizacao e da loja. O outer join preserva lojas sem endereco
+            # quando city/state nao foram informados.
+            .outerjoin(Address, Store.address_id == Address.id)
             .where(*conditions)
             .order_by(Product.created_at.desc(), Product.id.desc())
         )
@@ -246,6 +255,46 @@ class ProductRepository:
             .where(Product.id == product_id)
         )
         return self.db.scalars(stmt).one_or_none()
+
+    def get_many_for_order(self, product_ids: Sequence[int]) -> list[Product]:
+        """Peças do pedido com loja e fotos. Id que não existe não volta: quem
+        chama compara a quantidade."""
+        stmt = (
+            select(Product)
+            .options(joinedload(Product.store), selectinload(Product.images))
+            .where(Product.id.in_(product_ids))
+        )
+        return list(self.db.scalars(stmt).unique())
+
+    def reserve(self, product_ids: Sequence[int]) -> int:
+        """`ativo -> reservado` num comando só, e devolve quantas mudaram.
+
+        Conferir e trocar no mesmo UPDATE é o que resolve duas pessoas pedindo
+        a mesma peça ao mesmo tempo: o banco aplica um UPDATE por vez na linha,
+        e o segundo já não encontra `ativo`. Ler o status antes e gravar depois
+        deixaria as duas passarem pela conferência.
+        """
+        result = self.db.execute(
+            update(Product)
+            .where(Product.id.in_(product_ids), Product.status == "ativo")
+            .values(status="reservado")
+        )
+        return result.rowcount
+
+    def release_for_orders(self, order_ids: Sequence[int]) -> int:
+        """`reservado -> ativo` para as peças desses pedidos, e devolve quantas
+        mudaram. O caminho de volta do `reserve` (back-end#280)."""
+        if not order_ids:
+            return 0
+        pecas_dos_pedidos = select(OrderItem.product_id).where(
+            OrderItem.order_id.in_(order_ids)
+        )
+        result = self.db.execute(
+            update(Product)
+            .where(Product.id.in_(pecas_dos_pedidos), Product.status == "reservado")
+            .values(status="ativo")
+        )
+        return result.rowcount
 
     def create(self, product: Product) -> Product:
         self.db.add(product)

@@ -11,6 +11,7 @@ from app.models.product import Product
 from app.models.product_ai_correction import ProductAiCorrection
 from app.models.product_image import ProductImage
 from app.repositories.product_repository import ProductFeedRow, ProductRepository
+from app.repositories.store_repository import StoreRepository
 from app.schemas.product_management_schema import ProductManagementPage
 from app.schemas.product_schema import (
     AiCorrectionResponse,
@@ -36,13 +37,20 @@ from app.services.ai.queue import ImageAnalysisQueueError, enqueue_image_analysi
 class ProductController:
     def __init__(self, db: Session):
         self.repository = ProductRepository(db)
+        self.stores = StoreRepository(db)
 
     def get_feed(
         self, params: PageParams, filters: ProductFilters, q: str | None = None
     ) -> FeedResponse:
+        if (
+            filters.store_id is not None
+            and self.stores.get_by_id(filters.store_id) is None
+        ):
+            raise NotFound("Loja não encontrada.", code=ErrorCode.STORE_NOT_FOUND)
+
         rows, total = self.repository.get_active_feed(params, filters, q=q)
 
-        if q and not rows:
+        if not rows and (q or filters.applied()):
             return self._sem_resultado(params, filters, q)
 
         return FeedResponse(
@@ -54,21 +62,31 @@ class ProductController:
         )
 
     def _sem_resultado(
-        self, params: PageParams, filters: ProductFilters, q: str
+        self, params: PageParams, filters: ProductFilters, q: str | None
     ) -> FeedResponse:
-        """Busca sem correspondencia: devolve pecas parecidas e explica o motivo.
+        """Filtro ou busca sem correspondencia: devolve pecas alternativas.
 
-        Tenta cada palavra do termo isoladamente ("jaqueta jeans" vira
-        "jaqueta" e depois "jeans"). Se nenhuma achar, cai para o catalogo
-        com os mesmos filtros, de modo que a busca nunca volta vazia enquanto
-        houver peca. Catalogo vazio devolve vazio, sem erro.
+        Relaxa um passo de cada vez, do mais proximo ao mais distante:
+
+        1. busca textual: cada palavra do termo isoladamente ("jaqueta jeans"
+           vira "jaqueta" e depois "jeans"), mantendo os filtros;
+        2. busca textual: o catalogo sem o termo, mantendo os filtros. Quem
+           busca "xyz" em calcas ve calcas, nao o catalogo inteiro;
+        3. o catalogo sem filtro nenhum. So aqui um filtro sem resultado (ex.:
+           cidade sem peca) passa a mostrar alguma coisa.
+
+        Catalogo vazio devolve vazio, sem erro.
         """
-        for palavra in self._palavras(q):
-            rows, _ = self.repository.get_active_feed(params, filters, q=palavra)
-            if rows:
-                return self._alternativas(params, filters, q, rows)
+        rows: list[ProductFeedRow] = []
+        if q:
+            for palavra in self._palavras(q):
+                rows, _ = self.repository.get_active_feed(params, filters, q=palavra)
+                if rows:
+                    return self._alternativas(params, filters, q, rows)
+            rows, _ = self.repository.get_active_feed(params, filters)
 
-        rows, _ = self.repository.get_active_feed(params, filters)
+        if not rows and filters.applied():
+            rows, _ = self.repository.get_active_feed(params, ProductFilters())
         if not rows:
             return FeedResponse(
                 items=[],
@@ -83,7 +101,7 @@ class ProductController:
         self,
         params: PageParams,
         filters: ProductFilters,
-        q: str,
+        q: str | None,
         rows: list[ProductFeedRow],
     ) -> FeedResponse:
         return FeedResponse(
@@ -98,7 +116,12 @@ class ProductController:
             applied_filters=filters.applied(),
             match_type="fallback",
             suggestions=SuggestionsResponse(
-                reason=f'Nenhum resultado para "{q}". Veja outras peças disponíveis.',
+                reason=(
+                    f'Nenhum resultado para "{q}". Veja outras peças disponíveis.'
+                    if q
+                    else "Nenhum resultado para os filtros selecionados. "
+                    "Veja outras peças disponíveis."
+                ),
                 items=[ProductFeedItemResponse.from_row(row) for row in rows],
             ),
         )
@@ -118,10 +141,20 @@ class ProductController:
             return []
         return palavras
 
+    # `ativo`, `reservado` e `vendido` sao publicos (RN-26); `vendido` precisa
+    # continuar, porque o detalhe mostra o selo de vendida, e `reservado` (peca
+    # num pedido aberto, #243) abre como ela, porque a RN-44 manda sinalizar, e
+    # nao esconder. `rascunho` e `despublicado` nao: o rascunho e o estado
+    # anterior a confirmacao do vendedor (RN-50) e nao foi publicado por
+    # ninguem, e o despublicado saiu da vitrine de proposito (RN-52). Quem
+    # precisa ver o proprio rascunho usa `GET /users/me/products/{id}` (#234),
+    # nao esta rota.
+    PUBLICOS = frozenset({"ativo", "reservado", "vendido"})
+
     def get_detail(self, product_id: int) -> ProductDetailResponse:
         product = self.repository.get_detail_by_id(product_id)
 
-        if product is None or product.status == "despublicado":
+        if product is None or product.status not in self.PUBLICOS:
             raise NotFound("Produto não encontrado.", code=ErrorCode.PRODUCT_NOT_FOUND)
 
         address = product.store.address
@@ -208,12 +241,21 @@ class ProductController:
     def update(
         self, user_id: int, product_id: int, data: ProductDraftUpdate
     ) -> ProductDraftResponse:
-        """Edita rascunho ou peça publicada/despublicada; vendida é imutável."""
+        """Edita rascunho ou peça publicada/despublicada; vendida é imutável,
+        e reservada também, enquanto o pedido estiver aberto."""
         product = self._get_owned(user_id, product_id)
         if product.status == "vendido":
             raise AppError(
                 "Peça vendida não pode ser editada.",
                 code=ErrorCode.PRODUCT_SOLD,
+                status_code=409,
+            )
+        if product.status == "reservado":
+            # O comprador fechou o pedido com esta peça (back-end#247): editar
+            # agora a faria diferente do que ele comprou.
+            raise AppError(
+                "Peça reservada em um pedido não pode ser editada.",
+                code=ErrorCode.PRODUCT_NOT_EDITABLE,
                 status_code=409,
             )
         if product.status != "rascunho" and data.images == []:

@@ -341,6 +341,27 @@ def test_unpublish_recusa_peca_reservada(client, db_session, auth_headers):
     assert product.status == "reservado"
 
 
+def test_update_recusa_peca_reservada(client, db_session, auth_headers):
+    """O comprador fechou o pedido com esta peca (back-end#247): editar agora a
+    faria diferente do que ele comprou."""
+    store = make_store(db_session, 69, "Em pedido")
+    product = com_foto(
+        db_session, make_product(db_session, store, "Peca no pedido", "reservado")
+    )
+    db_session.commit()
+
+    response = client.patch(
+        f"/api/users/me/products/{product.id}",
+        json={"name": "Outro nome"},
+        headers=auth_headers(69),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "PRODUCT_NOT_EDITABLE"
+    db_session.refresh(product)
+    assert product.name == "Peca no pedido"
+
+
 def test_republicar_exige_foto(client, db_session, auth_headers):
     """Com o `republish` fora, `publish` e o unico caminho para `ativo`, e ele
     exige foto nos dois sentidos. Era isto que a rota `republish` furava: peca

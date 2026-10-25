@@ -37,3 +37,14 @@ output "redrive_policy" {
   description = "Política que conecta a fila de processamento à DLQ."
   value       = aws_sqs_queue.processing.redrive_policy
 }
+
+output "delivery_settings" {
+  description = "Contrato efetivo de polling, visibilidade, retenção e criptografia."
+  value = {
+    visibility_timeout_seconds    = aws_sqs_queue.processing.visibility_timeout_seconds
+    receive_wait_time_seconds     = aws_sqs_queue.processing.receive_wait_time_seconds
+    dead_letter_retention_seconds = aws_sqs_queue.dead_letter.message_retention_seconds
+    processing_sse_enabled        = aws_sqs_queue.processing.sqs_managed_sse_enabled
+    dead_letter_sse_enabled       = aws_sqs_queue.dead_letter.sqs_managed_sse_enabled
+  }
+}

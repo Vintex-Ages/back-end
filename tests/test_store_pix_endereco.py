@@ -23,7 +23,10 @@ As fontes de que esses campos sao escopo declarado, e que a #141 omitiu:
 
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
+
+from app.seeds.legal import VERSION, seed_legal
 
 ENDERECO = {
     "street": "Rua Ali",
@@ -44,6 +47,17 @@ def _loja(**extra) -> dict:
     }
     corpo.update(extra)
     return corpo
+
+
+@pytest.fixture
+def contrato_publicado(db_session) -> str:
+    """Publica a `v0` do contrato de venda pelo seed e devolve a versão.
+
+    Aceitar uma versão exige que ela exista em `legal_documents`
+    (back-end#217)."""
+    seed_legal(db_session)
+    db_session.commit()
+    return VERSION
 
 
 def _registrar(client: TestClient, email: str) -> dict[str, str]:
@@ -117,16 +131,18 @@ def test_descricao_vazia_deixou_de_ser_422(client: TestClient) -> None:
 
 
 def test_versao_do_contrato_quando_vem_continua_sendo_gravada(
-    client: TestClient,
+    client: TestClient, contrato_publicado: str
 ) -> None:
     """Opcional nao quer dizer descartada: quando a `front-end#215` existir e
     mandar a versao, ela tem que ficar registrada com a data do aceite."""
     h = _registrar(client, "contrato@vintex.com")
 
-    r = client.post("/api/users/me/store", json=_loja(terms_version="v0"), headers=h)
+    r = client.post(
+        "/api/users/me/store", json=_loja(terms_version=contrato_publicado), headers=h
+    )
 
     assert r.status_code == 201, r.text
-    assert r.json()["terms_version"] == "v0"
+    assert r.json()["terms_version"] == contrato_publicado
     assert r.json()["terms_accepted_at"] is not None
 
 
@@ -249,11 +265,45 @@ def test_sem_versao_de_contrato_nao_grava_data_de_aceite(client: TestClient) -> 
     assert r.json()["terms_accepted_at"] is None
 
 
-def test_com_versao_de_contrato_grava_os_dois(client: TestClient) -> None:
+def test_com_versao_de_contrato_grava_os_dois(
+    client: TestClient, contrato_publicado: str
+) -> None:
     h = _registrar(client, "comaceite@vintex.com")
+
+    r = client.post(
+        "/api/users/me/store", json=_loja(terms_version=contrato_publicado), headers=h
+    )
+
+    assert r.status_code == 201, r.text
+    assert r.json()["terms_version"] == contrato_publicado
+    assert r.json()["terms_accepted_at"] is not None
+
+
+# ------------------------------- versao que nao existe (back-end#217)
+def test_versao_de_contrato_inexistente_responde_422_sem_criar_loja(
+    client: TestClient, contrato_publicado: str
+) -> None:
+    """Gravar `v999-nao-existe` registrava um aceite jurídico apontando para um
+    texto que ninguém leu, com a data carimbada."""
+    h = _registrar(client, "versaofalsa@vintex.com")
+
+    r = client.post(
+        "/api/users/me/store", json=_loja(terms_version="v999-nao-existe"), headers=h
+    )
+
+    assert r.status_code == 422, r.text
+    assert "terms_version" in r.json()["error"]["fields"]
+    assert client.get("/api/users/me/store", headers=h).status_code == 404
+
+
+def test_sem_nenhum_contrato_publicado_qualquer_versao_e_recusada(
+    client: TestClient,
+) -> None:
+    """Banco sem seed: não há o que aceitar, e a versão não pode ser
+    inventada pelo cliente."""
+    h = _registrar(client, "semseed@vintex.com")
 
     r = client.post("/api/users/me/store", json=_loja(terms_version="v0"), headers=h)
 
-    assert r.status_code == 201, r.text
-    assert r.json()["terms_version"] == "v0"
-    assert r.json()["terms_accepted_at"] is not None
+    assert r.status_code == 422, r.text
+    assert "terms_version" in r.json()["error"]["fields"]
