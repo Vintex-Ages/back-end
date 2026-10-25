@@ -49,6 +49,11 @@ const config = {
         title: "Vintex — Back-end",
         items: [
           {
+            to: "/features",
+            label: "Features",
+            position: "left",
+          },
+          {
             href: "https://github.com/Vintex-Ages/back-end",
             label: "GitHub",
             position: "right",
