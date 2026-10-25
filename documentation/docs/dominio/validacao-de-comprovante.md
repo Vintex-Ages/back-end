@@ -4,7 +4,7 @@ sidebar_position: 1
 
 # Validação do comprovante
 
-Fonte de verdade: `app/controllers/payment_review_controller.py` e as issues [#251](https://github.com/Vintex-Ages/back-end/issues/251) (aprovar e rejeitar) e [#243](https://github.com/Vintex-Ages/back-end/issues/243) (tabelas do pedido).
+Fonte de verdade: `app/controllers/payment_review_controller.py`, a troca condicional de status em `app/repositories/order_repository.py` e as issues [#251](https://github.com/Vintex-Ages/back-end/issues/251) (aprovar e rejeitar) e [#243](https://github.com/Vintex-Ages/back-end/issues/243) (tabelas do pedido).
 
 A plataforma não processa o Pix (RN-13 e RN-14). O comprador paga por fora, direto na chave do vendedor, e anexa o comprovante. Quem confere o arquivo é a administradora, à mão (RN-21).
 
