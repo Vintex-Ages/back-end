@@ -1,12 +1,16 @@
 from datetime import datetime
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session, joinedload, selectinload
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.core.pagination import PageParams
 from app.models.order import Order
 from app.models.order_status_history import OrderStatusHistory
 from app.models.payment import Payment
+from app.models.seller import Seller
+from app.models.store import Store
+from app.models.user import User
 
 
 class OrderRepository:
@@ -116,6 +120,64 @@ class OrderRepository:
         self.db.add(OrderStatusHistory(order_id=order_id, status=para))
         self.db.flush()
         return True
+
+    def receipt_queue(
+        self, params: PageParams, status: str | None, q: str | None
+    ) -> tuple[list[Order], int]:
+        """Pedidos com comprovante enviado, mais antigo primeiro (back-end#250).
+
+        Uma linha por pedido, pelo comprovante vigente (o envio mais recente):
+        `status` filtra pela situação dele, e a ordem é a data do envio. `q`
+        casa o nome do comprador ou da loja, sem diferenciar maiúscula e, no
+        Postgres, sem diferenciar acento, como a busca do catálogo.
+
+        A página tem número fixo de consultas: comprador, loja e vendedor por
+        join, itens e pagamentos (com quem validou) por coleção.
+        """
+        vigente = (
+            select(Payment.order_id, func.max(Payment.id).label("payment_id"))
+            .group_by(Payment.order_id)
+            .subquery()
+        )
+        stmt = (
+            select(Order)
+            .join(vigente, vigente.c.order_id == Order.id)
+            .join(Payment, Payment.id == vigente.c.payment_id)
+            .join(User, User.id == Order.buyer_id)
+            .join(Store, Store.id == Order.store_id)
+        )
+        if status is not None:
+            stmt = stmt.where(Payment.status == status)
+        if q:
+            termo = self._normalizar(func.lower(q))
+            stmt = stmt.where(
+                or_(
+                    self._normalizar(func.lower(User.name)).contains(termo),
+                    self._normalizar(func.lower(Store.name)).contains(termo),
+                )
+            )
+
+        total = self.db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+        orders = self.db.scalars(
+            stmt.options(
+                joinedload(Order.buyer),
+                joinedload(Order.store)
+                .joinedload(Store.seller)
+                .joinedload(Seller.user),
+                selectinload(Order.items),
+                selectinload(Order.payments).joinedload(Payment.validated_by),
+            )
+            .order_by(Payment.submitted_at.asc(), Order.id.asc())
+            .offset(params.offset)
+            .limit(params.limit)
+        ).all()
+        return list(orders), total
+
+    def _normalizar(self, expr: ColumnElement[str]) -> ColumnElement[str]:
+        """Sem acento no Postgres; o SQLite dos testes não tem `unaccent`."""
+        if self.db.get_bind().dialect.name == "postgresql":
+            return func.immutable_unaccent(expr)
+        return expr
 
     def add_payment(self, payment: Payment) -> Payment:
         """Um envio de comprovante. Reenviar cria linha nova (RN-22)."""
