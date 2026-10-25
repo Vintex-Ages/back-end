@@ -112,10 +112,10 @@ def test_x_user_id_nao_muda_mais_a_identidade(client, db_session, auth_headers):
     Com o placeholder, `X-User-Id: <id>` devolvia a loja daquele vendedor.
     """
     ana, loja_da_ana = _vendedora(
-        db_session, email="ana@v.com", documento="00000000001"
+        db_session, email="ana@v.com", documento="52998224725"
     )
     bia, loja_da_bia = _vendedora(
-        db_session, email="bia@v.com", documento="00000000002"
+        db_session, email="bia@v.com", documento="11144477735"
     )
     db_session.commit()
 
@@ -131,7 +131,7 @@ def test_x_user_id_nao_muda_mais_a_identidade(client, db_session, auth_headers):
 
 
 def test_x_user_id_sozinho_nao_abre_sessao(client, db_session):
-    ana, _ = _vendedora(db_session, email="ana@v.com", documento="00000000001")
+    ana, _ = _vendedora(db_session, email="ana@v.com", documento="52998224725")
     db_session.commit()
 
     resposta = client.get("/api/users/me/store", headers={"X-User-Id": str(ana.id)})
@@ -142,10 +142,10 @@ def test_x_user_id_sozinho_nao_abre_sessao(client, db_session):
 def test_cada_vendedora_ve_a_propria_loja(client, db_session, auth_headers):
     """Duas sessões, duas lojas. Antes as duas caíam na loja do usuário do seed."""
     ana, loja_da_ana = _vendedora(
-        db_session, email="ana@v.com", documento="00000000001"
+        db_session, email="ana@v.com", documento="52998224725"
     )
     bia, loja_da_bia = _vendedora(
-        db_session, email="bia@v.com", documento="00000000002"
+        db_session, email="bia@v.com", documento="11144477735"
     )
     db_session.commit()
 
@@ -159,10 +159,10 @@ def test_cada_vendedora_ve_a_propria_loja(client, db_session, auth_headers):
 
 def test_cada_vendedora_ve_as_proprias_pecas(client, db_session, auth_headers):
     ana, loja_da_ana = _vendedora(
-        db_session, email="ana@v.com", documento="00000000001"
+        db_session, email="ana@v.com", documento="52998224725"
     )
     bia, loja_da_bia = _vendedora(
-        db_session, email="bia@v.com", documento="00000000002"
+        db_session, email="bia@v.com", documento="11144477735"
     )
     _peca(db_session, loja_da_ana, name="Peça da Ana")
     _peca(db_session, loja_da_bia, name="Peça da Bia")
@@ -178,9 +178,9 @@ def test_cada_vendedora_ve_as_proprias_pecas(client, db_session, auth_headers):
 def test_ninguem_renomeia_peca_alheia(client, db_session, auth_headers):
     """`PATCH` sem token renomeava peça de qualquer vendedor. Agora recusa."""
     ana, loja_da_ana = _vendedora(
-        db_session, email="ana@v.com", documento="00000000001"
+        db_session, email="ana@v.com", documento="52998224725"
     )
-    bia, _ = _vendedora(db_session, email="bia@v.com", documento="00000000002")
+    bia, _ = _vendedora(db_session, email="bia@v.com", documento="11144477735")
     peca = _peca(db_session, loja_da_ana, name="Peça da Ana")
     db_session.commit()
 
@@ -214,7 +214,7 @@ def test_selo_confiavel_exige_sessao(client, db_session, auth_headers):
 
 
 def test_carrinho_nao_vaza_sem_sessao(client, db_session, auth_headers):
-    ana, loja = _vendedora(db_session, email="ana@v.com", documento="00000000001")
+    ana, loja = _vendedora(db_session, email="ana@v.com", documento="52998224725")
     peca = _peca(db_session, loja)
     db_session.commit()
 

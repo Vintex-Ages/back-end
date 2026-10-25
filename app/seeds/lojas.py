@@ -22,6 +22,9 @@ logger = logging.getLogger("vintex.seeds")
 _UNUSABLE_PASSWORD = "!seed-no-login"
 
 # nome, cidade, bairro, rua, numero, cep, dono, documento (CNPJ), verificado
+# Os CNPJs são inventados (uma filial por loja), mas com dígito verificador
+# válido: a mesma regra do cadastro (back-end#217). Senão o seed dava selo a
+# documento que a API recusa.
 LOJAS: list[dict[str, object]] = [
     {
         "nome": "Brechó Mercado Público",
@@ -31,7 +34,7 @@ LOJAS: list[dict[str, object]] = [
         "numero": "1020",
         "cep": "90010-190",
         "dono": "Marina Oliveira",
-        "documento": "12.345.678/0001-01",
+        "documento": "12.345.678/0001-95",
         "verificado": True,
     },
     {
@@ -42,7 +45,7 @@ LOJAS: list[dict[str, object]] = [
         "numero": "455",
         "cep": "90035-190",
         "dono": "Rafael Menezes",
-        "documento": "12.345.678/0001-02",
+        "documento": "12.345.678/0002-76",
         "verificado": True,
     },
     {
@@ -53,7 +56,7 @@ LOJAS: list[dict[str, object]] = [
         "numero": "2100",
         "cep": "95020-472",
         "dono": "Camila Bertuol",
-        "documento": "12.345.678/0001-03",
+        "documento": "12.345.678/0003-57",
         "verificado": False,
     },
     {
@@ -64,7 +67,7 @@ LOJAS: list[dict[str, object]] = [
         "numero": "760",
         "cep": "96020-220",
         "dono": "Júlia Amaral",
-        "documento": "12.345.678/0001-04",
+        "documento": "12.345.678/0004-38",
         "verificado": True,
     },
     {
@@ -75,7 +78,7 @@ LOJAS: list[dict[str, object]] = [
         "numero": "380",
         "cep": "97050-001",
         "dono": "Nair Rodrigues",
-        "documento": "12.345.678/0001-05",
+        "documento": "12.345.678/0005-19",
         "verificado": False,
     },
     {
@@ -86,7 +89,7 @@ LOJAS: list[dict[str, object]] = [
         "numero": "55",
         "cep": "95670-000",
         "dono": "Otávio Lima",
-        "documento": "12.345.678/0001-06",
+        "documento": "12.345.678/0006-08",
         "verificado": True,
     },
     {
@@ -97,7 +100,7 @@ LOJAS: list[dict[str, object]] = [
         "numero": "1450",
         "cep": "92010-000",
         "dono": "Priscila Fontes",
-        "documento": "12.345.678/0001-07",
+        "documento": "12.345.678/0007-80",
         "verificado": False,
     },
 ]

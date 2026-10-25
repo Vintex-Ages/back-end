@@ -30,6 +30,7 @@ from app.schemas.product_schema import (
     SuggestionsResponse,
 )
 from app.services.ai.base import ImageAnalysisResult
+from app.services.ai.queue import ImageAnalysisQueueError, enqueue_image_analysis
 
 
 class ProductController:
@@ -130,10 +131,20 @@ class ProductController:
             return []
         return palavras
 
+    # `ativo`, `reservado` e `vendido` sao publicos (RN-26); `vendido` precisa
+    # continuar, porque o detalhe mostra o selo de vendida, e `reservado` (peca
+    # num pedido aberto, #243) abre como ela, porque a RN-44 manda sinalizar, e
+    # nao esconder. `rascunho` e `despublicado` nao: o rascunho e o estado
+    # anterior a confirmacao do vendedor (RN-50) e nao foi publicado por
+    # ninguem, e o despublicado saiu da vitrine de proposito (RN-52). Quem
+    # precisa ver o proprio rascunho usa `GET /users/me/products/{id}` (#234),
+    # nao esta rota.
+    PUBLICOS = frozenset({"ativo", "reservado", "vendido"})
+
     def get_detail(self, product_id: int) -> ProductDetailResponse:
         product = self.repository.get_detail_by_id(product_id)
 
-        if product is None or product.status == "despublicado":
+        if product is None or product.status not in self.PUBLICOS:
             raise NotFound("Produto não encontrado.", code=ErrorCode.PRODUCT_NOT_FOUND)
 
         address = product.store.address
@@ -199,19 +210,42 @@ class ProductController:
                 for correction in data.ai_corrections
             ],
         )
+        if data.images:
+            product.ai_status = "pending"
+            product.ai_error = None
         self.repository.create(product)
         self.repository.commit()
+        if data.images:
+            try:
+                enqueue_image_analysis(
+                    product.id, [image.image_url for image in product.images]
+                )
+            except ImageAnalysisQueueError:
+                # IA é complementar ao cadastro: indisponibilidade da fila
+                # registra a falha sem desfazer a peça já persistida.
+                product.ai_status = "failed"
+                product.ai_error = "Não foi possível agendar a análise de IA."
+                self.repository.commit()
         return self._to_response(product)
 
     def update(
         self, user_id: int, product_id: int, data: ProductDraftUpdate
     ) -> ProductDraftResponse:
-        """Edita rascunho ou peça publicada/despublicada; vendida é imutável."""
+        """Edita rascunho ou peça publicada/despublicada; vendida é imutável,
+        e reservada também, enquanto o pedido estiver aberto."""
         product = self._get_owned(user_id, product_id)
         if product.status == "vendido":
             raise AppError(
                 "Peça vendida não pode ser editada.",
                 code=ErrorCode.PRODUCT_SOLD,
+                status_code=409,
+            )
+        if product.status == "reservado":
+            # O comprador fechou o pedido com esta peça (back-end#247): editar
+            # agora a faria diferente do que ele comprou.
+            raise AppError(
+                "Peça reservada em um pedido não pode ser editada.",
+                code=ErrorCode.PRODUCT_NOT_EDITABLE,
                 status_code=409,
             )
         if product.status != "rascunho" and data.images == []:
@@ -271,13 +305,21 @@ class ProductController:
 
         Vendida responde com o codigo proprio e nao com o conflito generico
         (RN-53) -- quem chama precisa distinguir "ja esta no ar" de "nao mexe
-        mais nesta".
+        mais nesta". Reservada tambem e recusada: esta num pedido aberto.
         """
         product = self._get_owned(user_id, product_id)
         if product.status == "vendido":
             raise AppError(
                 "Peça vendida não pode mudar de situação.",
                 code=ErrorCode.PRODUCT_SOLD,
+                status_code=409,
+            )
+        if product.status == "reservado":
+            # Peça num pedido aberto (RN-46): voltar para `ativo` a poria no
+            # feed e no carrinho de outra pessoa enquanto o pedido corre.
+            raise AppError(
+                "Peça reservada em um pedido não pode mudar de situação.",
+                code=ErrorCode.PRODUCT_NOT_EDITABLE,
                 status_code=409,
             )
         if product.status == "ativo":
@@ -411,6 +453,14 @@ class ProductController:
             raise AppError(
                 "Peça vendida não pode mudar de situação.",
                 code=ErrorCode.PRODUCT_SOLD,
+                status_code=409,
+            )
+        if product.status == "reservado":
+            # Recusa explícita, e não pelo `!= "ativo"` abaixo: publicar e
+            # despublicar tratam a peça reservada da mesma forma.
+            raise AppError(
+                "Peça reservada em um pedido não pode mudar de situação.",
+                code=ErrorCode.PRODUCT_NOT_EDITABLE,
                 status_code=409,
             )
         if product.status != "ativo":

@@ -1,6 +1,8 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
+import pytest
+
 from app.models.address import Address
 from app.models.product import Product
 from app.models.product_image import ProductImage
@@ -66,7 +68,11 @@ def make_product(
     return product
 
 
-def test_feed_returns_active_products_with_first_cover_and_store(client, db_session):
+# `reservado` é peça num pedido aberto (back-end#243) e sai como a vendida.
+@pytest.mark.parametrize("status", ["vendido", "reservado"])
+def test_feed_returns_active_products_with_first_cover_and_store(
+    client, db_session, status
+):
     store = make_store(db_session, "Brechó Aurora", verified=True)
     product = make_product(
         db_session,
@@ -83,7 +89,7 @@ def test_feed_returns_active_products_with_first_cover_and_store(client, db_sess
         store,
         "Peça vendida",
         datetime.now(timezone.utc),
-        status="vendido",
+        status=status,
     )
     db_session.commit()
 

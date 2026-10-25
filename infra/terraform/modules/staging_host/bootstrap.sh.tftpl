@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+
+# No application, secrets, releases or AWS credentials are deployed by user data.
+dnf install -y docker iptables-nft python3.12 python3.12-pip
+install -d -m 0755 /opt/vintex /usr/local/lib/docker/cli-plugins
+printf '%s' '${imds_guard_b64}' | base64 -d > /usr/local/sbin/vintex-imds-guard
+chmod 0755 /usr/local/sbin/vintex-imds-guard
+printf '%s' '${imds_unit_b64}' | base64 -d > /etc/systemd/system/vintex-imds-guard.service
+chmod 0644 /etc/systemd/system/vintex-imds-guard.service
+install -d -m 0755 /etc/systemd/system/docker.service.d
+cat > /etc/systemd/system/docker.service.d/vintex-imds.conf <<'UNIT'
+[Unit]
+Requires=vintex-imds-guard.service
+After=vintex-imds-guard.service
+UNIT
+systemctl daemon-reload
+systemctl enable --now vintex-imds-guard.service
+systemctl enable --now docker amazon-ssm-agent
+
+# Fixed ARM64 Compose binary, verified against the release asset digest.
+compose_tmp=$(mktemp)
+trap 'rm -f "$compose_tmp"' EXIT
+curl --fail --location --retry 3 --output "$compose_tmp" \
+  https://github.com/docker/compose/releases/download/v5.6.0/docker-compose-linux-aarch64
+printf '733ec76717ceb59052a9609b9dadfb523b2df8eab57a54212872d10a58078ea2  %s\n' "$compose_tmp" | sha256sum --check --status
+install -m 0755 "$compose_tmp" /usr/local/lib/docker/cli-plugins/docker-compose
+docker compose version
+
+python3.12 -m venv /opt/vintex/deploy-venv
+/opt/vintex/deploy-venv/bin/python -m pip install --no-cache-dir boto3==1.43.64
+
+if [ ! -f /swapfile ]; then
+    fallocate -l 1G /swapfile
+    chmod 0600 /swapfile
+    mkswap /swapfile
+fi
+if ! swapon --show=NAME --noheadings | grep -qx /swapfile; then
+    swapon /swapfile
+fi
+grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+install -d -m 0700 /var/lib/vintex-staging
+touch /var/lib/vintex-staging/bootstrap-ready

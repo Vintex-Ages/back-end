@@ -1,6 +1,6 @@
 # Env local: aponta o provider AWS para LocalStack e MiniStack, nunca para
-# a AWS real. Rede e papel de execução ECS são planejados na VE-14; os módulos
-# de banco, mensageria, worker e computação entram nas issues seguintes.
+# a AWS real. Rede e papel de execução ECS são planejados na VE-14; PostgreSQL
+# é configurado pelo Compose e worker/computação pertencem a issues posteriores.
 
 provider "aws" {
   region = var.aws_region
@@ -50,4 +50,12 @@ module "ecs_execution_role" {
 module "media_storage" {
   source      = "../../modules/media_storage"
   bucket_name = "vintex-${var.environment}-media"
+}
+
+module "ai_messaging" {
+  source = "../../modules/ai_messaging"
+
+  processing_queue_name  = "vintex-${var.environment}-image-analysis"
+  dead_letter_queue_name = "vintex-${var.environment}-image-analysis-dlq"
+  max_receive_count      = 3
 }

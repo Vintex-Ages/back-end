@@ -21,7 +21,7 @@ from pydantic import (
     field_validator,
 )
 
-_DOCUMENT_DIGIT_LENGTH = {"CPF": 11, "CNPJ": 14}
+from app.core.documento import DOCUMENT_DIGITS, is_valid_document, only_digits
 
 
 class StoreAddressResponse(BaseModel):
@@ -114,7 +114,7 @@ class StoreCreate(BaseModel):
     @field_validator("document_value")
     @classmethod
     def normalizar_documento(cls, valor: str, info: ValidationInfo) -> str:
-        """Confere a quantidade de dígitos e **devolve só os dígitos**.
+        """Confere o documento e **devolve só os dígitos**.
 
         Duas coisas que estavam erradas (back-end#220, migradas para cá porque
         mexem nesta mesma função):
@@ -132,15 +132,19 @@ class StoreCreate(BaseModel):
            descartada em vez de gravada.
         """
         tipo = info.data.get("document_type")
-        digitos = "".join(c for c in valor if c.isdigit())
+        digitos = only_digits(valor)
         if tipo is None:
             # `document_type` já falhou a validação; não há o que conferir aqui.
             return digitos
-        esperado = _DOCUMENT_DIGIT_LENGTH[tipo]
+        esperado = DOCUMENT_DIGITS[tipo]
         if len(digitos) != esperado:
             raise ValueError(
                 f"{tipo} deve ter {esperado} dígitos (recebeu {len(digitos)})."
             )
+        # Contar dígitos deixava passar `00000000000`, que ganhava o selo
+        # Confiável (back-end#217). A regra é a mesma do front.
+        if not is_valid_document(tipo, digitos):
+            raise ValueError(f"{tipo} inválido.")
         return digitos
 
 
@@ -156,6 +160,9 @@ class StoreResponse(BaseModel):
     # como conferir onde vai cair o dinheiro. Nao entra no retrato publico
     # (`StoreDetailResponse`): e dado do vendedor, nao da vitrine.
     pix_key: str | None
+    # Selo Confiável/Pendente (RN-73). O painel do vendedor mostra o dele, e
+    # sem o campo aqui fazia uma segunda requisição só para isso (#259).
+    verified: bool
     document_type: str
     document_value: str
     terms_version: str | None

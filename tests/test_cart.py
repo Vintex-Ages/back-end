@@ -4,7 +4,7 @@ from decimal import Decimal
 
 import pytest
 
-from app.models import CartItem, Product, Seller, Store, User
+from app.models import Address, CartItem, Product, Seller, Store, User
 from app.seeds.lojas import seed_lojas
 from app.seeds.pecas import seed_pecas
 
@@ -219,9 +219,13 @@ def test_peca_vendida_vem_marcada_e_nao_entra_na_conta(
     assert grupo["subtotal"] == float(ativa.price)
 
 
-def test_adicionar_peca_ja_vendida_devolve_409(client, db_session, cenario, add):
+# `reservado` é peça num pedido aberto (back-end#243) e responde como vendida.
+@pytest.mark.parametrize("status", ["vendido", "reservado"])
+def test_adicionar_peca_ja_vendida_devolve_409(
+    client, db_session, cenario, add, status
+):
     vendida = make_product(
-        db_session, cenario["aurora"], "Vestido", "70.00", status="vendido"
+        db_session, cenario["aurora"], "Vestido", "70.00", status=status
     )
     db_session.commit()
 
@@ -323,3 +327,49 @@ def test_mesma_peca_pode_estar_no_carrinho_de_duas_pessoas(client, cenario, add)
 
     assert response.status_code == 200
     assert response.json()["total"] == 1
+
+
+def test_grupo_traz_chave_pix_cidade_e_logo_da_loja(
+    client, db_session, cenario, as_user, add
+):
+    """O checkout mostra para onde o dinheiro vai antes de a pessoa confirmar
+    (RN-19). Antes da back-end#259 a chave só aparecia depois do pedido."""
+    aurora = cenario["aurora"]
+    aurora.pix_key = "aurora@pix.test"
+    aurora.logo_url = "https://cdn.test/aurora.png"
+    aurora.address = Address(
+        street="Rua dos Andradas",
+        number="100",
+        city="Porto Alegre",
+        state="RS",
+        zip_code="90020000",
+    )
+    db_session.commit()
+    add(client, cenario["compradora"], cenario["jaqueta"])
+
+    body = client.get(CART_URL, headers=as_user(cenario["compradora"])).json()
+
+    assert group_of(body, aurora)["store"] == {
+        "id": aurora.id,
+        "name": "Brechó Aurora",
+        "verified": False,
+        "pix_key": "aurora@pix.test",
+        "city": "Porto Alegre",
+        "logo_url": "https://cdn.test/aurora.png",
+    }
+    assert isinstance(group_of(body, aurora)["subtotal"], float)
+
+
+def test_loja_sem_chave_pix_nem_endereco_continua_no_carrinho(
+    client, cenario, as_user, add
+):
+    """Loja que ainda não cadastrou chave, logo ou endereço devolve `null`, e
+    o carrinho não quebra: o `outerjoin` mantém a loja sem endereço."""
+    add(client, cenario["compradora"], cenario["bota"])
+
+    body = client.get(CART_URL, headers=as_user(cenario["compradora"])).json()
+
+    store = group_of(body, cenario["brisa"])["store"]
+    assert store["pix_key"] is None
+    assert store["city"] is None
+    assert store["logo_url"] is None
