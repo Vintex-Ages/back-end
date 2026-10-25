@@ -13,7 +13,7 @@ from sqlalchemy import (
     String,
     Text,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, query_expression, relationship
 
 from app.constants.embedding import EMBEDDING_DIM
 from app.models.base_model import BaseModel
@@ -91,6 +91,11 @@ class Product(BaseModel):
         EmbeddingVector(EMBEDDING_DIM)
     )
     embedding_model: Mapped[str | None] = mapped_column(String(60))
+
+    # URL da capa (foto de menor posição), preenchida só por quem pede com
+    # `with_expression` na própria consulta — a listagem do vendedor
+    # (back-end#265). Não é coluna: em qualquer outra consulta fica `None`.
+    cover_image_url: Mapped[str | None] = query_expression()
 
     store: Mapped["Store"] = relationship(back_populates="products")
     images: Mapped[list["ProductImage"]] = relationship(

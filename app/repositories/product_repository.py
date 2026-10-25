@@ -3,8 +3,8 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TypedDict, cast
 
-from sqlalchemy import Select, func, select, update
-from sqlalchemy.orm import Session, joinedload, selectinload
+from sqlalchemy import ScalarSelect, Select, func, select, update
+from sqlalchemy.orm import Session, joinedload, selectinload, with_expression
 
 from app.core.pagination import Page, PageParams, paginate
 from app.models.address import Address
@@ -43,17 +43,23 @@ class ProductFeedRow(TypedDict):
     store_verified: bool
 
 
-def _feed_select() -> Select[tuple[object, ...]]:
-    """Base comum a qualquer listagem de peça (feed, busca) — o resultado
-    sempre bate com `ProductFeedRow`, incluindo a subquery da capa. Quem
-    chama ainda adiciona `join`/`where`/`order_by` próprios."""
-    cover_image_url = (
+def _cover_image_url() -> ScalarSelect[str | None]:
+    """Subquery da capa: a foto de menor posição da peça. Correlacionada com o
+    `Product` da consulta externa, então vem na mesma consulta da listagem,
+    sem uma consulta por peça (#86)."""
+    return (
         select(ProductImage.image_url)
         .where(ProductImage.product_id == Product.id)
         .order_by(ProductImage.position.asc(), ProductImage.id.asc())
         .limit(1)
         .scalar_subquery()
     )
+
+
+def _feed_select() -> Select[tuple[object, ...]]:
+    """Base comum a qualquer listagem de peça (feed, busca) — o resultado
+    sempre bate com `ProductFeedRow`, incluindo a subquery da capa. Quem
+    chama ainda adiciona `join`/`where`/`order_by` próprios."""
     # Selo "Confiável" (#143): subquery pelo `Store` que o chamador já juntou,
     # para ninguém precisar lembrar de um join extra com `Seller`.
     store_verified = (
@@ -63,7 +69,7 @@ def _feed_select() -> Select[tuple[object, ...]]:
         Product.id,
         Product.name,
         Product.price,
-        cover_image_url.label("cover_image_url"),
+        _cover_image_url().label("cover_image_url"),
         Product.status,
         Store.id.label("store_id"),
         Store.name.label("store_name"),
@@ -148,6 +154,11 @@ class ProductRepository:
     ) -> Page[ProductManagementResponse]:
         stmt = (
             select(Product)
+            # A capa vem na mesma consulta da página (back-end#265). O
+            # `populate_existing` porque `with_expression` não preenche peça
+            # que a sessão já tenha carregado sem a expressão.
+            .options(with_expression(Product.cover_image_url, _cover_image_url()))
+            .execution_options(populate_existing=True)
             .join(Store, Store.id == Product.store_id)
             .join(Seller, Seller.id == Store.seller_id)
             .where(Seller.user_id == user_id)

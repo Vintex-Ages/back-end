@@ -18,6 +18,9 @@ class ProductManagementResponse(BaseModel):
     price: Decimal
     quantity: int
     status: str
+    # Foto de posição 0, a mesma regra do feed (back-end#265). Nula só em
+    # rascunho sem foto: publicar exige ao menos uma (RN-47).
+    cover_image_url: str | None = None
 
     # `Decimal` sai como string em JSON se ninguem interferir. O front absorvia
     # com `Number(...)`, mas a mesma peca chegava como numero pelo feed e como
