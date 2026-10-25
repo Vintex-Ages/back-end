@@ -30,6 +30,10 @@ class ErrorCode:
     AUTH_REQUIRED = "AUTH_REQUIRED"
     INVALID_CREDENTIALS = "INVALID_CREDENTIALS"
     FORBIDDEN = "FORBIDDEN"
+    # Rota de administração pedida por quem não é administradora (back-end#61).
+    # Próprio, e não o `FORBIDDEN` genérico, para o front distinguir "sem papel"
+    # de "sem acesso a este recurso".
+    ADMIN_REQUIRED = "ADMIN_REQUIRED"
     NOT_FOUND = "NOT_FOUND"
     EMAIL_TAKEN = "EMAIL_TAKEN"
     PRODUCT_NOT_FOUND = "PRODUCT_NOT_FOUND"
