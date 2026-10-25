@@ -28,6 +28,23 @@ Toda resposta de erro segue:
 - `fields` só aparece em `422` (erro de validação).
 - Controllers e repositories levantam `AppError`/`NotFound`/`Conflict`/`Unauthorized`/`Forbidden`/`ValidationError` — a rota nunca monta `HTTPException` nem decide o status.
 
+## Autorização por papel
+
+Fonte de verdade: [`ADR 0002`](https://github.com/Vintex-Ages/back-end/blob/develop/.ai/adr/0002-autenticacao-jwt.md) e `app/core/security.py`. O acesso a funções é autorizado por papel em todas as rotas (RN-32).
+
+| Dependency | Quem passa | Sem sessão | Sem o papel |
+| --- | --- | --- | --- |
+| `require_auth` / `get_current_user` | qualquer usuário logado | `401 AUTH_REQUIRED` | — |
+| `require_seller` | quem tem linha em `sellers` | `401 AUTH_REQUIRED` | `403 FORBIDDEN` |
+| `require_admin` | `users.is_admin` | `401 AUTH_REQUIRED` | `403 ADMIN_REQUIRED` |
+| `optional_user` | todo mundo; devolve `None` para visitante | — | — |
+
+- **O papel vem do banco, nunca da claim do token.** O `is_admin` do JWT é informativo: um token emitido antes de o papel ser retirado não continua valendo como admin.
+- **Rotas de administração ficam em `app/views/admin_routes.py`, sob `/api/admin`, com a guarda no próprio router.** Rota nova ali nasce exigindo o papel; esquecer o `Depends` não abre a rota. `tests/test_admin_guard.py` confere no app real que toda rota sob `/api/admin` responde 401 sem sessão e 403 para comprador.
+- **`ADMIN_REQUIRED` é código próprio**, e não o `FORBIDDEN` genérico, para o front distinguir "sem papel de administradora" de "sem acesso a este recurso" ([#61](https://github.com/Vintex-Ages/back-end/issues/61)).
+
+A conta da administradora vem do seed (`python -m app.seeds.admin`): ver a seção *Conta da administradora* do README. Em produção a senha vem de `SEED_ADMIN_PASSWORD`, e o seed recusa rodar sem ela.
+
 ## Paginação
 
 - `page` (≥ 1, default 1) e `page_size` (1–100, default 20) como query params.
