@@ -1,4 +1,4 @@
-"""Schemas do pedido (back-end#247).
+"""Schemas do pedido (back-end#247 e back-end#248).
 
 Os valores em dinheiro saem como número no JSON. `Decimal` do Pydantic
 serializa como string sem `@field_serializer`, e isso já custou dois PRs ao
@@ -66,7 +66,27 @@ class OrderHistoryResponse(BaseModel):
     at: datetime
 
 
+class OrderPaymentResponse(BaseModel):
+    """O comprovante vigente, como o comprador o vê (back-end#248).
+
+    Nome e situação, nunca a URL do arquivo: comprovante de Pix tem dado
+    bancário, e quem o abre é só a administradora (back-end#244).
+    """
+
+    status: str
+    # Nulo até a back-end#244 gravar o nome original do arquivo no envio: a
+    # chave do storage é um uuid, sem o nome que o comprador mandou.
+    receipt_name: str | None = None
+    submitted_at: datetime
+    rejection_reason: str | None = None
+
+
 class OrderResponse(BaseModel):
+    """O pedido inteiro: resposta da criação e do detalhe (back-end#248).
+
+    É a única resposta que traz a chave Pix e o histórico: a lista não traz.
+    """
+
     id: int
     store: OrderStoreResponse
     items: list[OrderItemResponse]
@@ -76,11 +96,42 @@ class OrderResponse(BaseModel):
     status: str
     history: list[OrderHistoryResponse]
     delivery_address: DeliveryAddress
-    # Sempre `null` na criação: o comprovante é anexado depois (back-end#249).
-    payment: None = None
+    # `null` até o primeiro comprovante (back-end#249), inclusive na criação.
+    payment: OrderPaymentResponse | None = None
     expires_at: datetime
     created_at: datetime
 
     @field_serializer("product_amount", "platform_fee", "total_amount")
+    def serializar_valor(self, valor: Decimal) -> float:
+        return float(valor)
+
+
+class OrderListStoreResponse(BaseModel):
+    id: int
+    name: str
+
+
+class OrderListPaymentResponse(BaseModel):
+    status: str
+
+
+class OrderListItemResponse(BaseModel):
+    """Pedido na lista "Meus pedidos" (back-end#248).
+
+    Sem `pix_key` nem `history`: só o detalhe traz. O endereço vem de
+    propósito: é dele que o checkout pré-preenche a próxima compra, porque o
+    endereço do comprador só existe dentro do pedido.
+    """
+
+    id: int
+    store: OrderListStoreResponse
+    items: list[OrderItemResponse]
+    total_amount: Decimal
+    status: str
+    payment: OrderListPaymentResponse | None
+    delivery_address: DeliveryAddress
+    created_at: datetime
+
+    @field_serializer("total_amount")
     def serializar_valor(self, valor: Decimal) -> float:
         return float(valor)
