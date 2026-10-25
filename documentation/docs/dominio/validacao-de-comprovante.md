@@ -24,7 +24,7 @@ aguardando_comprovante ──prazo vencido (#280)──▶ expirado
 | `em_analise → aguardando_comprovante` | administradora, `POST /api/admin/payments/{order_id}/reject` | pagamento `rejeitado` com o motivo; **prazo renovado em 3 dias**; peças continuam reservadas |
 | `aguardando_comprovante → expirado` | rotina de expiração ([#280](https://github.com/Vintex-Ages/back-end/issues/280)) | peças voltam a `ativo` |
 
-Depois de `confirmado`, as etapas `preparando`, `enviado` e `concluido` não viram linha no banco: são derivadas na leitura a partir da data de aprovação (RN-81 e RN-83 simulam postagem e entrega).
+Depois de `confirmado`, as etapas `preparando`, `enviado` e `concluido` não viram linha no banco: são derivadas na leitura a partir da data de aprovação (RN-81 e RN-83 simulam postagem e entrega). Ver [Pedidos do comprador](./pedidos-do-comprador#linha-do-tempo).
 
 ## Decisões
 

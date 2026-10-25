@@ -1,15 +1,16 @@
 from datetime import datetime
 
-from sqlalchemy import select, update
-from sqlalchemy.orm import Session
+from sqlalchemy import func, select, update
+from sqlalchemy.orm import Session, joinedload, selectinload
 
+from app.core.pagination import PageParams
 from app.models.order import Order
 from app.models.order_status_history import OrderStatusHistory
 from app.models.payment import Payment
 
 
 class OrderRepository:
-    """Persistência do pedido (back-end#247, back-end#280 e back-end#251)."""
+    """Persistência do pedido (back-end#247, #248, #251 e #280)."""
 
     def __init__(self, db: Session):
         self.db = db
@@ -25,6 +26,47 @@ class OrderRepository:
         for entry in order.status_history:
             self.db.refresh(entry)
         return order
+
+    def list_for_buyer(
+        self, buyer_id: int, params: PageParams
+    ) -> tuple[list[Order], int]:
+        """Pedidos de quem compra, mais recente primeiro, e o total (back-end#248).
+
+        Itens, pagamentos e histórico vêm em consultas próprias por coleção
+        (`selectinload`), e não uma por pedido: a página inteira são cinco
+        consultas, qualquer que seja o tamanho dela. O histórico entra mesmo
+        sem sair na lista, porque é dele que o status derivado é calculado.
+        """
+        do_comprador = Order.buyer_id == buyer_id
+        total = self.db.scalar(select(func.count(Order.id)).where(do_comprador)) or 0
+        orders = self.db.scalars(
+            select(Order)
+            .where(do_comprador)
+            .options(
+                joinedload(Order.store),
+                selectinload(Order.items),
+                selectinload(Order.payments),
+                selectinload(Order.status_history),
+            )
+            .order_by(Order.created_at.desc(), Order.id.desc())
+            .offset(params.offset)
+            .limit(params.limit)
+        ).all()
+        return list(orders), total
+
+    def get_for_buyer(self, order_id: int, buyer_id: int) -> Order | None:
+        """O pedido, só se for de quem pede. De outra pessoa volta `None`, e a
+        rota responde 404 como se não existisse: um 403 confirmaria o id."""
+        return self.db.scalar(
+            select(Order)
+            .where(Order.id == order_id, Order.buyer_id == buyer_id)
+            .options(
+                joinedload(Order.store),
+                selectinload(Order.items),
+                selectinload(Order.payments),
+                selectinload(Order.status_history),
+            )
+        )
 
     def expire_overdue(self, now: datetime) -> list[int]:
         """`aguardando_comprovante` vencido vira `expirado`, com linha no

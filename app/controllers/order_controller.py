@@ -1,11 +1,12 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
 from app.core.clock import utcnow_naive
 from app.core.comissao import COMISSAO_VINTEX, dividir
-from app.core.errors import Conflict, ErrorCode
+from app.core.errors import Conflict, ErrorCode, NotFound
+from app.core.pagination import Page, PageParams
 from app.models.order import Order
 from app.models.order_item import OrderItem
 from app.models.order_status_history import OrderStatusHistory
@@ -17,6 +18,10 @@ from app.schemas.order_schema import (
     OrderCreate,
     OrderHistoryResponse,
     OrderItemResponse,
+    OrderListItemResponse,
+    OrderListPaymentResponse,
+    OrderListStoreResponse,
+    OrderPaymentResponse,
     OrderResponse,
     OrderStoreResponse,
 )
@@ -99,6 +104,27 @@ class OrderController:
         self.orders.commit()
         return len(expired_ids)
 
+    def list_mine(
+        self, user_id: int, params: PageParams
+    ) -> Page[OrderListItemResponse]:
+        """ "Meus pedidos", mais recente primeiro (back-end#248)."""
+        orders, total = self.orders.list_for_buyer(user_id, params)
+        agora = utcnow_naive()
+        return Page[OrderListItemResponse](
+            items=[_item_da_lista(order, agora) for order in orders],
+            page=params.page,
+            page_size=params.page_size,
+            total=total,
+        )
+
+    def get_mine(self, user_id: int, order_id: int) -> OrderResponse:
+        """Detalhe do pedido de quem pede (back-end#248). Pedido de outra
+        pessoa responde 404, igual a inexistente: um 403 confirmaria o id."""
+        order = self.orders.get_for_buyer(order_id, user_id)
+        if order is None:
+            raise NotFound("Pedido não encontrado.", code=ErrorCode.ORDER_NOT_FOUND)
+        return self._to_response(order)
+
     @staticmethod
     def _indisponivel() -> Conflict:
         return Conflict(
@@ -147,6 +173,7 @@ class OrderController:
 
     @staticmethod
     def _to_response(order: Order) -> OrderResponse:
+        status, history = _linha_do_tempo(order, utcnow_naive())
         return OrderResponse(
             id=order.id,
             store=OrderStoreResponse(
@@ -166,21 +193,98 @@ class OrderController:
             product_amount=order.product_amount,
             platform_fee=order.platform_fee,
             total_amount=order.total_amount,
-            status=order.status,
-            history=[
-                OrderHistoryResponse(status=entry.status, at=entry.changed_at)
-                for entry in order.status_history
-            ],
-            delivery_address=DeliveryAddress(
-                zip_code=order.delivery_zip_code,
-                street=order.delivery_street,
-                number=order.delivery_number,
-                complement=order.delivery_complement,
-                neighborhood=order.delivery_neighborhood,
-                city=order.delivery_city,
-                state=order.delivery_state,
-            ),
-            payment=None,
+            status=status,
+            history=history,
+            delivery_address=_endereco(order),
+            payment=_comprovante(order),
             expires_at=order.expires_at,
             created_at=order.created_at,
         )
+
+
+# Etapas depois de `confirmado`, simuladas: não há transportadora (RN-81 e
+# RN-83), então nenhuma rotina grava estas linhas. Cada uma conta como
+# atingida um tempo depois da aprovação, e a leitura deriva o que já passou
+# (back-end#248). Um dia entre etapas, o mesmo ritmo do mock do front
+# (`buildHistory` em `orderService.ts`).
+_ETAPAS_SIMULADAS: tuple[tuple[str, timedelta], ...] = (
+    ("preparando", timedelta(days=1)),
+    ("enviado", timedelta(days=2)),
+    ("concluido", timedelta(days=3)),
+)
+
+
+def _linha_do_tempo(
+    order: Order, agora: datetime
+) -> tuple[str, list[OrderHistoryResponse]]:
+    """O status atual e o histórico, com as etapas simuladas já atingidas."""
+    history = [
+        OrderHistoryResponse(status=entry.status, at=entry.changed_at)
+        for entry in order.status_history
+    ]
+    if order.status != "confirmado":
+        return order.status, history
+
+    confirmado_em = max(
+        entry.changed_at
+        for entry in order.status_history
+        if entry.status == "confirmado"
+    )
+    status = order.status
+    for etapa, depois in _ETAPAS_SIMULADAS:
+        atingida_em = confirmado_em + depois
+        if atingida_em > agora:
+            break
+        history.append(OrderHistoryResponse(status=etapa, at=atingida_em))
+        status = etapa
+    return status, history
+
+
+def _comprovante(order: Order) -> OrderPaymentResponse | None:
+    """O comprovante vigente: o envio mais recente. Reenviar não apaga o
+    anterior (RN-22), mas é o último que o comprador acompanha."""
+    if not order.payments:
+        return None
+    payment = order.payments[-1]
+    return OrderPaymentResponse(
+        status=payment.status,
+        submitted_at=payment.submitted_at,
+        rejection_reason=payment.rejection_reason,
+    )
+
+
+def _endereco(order: Order) -> DeliveryAddress:
+    return DeliveryAddress(
+        zip_code=order.delivery_zip_code,
+        street=order.delivery_street,
+        number=order.delivery_number,
+        complement=order.delivery_complement,
+        neighborhood=order.delivery_neighborhood,
+        city=order.delivery_city,
+        state=order.delivery_state,
+    )
+
+
+def _item_da_lista(order: Order, agora: datetime) -> OrderListItemResponse:
+    status, _ = _linha_do_tempo(order, agora)
+    comprovante = _comprovante(order)
+    return OrderListItemResponse(
+        id=order.id,
+        store=OrderListStoreResponse(id=order.store.id, name=order.store.name),
+        items=[
+            OrderItemResponse(
+                product_id=item.product_id,
+                name=item.name,
+                price=item.price,
+                cover_image_url=item.cover_image_url,
+            )
+            for item in order.items
+        ],
+        total_amount=order.total_amount,
+        status=status,
+        payment=(
+            OrderListPaymentResponse(status=comprovante.status) if comprovante else None
+        ),
+        delivery_address=_endereco(order),
+        created_at=order.created_at,
+    )
