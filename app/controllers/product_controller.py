@@ -118,10 +118,20 @@ class ProductController:
             return []
         return palavras
 
+    # `ativo`, `reservado` e `vendido` sao publicos (RN-26); `vendido` precisa
+    # continuar, porque o detalhe mostra o selo de vendida, e `reservado` (peca
+    # num pedido aberto, #243) abre como ela, porque a RN-44 manda sinalizar, e
+    # nao esconder. `rascunho` e `despublicado` nao: o rascunho e o estado
+    # anterior a confirmacao do vendedor (RN-50) e nao foi publicado por
+    # ninguem, e o despublicado saiu da vitrine de proposito (RN-52). Quem
+    # precisa ver o proprio rascunho usa `GET /users/me/products/{id}` (#234),
+    # nao esta rota.
+    PUBLICOS = frozenset({"ativo", "reservado", "vendido"})
+
     def get_detail(self, product_id: int) -> ProductDetailResponse:
         product = self.repository.get_detail_by_id(product_id)
 
-        if product is None or product.status == "despublicado":
+        if product is None or product.status not in self.PUBLICOS:
             raise NotFound("Produto não encontrado.", code=ErrorCode.PRODUCT_NOT_FOUND)
 
         address = product.store.address
