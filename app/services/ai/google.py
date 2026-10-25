@@ -75,9 +75,26 @@ def modelos_de_visao() -> list[str]:
 # independente, não há vetor guardado com que o resultado precise ser
 # comparável.
 #
-# Tornar isto seguro é a `#231`: `find_similar` filtrar pelo modelo que gerou
-# cada vetor, e o backfill usar um nome só. A `#228`, que carregava isto, foi
-# agrupada lá — é a mesma consulta e o mesmo arquivo.
+# A `#246` fechou os dois pontos: `find_similar` só compara vetores do modelo
+# que `modelo_de_embedding()` devolve, e o backfill passa a recusar lista. O
+# fallback continua de fora: com o filtro, ele não devolveria ruído, mas
+# esvaziaria a busca, porque nenhuma peça do catálogo teria o outro modelo.
+
+
+def modelo_de_embedding() -> str:
+    """O nome do modelo de embedding ativo, um só (back-end#246).
+
+    É ele que vai para `Product.embedding_model` no backfill e é por ele que
+    `find_similar` filtra. Lista separada por vírgula é recusada: gravaria a
+    lista inteira na coluna e compararia vetores de espaços diferentes.
+    """
+    nome = settings.GOOGLE_EMBEDDING_MODEL.strip()
+    if not nome or "," in nome:
+        raise AIProviderError(
+            "GOOGLE_EMBEDDING_MODEL aceita um nome de modelo só, sem lista: "
+            f"recebeu {settings.GOOGLE_EMBEDDING_MODEL!r}."
+        )
+    return nome
 
 
 def _e_indisponibilidade(exc: Exception) -> bool:

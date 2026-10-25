@@ -12,8 +12,10 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.constants.embedding import EMBEDDING_DIM
 from app.controllers import assistant_controller
+from app.core.pagination import PageParams
 from app.models.product import Product
 from app.models.seller import Seller
 from app.models.store import Store
@@ -85,6 +87,9 @@ def _make_product(
         name=name,
         price=Decimal("99.90"),
         embedding=embedding,
+        # Como o backfill grava: vetor e o nome do modelo juntos. Sem o nome,
+        # `find_similar` não compara a peça (back-end#246).
+        embedding_model=settings.GOOGLE_EMBEDDING_MODEL if embedding else None,
         status=status,
     )
     pg_session.add(product)
@@ -195,7 +200,9 @@ def test_find_similar_no_repositorio_ordena_por_distancia(pg_session: Session) -
     query = _onehot(0, 1.0)
     query[1] = 0.1
 
-    rows = ProductRepository(pg_session).find_similar(query, limit=3)
+    rows, _ = ProductRepository(pg_session).find_similar(
+        query, settings.GOOGLE_EMBEDDING_MODEL, PageParams(page=1, page_size=3)
+    )
 
     assert [row["id"] for row in rows] == [a.id, b.id, c.id]
 
@@ -212,6 +219,50 @@ def test_find_similar_ignora_peca_fora_do_catalogo(
     _make_product(pg_session, store, "Fora", embedding=_onehot(0), status=status)
     pg_session.commit()
 
-    rows = ProductRepository(pg_session).find_similar(_onehot(0), limit=5)
+    rows, _ = ProductRepository(pg_session).find_similar(
+        _onehot(0), settings.GOOGLE_EMBEDDING_MODEL, PageParams(page=1, page_size=5)
+    )
 
     assert [row["id"] for row in rows] == [ativa.id]
+
+
+def test_chat_nao_compara_peca_de_outro_modelo(
+    pg_client: TestClient, pg_session: Session, monkeypatch
+) -> None:
+    """Vetor de outro modelo vive noutro espaço: a peça sai da conversa em vez
+    de aparecer com uma distância sem sentido (back-end#246)."""
+    store = _make_store(pg_session, "BrechoM")
+    do_modelo = _make_product(pg_session, store, "Do modelo", embedding=_onehot(1))
+    outro = _make_product(pg_session, store, "Outro modelo", embedding=_onehot(0))
+    outro.embedding_model = "text-embedding-antigo"
+    pg_session.commit()
+    monkeypatch.setattr(
+        assistant_controller,
+        "get_ai_provider",
+        lambda: _StubEmbeddingProvider(_onehot(0)),
+    )
+
+    response = pg_client.post(
+        "/api/ai/chat", json={"messages": [{"role": "user", "text": "qualquer"}]}
+    )
+
+    ids = [item["id"] for item in _sse_events(response.text)[0]["products"]]
+    assert ids == [do_modelo.id]
+
+
+def test_chat_com_lista_de_modelos_vira_evento_de_erro(
+    pg_client: TestClient, monkeypatch
+) -> None:
+    monkeypatch.setattr(settings, "GOOGLE_EMBEDDING_MODEL", "modelo-a,modelo-b")
+    monkeypatch.setattr(
+        assistant_controller,
+        "get_ai_provider",
+        lambda: _StubEmbeddingProvider(_onehot(0)),
+    )
+
+    response = pg_client.post(
+        "/api/ai/chat", json={"messages": [{"role": "user", "text": "qualquer"}]}
+    )
+
+    assert response.status_code == 200
+    assert [e["type"] for e in _sse_events(response.text)] == ["error", "done"]

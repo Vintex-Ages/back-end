@@ -17,10 +17,9 @@ import logging
 
 from sqlalchemy import select
 
-from app.config import settings
 from app.database import SessionLocal
 from app.models.product import Product
-from app.services.ai import AIProviderError, get_ai_provider
+from app.services.ai import AIProviderError, get_ai_provider, modelo_de_embedding
 
 logger = logging.getLogger("vintex.scripts.backfill_embeddings")
 
@@ -35,8 +34,10 @@ def _build_text(product: Product) -> str:
 
 
 def run() -> None:
+    # Um nome só (back-end#246): é o que vai para `embedding_model` e é por
+    # ele que `find_similar` filtra. Lista é recusada antes de tocar o banco.
+    model = modelo_de_embedding()
     provider = get_ai_provider()
-    model = settings.GOOGLE_EMBEDDING_MODEL
     db = SessionLocal()
     try:
         pending = (

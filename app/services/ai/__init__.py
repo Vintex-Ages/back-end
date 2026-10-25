@@ -5,6 +5,7 @@ from app.services.ai.base import (
     ImageAnalysisProvider,
 )
 from app.services.ai.factory import get_ai_provider
+from app.services.ai.google import modelo_de_embedding
 
 __all__ = [
     "AIProvider",
@@ -12,4 +13,5 @@ __all__ = [
     "AIProviderUnavailableError",
     "ImageAnalysisProvider",
     "get_ai_provider",
+    "modelo_de_embedding",
 ]

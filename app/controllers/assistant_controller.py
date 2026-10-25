@@ -8,13 +8,16 @@ from collections.abc import AsyncIterator, Sequence
 from sqlalchemy.orm import Session
 
 from app.core.errors import ErrorCode, ServiceUnavailable
+from app.core.pagination import PageParams
 from app.repositories.product_repository import ProductRepository
 from app.schemas.chat_schema import ChatErrorEvent, ChatEvent, ChatProductsEvent
 from app.schemas.product_schema import ProductFeedItemResponse
-from app.services.ai import AIProviderError, get_ai_provider
+from app.services.ai import AIProviderError, get_ai_provider, modelo_de_embedding
 from app.services.ai.base import ChatTurn, ImageAnalysisResult, SearchDone
 
 logger = logging.getLogger("vintex.assistant")
+
+_PECAS_NO_CHAT = 5
 
 _SEM_PERGUNTA = "Não encontrei uma pergunta pra buscar. Descreva o que você procura."
 _FALHA_PROVIDER = (
@@ -66,6 +69,7 @@ class AssistantController:
 
         try:
             vectors = get_ai_provider().embed([query])
+            modelo = modelo_de_embedding()
         except AIProviderError:
             logger.exception("Falha ao gerar embedding da pergunta do chat")
             yield ChatErrorEvent(message=_FALHA_PROVIDER)
@@ -78,7 +82,12 @@ class AssistantController:
             yield SearchDone()
             return
 
-        rows = self.repository.find_similar(vectors[0])
+        # As mesmas cinco mais próximas de antes da paginação (back-end#246).
+        # A distância já vem em cada linha; rotular direto e alternativa é a
+        # `#231`, que mede o limiar.
+        rows, _ = self.repository.find_similar(
+            vectors[0], modelo, PageParams(page=1, page_size=_PECAS_NO_CHAT)
+        )
         yield ChatProductsEvent(
             products=[ProductFeedItemResponse.from_row(row) for row in rows]
         )

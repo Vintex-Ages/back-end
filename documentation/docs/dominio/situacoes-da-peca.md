@@ -18,6 +18,8 @@ Uma peça é única (RN-46): `quantity` é sempre 1, e a situação diz se ela e
 | `vendido` | pedido confirmado pela administradora | detalhe público, com selo de vendida; fora do feed e da busca |
 | `despublicado` | tirada da vitrine pelo vendedor (RN-52) | só o vendedor; o detalhe público responde 404 |
 
+A busca do catálogo e a [busca por semelhança](./busca-por-semelhanca) (chat, recomendação, foto) mostram só peça `ativo`, montadas pelas mesmas condições (`_condicoes_do_catalogo`).
+
 O detalhe público (`GET /api/products/{id}`) declara o que é público, e não o que é proibido: `PUBLICOS = {"ativo", "reservado", "vendido"}`. Uma situação nova nasce fora do público por padrão ([#238](https://github.com/Vintex-Ages/back-end/issues/238)).
 
 ## Transições
