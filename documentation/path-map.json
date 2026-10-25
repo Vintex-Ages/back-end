@@ -1,6 +1,9 @@
 {
   "$schema": "Mapa versionado caminho -> pagina, usado por scripts/docs/generate_draft.py e pelo workflow documentation-draft.yml. Chaves sao padroes fnmatch relativos a raiz do repo; primeira que casar vence.",
   "map": [
+    { "pattern": "app/controllers/payment_review_controller.py", "page": "dominio/validacao-de-comprovante" },
+    { "pattern": "app/schemas/admin_payment_schema.py", "page": "dominio/validacao-de-comprovante" },
+    { "pattern": "tests/test_payment_review.py", "page": "dominio/validacao-de-comprovante" },
     { "pattern": "infra/aws/staging/**", "page": "infraestrutura/aws-staging-runtime" },
     { "pattern": "scripts/infra/deploy_staging.py", "page": "infraestrutura/aws-staging-runtime" },
     { "pattern": "scripts/infra/test_staging_proxy.py", "page": "infraestrutura/aws-staging-runtime" },
