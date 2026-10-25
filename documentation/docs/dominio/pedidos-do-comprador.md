@@ -11,6 +11,7 @@ Um pedido é a compra das peças de **uma loja só**: o comprador paga direto na
 | Rota | O que faz |
 | --- | --- |
 | `POST /api/users/me/orders` | cria o pedido e reserva as peças |
+| `POST /api/users/me/orders/{order_id}/receipt` | envia o comprovante do Pix ([Validação do comprovante](./validacao-de-comprovante#o-envio-pelo-comprador)) |
 | `GET /api/users/me/orders` | "Meus pedidos", paginado, mais recente primeiro |
 | `GET /api/users/me/orders/{order_id}` | detalhe, com a chave Pix e a linha do tempo |
 

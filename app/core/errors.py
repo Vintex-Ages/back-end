@@ -50,6 +50,11 @@ class ErrorCode:
     ORDER_NOT_IN_REVIEW = "ORDER_NOT_IN_REVIEW"
     # Pedido sem comprovante enviado, na rota que serve o arquivo (back-end#244).
     RECEIPT_NOT_FOUND = "RECEIPT_NOT_FOUND"
+    # Envio do comprovante pelo comprador (back-end#249). Os nomes são os que o
+    # `orderService` do front já usa; ele traduz pelo status HTTP.
+    ORDER_NOT_AWAITING_RECEIPT = "ORDER_NOT_AWAITING_RECEIPT"
+    RECEIPT_TOO_LARGE = "RECEIPT_TOO_LARGE"
+    RECEIPT_INVALID_TYPE = "RECEIPT_INVALID_TYPE"
     STORE_NOT_FOUND = "STORE_NOT_FOUND"
     LEGAL_DOCUMENT_NOT_FOUND = "LEGAL_DOCUMENT_NOT_FOUND"
     STORE_ALREADY_EXISTS = "STORE_ALREADY_EXISTS"

@@ -106,6 +106,20 @@ class OrderResponse(BaseModel):
         return float(valor)
 
 
+class OrderReceiptResponse(BaseModel):
+    """Resposta do envio do comprovante (back-end#249).
+
+    Parcial de propósito: só o que o envio mudou, e `history` só com a etapa
+    que ele criou. O front relê o detalhe depois do envio para ter o pedido
+    inteiro.
+    """
+
+    id: int
+    status: str
+    payment: OrderPaymentResponse
+    history: list[OrderHistoryResponse]
+
+
 class OrderListStoreResponse(BaseModel):
     id: int
     name: str
