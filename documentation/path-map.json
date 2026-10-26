@@ -22,6 +22,7 @@
     { "pattern": "app/models/product.py", "page": "dominio/situacoes-da-peca" },
     { "pattern": "app/controllers/product_controller.py", "page": "dominio/situacoes-da-peca" },
     { "pattern": "app/repositories/product_repository.py", "page": "dominio/situacoes-da-peca" },
+    { "pattern": "app/views/product_routes.py", "page": "dominio/situacoes-da-peca" },
     { "pattern": "app/controllers/assistant_controller.py", "page": "dominio/busca-por-semelhanca" },
     { "pattern": "scripts/backfill_embeddings.py", "page": "dominio/busca-por-semelhanca" },
     { "pattern": "tests/test_find_similar.py", "page": "dominio/busca-por-semelhanca" },

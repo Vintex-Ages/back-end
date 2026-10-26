@@ -66,6 +66,8 @@ def run() -> None:
             for product, vector in zip(batch, vectors, strict=True):
                 product.embedding = vector
                 product.embedding_model = model
+                product.embedding_status = "done"
+                product.embedding_error = None
             db.commit()
             logger.info("Lote %s-%s gravado.", start, start + len(batch))
     finally:
