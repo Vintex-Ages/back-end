@@ -170,6 +170,36 @@ class StoreCreate(BaseModel):
         return digitos
 
 
+class StoreUpdate(BaseModel):
+    """Corpo de `PATCH /api/users/me/store` (back-end#221).
+
+    Os mesmos campos editáveis do `StoreCreate`, todos opcionais: só o que vier
+    no corpo muda (ver `exclude_unset` no controller), e campo ausente não é
+    apagado. `null` explícito limpa o campo, que é como se tira a logo.
+
+    O documento fica de fora, e `extra="forbid"` faz isso aparecer: trocar
+    `document_type`/`document_value` muda a identidade do vendedor e tem
+    unicidade, então é outra rota com regra própria. Sem o `forbid`, o campo
+    seria ignorado em silêncio e a resposta 200 diria que deu certo.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    description: str | None = None
+    logo_url: AnyHttpUrl | None = None
+    pix_key: str | None = Field(default=None, max_length=255)
+    address: StoreAddressCreate | None = None
+
+    @field_validator("name")
+    @classmethod
+    def _recusar_nome_nulo(cls, valor: str | None) -> str:
+        """`name` é NOT NULL: ausente não muda nada, `null` quebraria o commit."""
+        if valor is None:
+            raise ValueError("O nome da loja não pode ser nulo.")
+        return valor
+
+
 class StoreResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

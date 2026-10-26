@@ -6,7 +6,8 @@ Dois routers de proposito, com publicos diferentes:
   por nome (back-end#256), dados da loja e as pecas dela (BE-US007-2,
   back-end#142).
 - `me_router` (`/api/users/me/store`): a loja do proprio vendedor, criacao e
-  leitura (BE-US006-1, back-end#141). Sob `/users/me/*` pelo ADR 0001 secao 4.
+  leitura (BE-US006-1, back-end#141) e edicao (BE-US006-3, back-end#221). Sob
+  `/users/me/*` pelo ADR 0001 secao 4.
 
 Mesmo arquivo porque e o mesmo recurso; routers separados porque um exige
 login e o outro nao pode exigir.
@@ -25,6 +26,7 @@ from app.schemas.store_schema import (
     StoreListItemResponse,
     StoreProductItemResponse,
     StoreResponse,
+    StoreUpdate,
 )
 
 router = APIRouter(prefix="/stores", tags=["Stores"])
@@ -80,3 +82,12 @@ def get_own_store(
     controller: StoreController = Depends(get_controller),
 ) -> StoreResponse:
     return controller.get_own_store(user_id)
+
+
+@me_router.patch("", response_model=StoreResponse)
+def update_own_store(
+    data: StoreUpdate,
+    user_id: int = Depends(get_current_user_id),
+    controller: StoreController = Depends(get_controller),
+) -> StoreResponse:
+    return controller.update(user_id, data)

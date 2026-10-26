@@ -160,7 +160,11 @@ class StoreRepository:
         )
 
     def save(self, store: Store) -> Store:
+        """Adiciona e manda ao banco, sem commit (ADR 0001 §6).
+
+        O `flush` devolve o `id` e faz o `IntegrityError` subir aqui, dentro da
+        transação de quem chama. Fechar a transação é do controller.
+        """
         self.db.add(store)
-        self.db.commit()
-        self.db.refresh(store)
+        self.db.flush()
         return store
