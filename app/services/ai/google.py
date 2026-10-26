@@ -1,20 +1,21 @@
 """Provedor real do Google AI Studio (BE-US027-1, back-end#92).
 
 Primeira chamada real a uma API de IA no projeto — até aqui, `unavailable`
-era o único provider (VE-06). Cobre `embed` e `analyze_image`;
-`stream_interpret_search` (VS-027, geração de texto conversacional) ainda
-não tem implementação real, então degrada como `UnavailableAIProvider` em
-vez de fingir suportar algo que não foi escrito.
+era o único provider (VE-06). Cobre `embed`, `analyze_image` e, desde a
+#260, `stream_interpret_search`: a pergunta do chat separada em filtro e
+similaridade. Não gera texto conversacional; a resposta são as peças reais.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator, Sequence
 
 import httpx
 from google import genai
 from google.genai import types
+from pydantic import BaseModel
 
 from app.config import settings
 from app.constants.embedding import EMBEDDING_DIM
@@ -25,15 +26,18 @@ from app.services.ai.base import (
     AIProviderUnavailableError,
     ChatTurn,
     ImageAnalysisResult,
+    SearchDone,
     SearchStreamEvent,
 )
 from app.services.ai.media_urls import image_download_url
+from app.services.ai.search_interpretation import (
+    INTERPRET_SEARCH_PROMPT,
+    InterpretacaoDaPergunta,
+    interpretacao_da_resposta,
+    montar_pergunta,
+)
 
 _ANALYZE_IMAGE_PROMPT = ANALYZE_IMAGE_PROMPT
-
-_NOT_IMPLEMENTED = (
-    "GoogleAIProvider ainda não implementa este método (fora do escopo do back-end#92)."
-)
 
 # Os quatro campos de lista fechada citam o vocabulário do catálogo
 # (`app/constants/catalog.py`). Sem isso o modelo responde texto livre —
@@ -202,11 +206,46 @@ class GoogleAIProvider(AIProvider):
     async def stream_interpret_search(
         self, query: str, history: Sequence[ChatTurn] = ()
     ) -> AsyncIterator[SearchStreamEvent]:
-        raise AIProviderUnavailableError(_NOT_IMPLEMENTED)
-        yield  # pragma: no cover - nunca alcançado; mantém a função geradora
+        """Separa a pergunta em filtro e similaridade (back-end#260).
+
+        Uma chamada só, com saída estruturada, nos mesmos modelos de geração
+        da análise de foto (`GOOGLE_VISION_MODEL`), com o mesmo fallback no
+        503 e no 429. Não emite texto: o que a pessoa lê é o que foi
+        interpretado (`InterpretedQuery`) e as peças, que o controller busca.
+        """
+        parts = [
+            types.Part.from_text(text=INTERPRET_SEARCH_PROMPT),
+            types.Part.from_text(text=montar_pergunta(query, history)),
+        ]
+        # O SDK é síncrono: no event loop, seguraria as outras requisições
+        # enquanto o modelo responde.
+        result = await asyncio.to_thread(
+            self._gerar_com_fallback,
+            parts,
+            schema=InterpretacaoDaPergunta,
+            tarefa="interpretar a pergunta",
+        )
+
+        parsed = result.parsed
+        if not isinstance(parsed, InterpretacaoDaPergunta):
+            if not result.text:
+                raise AIProviderError("Provedor não devolveu a interpretação.")
+            try:
+                parsed = InterpretacaoDaPergunta.model_validate_json(result.text)
+            except ValueError as exc:
+                raise AIProviderError(
+                    f"Interpretação fora do formato esperado: {exc}"
+                ) from exc
+
+        yield interpretacao_da_resposta(parsed)
+        yield SearchDone()
 
     def _gerar_com_fallback(
-        self, parts: list[types.Part]
+        self,
+        parts: list[types.Part],
+        *,
+        schema: type[BaseModel] = ImageAnalysisResult,
+        tarefa: str = "analisar as fotos",
     ) -> types.GenerateContentResponse:
         """Tenta os modelos configurados em ordem, pulando os que dão 503 ou 429.
 
@@ -218,7 +257,7 @@ class GoogleAIProvider(AIProvider):
         modelos = modelos_de_visao()
         if not modelos:
             # Sem isto, lista vazia caía no `raise` do fim com `ultimo = None` e
-            # produzia "Falha ao analisar as fotos: None", que não diz nada.
+            # produzia "Falha ao ...: None", que não diz nada.
             raise AIProviderError(
                 "GOOGLE_VISION_MODEL está vazio: nenhum modelo para tentar."
             )
@@ -231,13 +270,13 @@ class GoogleAIProvider(AIProvider):
                     contents=[types.Content(parts=parts)],
                     config=types.GenerateContentConfig(
                         response_mime_type="application/json",
-                        response_schema=ImageAnalysisResult,
+                        response_schema=schema,
                     ),
                 )
             except Exception as exc:  # SDK do Google não documenta uma exceção só
                 ultimo = exc
                 if not _e_indisponibilidade(exc) or indice == len(modelos) - 1:
-                    raise AIProviderError(f"Falha ao analisar as fotos: {exc}") from exc
+                    raise AIProviderError(f"Falha ao {tarefa}: {exc}") from exc
 
                 logger.warning(
                     "Modelo %s indisponível (503); tentando %s",
@@ -245,7 +284,7 @@ class GoogleAIProvider(AIProvider):
                     modelos[indice + 1],
                 )
 
-        raise AIProviderError(f"Falha ao analisar as fotos: {ultimo}")
+        raise AIProviderError(f"Falha ao {tarefa}: {ultimo}")
 
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
         if not texts:

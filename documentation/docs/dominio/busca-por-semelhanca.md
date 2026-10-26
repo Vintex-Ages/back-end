@@ -62,9 +62,9 @@ Filtro que não casa com nenhuma peça devolve página vazia: aí é o filtro, e
 
 | Uso | Issue | Situação |
 |---|---|---|
-| Conversa com a Vintex (`POST /api/ai/chat`) | [#149](https://github.com/Vintex-Ages/back-end/issues/149) | as 5 mais próximas, sem filtro |
+| [Conversa com a Vintex](./conversa-com-a-vintex) (`POST /api/ai/chat`) | [#149](https://github.com/Vintex-Ages/back-end/issues/149) | as 5 mais próximas, com os filtros da pergunta |
 | Rotular direto e alternativa no chat | [#231](https://github.com/Vintex-Ages/back-end/issues/231) | a fazer, usa a distância |
-| Filtro por atributo na conversa | [#260](https://github.com/Vintex-Ages/back-end/issues/260) | a fazer, usa os filtros |
+| Filtro por atributo na conversa | [#260](https://github.com/Vintex-Ages/back-end/issues/260) | feito, usa os filtros |
 | Recomendações pelo perfil de estilo (`GET /api/users/me/recommendations`) | [#253](https://github.com/Vintex-Ages/back-end/issues/253) | feito, ver abaixo |
 | Busca por foto | [#255](https://github.com/Vintex-Ages/back-end/issues/255) | a fazer, usa paginação e filtros |
 | Sugestão de preço | [#254](https://github.com/Vintex-Ages/back-end/issues/254) | a fazer, compara preços das parecidas |
