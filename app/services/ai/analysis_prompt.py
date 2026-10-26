@@ -1,6 +1,7 @@
 """Prompt comum para análise de fotos de peças."""
 
 from app.constants.catalog import CATEGORIES, COLORS, CONDITIONS, SIZES, lista
+from app.services.ai.untrusted_text import INSTRUCAO_DE_TEXTO_NA_FOTO
 
 ANALYZE_IMAGE_PROMPT = f"""\
 Você está ajudando um vendedor de brechó a cadastrar uma peça de roupa a \
@@ -36,4 +37,6 @@ campo vazio mas não percebe um valor errado.
 Para cada campo que conseguir sugerir, dê um `value` e uma `confidence` \
 (0 a 1) de quão certo você está. Deixe o campo nulo se não conseguir \
 sugerir algo com razoável confiança — melhor um campo vazio que um chute.
+
+{INSTRUCAO_DE_TEXTO_NA_FOTO}
 """

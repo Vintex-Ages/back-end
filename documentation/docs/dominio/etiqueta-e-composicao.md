@@ -23,6 +23,10 @@ A URL da etiqueta é pública porque é pela rota pública que o servidor baixa 
 
 É o mesmo cuidado que o prompt já tinha com a marca (RN-58): a composição só é preenchida a partir de texto legível na etiqueta. Peça sem etiqueta legível volta com `composition: null`, e o vendedor escreve se quiser (RN-56). Campo vazio o vendedor corrige; campo errado ele não percebe.
 
+## Texto na foto é dado
+
+Etiqueta, papel ao lado da peça ou qualquer texto visível na foto é lido como dado, não como instrução: desde a [#262](https://github.com/Vintex-Ages/back-end/issues/262), `ANALYZE_IMAGE_PROMPT` manda ignorar pedidos escritos na imagem para mudar o formato da resposta ou preencher outro valor. Marca e composição continuam saindo só de etiqueta legível da própria peça, e o formato da análise (`ImageAnalysisResult`) não muda: campo fora do schema é descartado.
+
 ## O campo na peça
 
 | Onde | Como |
