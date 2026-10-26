@@ -6,14 +6,21 @@ import logging
 from collections.abc import AsyncIterator, Sequence
 
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from app.core.errors import ErrorCode, ServiceUnavailable
 from app.core.pagination import PageParams
 from app.repositories.product_repository import ProductRepository
-from app.schemas.chat_schema import ChatErrorEvent, ChatEvent, ChatProductsEvent
+from app.schemas.chat_schema import (
+    ChatErrorEvent,
+    ChatEvent,
+    ChatProductsEvent,
+    ChatQuotaEvent,
+)
 from app.schemas.product_schema import ProductFeedItemResponse
 from app.services.ai import AIProviderError, get_ai_provider, modelo_de_embedding
 from app.services.ai.base import ChatTurn, ImageAnalysisResult, SearchDone
+from app.services.chat_quota import ChatQuota, CotaEsgotada
 
 logger = logging.getLogger("vintex.assistant")
 
@@ -28,6 +35,7 @@ _FALHA_PROVIDER = (
 class AssistantController:
     def __init__(self, db: Session):
         self.repository = ProductRepository(db)
+        self.quota = ChatQuota(db)
 
     def suggest_listing(self, image_urls: Sequence[str]) -> ImageAnalysisResult:
         """Preenchimento automático do cadastro a partir da foto (back-end#150).
@@ -57,30 +65,57 @@ class AssistantController:
                 code=ErrorCode.AI_UNAVAILABLE,
             ) from exc
 
-    async def chat(self, messages: Sequence[ChatTurn]) -> AsyncIterator[ChatEvent]:
+    async def chat(
+        self, messages: Sequence[ChatTurn], pessoa: str = "anonima"
+    ) -> AsyncIterator[ChatEvent]:
         """Nunca inventa peça, preço ou loja (RN-65): só devolve o que `find_similar`
-        acha no catálogo real. Falha do provider ou pergunta ausente vira `error`,
-        nunca uma exceção não tratada — a conexão sempre termina em `done`."""
+        acha no catálogo real. Falha do provider, pergunta ausente ou cota
+        esgotada viram `error`, nunca uma exceção não tratada — a conexão sempre
+        termina em `done`.
+
+        `pessoa` é a chave da cota (back-end#258): `user:<id>` ou `ip:<origem>`.
+        """
         query = _last_user_message(messages)
         if query is None:
             yield ChatErrorEvent(message=_SEM_PERGUNTA)
             yield SearchDone()
             return
 
+        # Cota, vetor da pergunta e busca são síncronos (banco e provedor).
+        # Chamados direto deste gerador `async`, seguravam o event loop:
+        # enquanto o provedor respondia, nenhuma outra requisição do servidor
+        # era atendida. No threadpool, como uma rota `def` comum.
+        for event in await run_in_threadpool(self._responder, query, pessoa):
+            yield event
+
+    def _responder(self, query: str, pessoa: str) -> list[ChatEvent]:
         try:
-            vectors = get_ai_provider().embed([query])
+            # Provedor e modelo antes da cota: erro de configuração não gasta
+            # pergunta de ninguém, porque nada chegaria ao provedor.
+            provider = get_ai_provider()
             modelo = modelo_de_embedding()
         except AIProviderError:
+            logger.exception("Provedor de IA indisponível para o chat")
+            return [ChatErrorEvent(message=_FALHA_PROVIDER), SearchDone()]
+
+        try:
+            self.quota.reservar(pessoa)
+        except CotaEsgotada as cota:
+            logger.info("Cota do chat esgotada (%s): %s", cota.escopo, pessoa)
+            return [
+                ChatQuotaEvent(message=cota.mensagem, retry_at=cota.retry_at),
+                SearchDone(),
+            ]
+
+        try:
+            vectors = provider.embed([query])
+        except AIProviderError:
             logger.exception("Falha ao gerar embedding da pergunta do chat")
-            yield ChatErrorEvent(message=_FALHA_PROVIDER)
-            yield SearchDone()
-            return
+            return [ChatErrorEvent(message=_FALHA_PROVIDER), SearchDone()]
 
         if not vectors:
             logger.error("Provider não devolveu vetor para a pergunta do chat")
-            yield ChatErrorEvent(message=_FALHA_PROVIDER)
-            yield SearchDone()
-            return
+            return [ChatErrorEvent(message=_FALHA_PROVIDER), SearchDone()]
 
         # As mesmas cinco mais próximas de antes da paginação (back-end#246).
         # A distância já vem em cada linha; rotular direto e alternativa é a
@@ -88,10 +123,12 @@ class AssistantController:
         rows, _ = self.repository.find_similar(
             vectors[0], modelo, PageParams(page=1, page_size=_PECAS_NO_CHAT)
         )
-        yield ChatProductsEvent(
-            products=[ProductFeedItemResponse.from_row(row) for row in rows]
-        )
-        yield SearchDone()
+        return [
+            ChatProductsEvent(
+                products=[ProductFeedItemResponse.from_row(row) for row in rows]
+            ),
+            SearchDone(),
+        ]
 
 
 def _last_user_message(messages: Sequence[ChatTurn]) -> str | None:

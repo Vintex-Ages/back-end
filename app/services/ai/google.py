@@ -98,11 +98,20 @@ def modelo_de_embedding() -> str:
 
 
 def _e_indisponibilidade(exc: Exception) -> bool:
-    """503 do provedor, pelo código do SDK ou pela mensagem."""
+    """503 ou 429 do provedor, pelo código do SDK ou pela mensagem.
+
+    O 429 (`RESOURCE_EXHAUSTED`) é a cota do provedor esgotada, o que a camada
+    gratuita responde quando acabam as requisições (back-end#258). Para quem
+    pede, é o mesmo que um 503: aquele modelo não responde agora, e outro pode
+    responder. Antes o 429 caía direto no erro, sem tentar o próximo.
+    """
     codigo = getattr(exc, "code", None) or getattr(exc, "status_code", None)
-    if codigo == 503:
+    if codigo in (503, 429):
         return True
-    return "503" in str(exc) and "UNAVAILABLE" in str(exc).upper()
+    texto = str(exc).upper()
+    return ("503" in texto and "UNAVAILABLE" in texto) or (
+        "429" in texto and "RESOURCE_EXHAUSTED" in texto
+    )
 
 
 logger = logging.getLogger(__name__)
@@ -199,10 +208,10 @@ class GoogleAIProvider(AIProvider):
     def _gerar_com_fallback(
         self, parts: list[types.Part]
     ) -> types.GenerateContentResponse:
-        """Tenta os modelos configurados em ordem, pulando os que dão 503.
+        """Tenta os modelos configurados em ordem, pulando os que dão 503 ou 429.
 
-        Só o 503 faz seguir para o próximo: é falta de capacidade do provedor,
-        e outro modelo costuma estar de pé no mesmo instante. 404 (nome que
+        Só esses fazem seguir para o próximo: é falta de capacidade ou de cota
+        do provedor, e outro modelo costuma estar de pé no mesmo instante. 404 (nome que
         não existe para a chave) e 400 (entrada recusada) são erro nosso, e
         tentar outro só esconderia a causa.
         """

@@ -1,4 +1,4 @@
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings
 
 _INSECURE_JWT_SECRET = "dev-only-change-me"
@@ -32,6 +32,14 @@ class Settings(BaseSettings):
     # Nenhum fornecedor foi escolhido ainda (ver .ai/architecture.md); o
     # padrão "unavailable" degrada sem erro fatal (VE-06).
     AI_PROVIDER: str = "unavailable"
+
+    # Cota da busca conversacional (back-end#258), por dia UTC. O provedor
+    # gratuito dá 50 requisições por dia para o projeto inteiro, e a mesma
+    # chave serve a sugestão de anúncio pela foto e o vetor da peça publicada:
+    # 40 para o chat deixa margem a eles. Pessoa logada conta pelo id;
+    # visitante, pela origem da requisição.
+    CHAT_QUOTA_PER_PERSON: int = Field(default=5, ge=1)
+    CHAT_QUOTA_PER_DAY: int = Field(default=40, ge=1)
 
     # Embedding do catálogo (BE-US027-1, back-end#92). Só lido quando
     # AI_PROVIDER=google; a chave vem do Google AI Studio (camada gratuita).

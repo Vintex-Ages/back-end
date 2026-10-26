@@ -18,6 +18,12 @@ Enquanto nenhum provedor real for escolhido, o provider ativo é `UnavailableAIP
 
 Por isso o embedding **não tem fallback de modelo**, diferente da visão (`GOOGLE_VISION_MODEL`, que aceita lista): um 503 no embedding falha alto, e o chat mostra "indisponível". Cair para outro modelo não devolveria ruído, por causa do filtro, mas esvaziaria a busca, porque nenhuma peça do catálogo teria o outro modelo.
 
+## Indisponibilidade: 503 e 429
+
+`_e_indisponibilidade` (`app/services/ai/google.py`) decide se uma falha do provedor faz tentar o próximo modelo de `GOOGLE_VISION_MODEL`. Contam o **503** (`UNAVAILABLE`, falta de capacidade) e o **429** (`RESOURCE_EXHAUSTED`, cota do provedor esgotada, [#258](https://github.com/Vintex-Ages/back-end/issues/258)): nos dois, aquele modelo não responde agora e outro pode responder. Se todos falharem, o erro é o mesmo `AIProviderError`, e a sugestão de anúncio responde `503 AI_UNAVAILABLE` nos dois casos.
+
+Os demais (404 de nome que não existe, 400 de entrada recusada) são erro nosso e falham no primeiro modelo: tentar outro esconderia a causa. A cota do chat, que evita chegar no 429, está em [Conversa com a Vintex](../dominio/conversa-com-a-vintex#cota-do-dia).
+
 ## Onde isso importa
 
 - [VE-05 (#62)](https://github.com/Vintex-Ages/back-end/issues/62) — pipeline assíncrono de ingestão de IA.

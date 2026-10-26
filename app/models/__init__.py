@@ -1,4 +1,5 @@
 from app.models.address import Address
+from app.models.ai_chat_usage import AIChatUsage
 from app.models.cart import CartItem
 from app.models.legal_document import LegalDocument
 from app.models.order import Order
@@ -15,6 +16,7 @@ from app.models.user import User
 from app.models.user_preference import UserPreference
 
 __all__ = [
+    "AIChatUsage",
     "Address",
     "CartItem",
     "LegalDocument",

@@ -33,6 +33,25 @@ class ChatErrorEvent(BaseModel):
     message: str
 
 
+class ChatQuotaEvent(BaseModel):
+    """A cota do chat acabou (back-end#258).
+
+    É um `error`, com `code` e `retry_at` (ISO 8601, UTC): os nomes que o
+    `vintexAiService` do front já lê. Com `code: quota_exceeded`, a tela mostra
+    o aviso de cota e trava o envio até `retry_at`.
+    """
+
+    type: Literal["error"] = "error"
+    code: Literal["quota_exceeded"] = "quota_exceeded"
+    message: str
+    retry_at: str
+
+
 ChatEvent = (
-    SearchTextDelta | ChatProductsEvent | InterpretedQuery | SearchDone | ChatErrorEvent
+    SearchTextDelta
+    | ChatProductsEvent
+    | InterpretedQuery
+    | SearchDone
+    | ChatErrorEvent
+    | ChatQuotaEvent
 )
