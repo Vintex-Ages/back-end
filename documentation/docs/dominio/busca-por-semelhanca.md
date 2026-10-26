@@ -65,9 +65,19 @@ Filtro que não casa com nenhuma peça devolve página vazia: aí é o filtro, e
 | Conversa com a Vintex (`POST /api/ai/chat`) | [#149](https://github.com/Vintex-Ages/back-end/issues/149) | as 5 mais próximas, sem filtro |
 | Rotular direto e alternativa no chat | [#231](https://github.com/Vintex-Ages/back-end/issues/231) | a fazer, usa a distância |
 | Filtro por atributo na conversa | [#260](https://github.com/Vintex-Ages/back-end/issues/260) | a fazer, usa os filtros |
-| Recomendações pelo perfil de estilo | [#253](https://github.com/Vintex-Ages/back-end/issues/253) | a fazer, usa paginação e filtros |
+| Recomendações pelo perfil de estilo (`GET /api/users/me/recommendations`) | [#253](https://github.com/Vintex-Ages/back-end/issues/253) | feito, ver abaixo |
 | Busca por foto | [#255](https://github.com/Vintex-Ages/back-end/issues/255) | a fazer, usa paginação e filtros |
 | Sugestão de preço | [#254](https://github.com/Vintex-Ages/back-end/issues/254) | a fazer, compara preços das parecidas |
+
+## Recomendação pelo perfil de estilo
+
+O "Garimpados para Você" da home ([#253](https://github.com/Vintex-Ages/back-end/issues/253)): `GET /api/users/me/recommendations?page=`, com login (RN-27). A resposta é `{ items, personalized, page, page_size, total }`, e o item é o mesmo do feed.
+
+- **O perfil vira texto, e o texto vira vetor** (`app/services/style_profile.py`). São as preferências do tipo `estilo` que o onboarding grava, cada uma com o identificador, o rótulo e a descrição do catálogo de estilos. As peças guardam o estilo pelo mesmo identificador, e ele entra no texto do vetor delas.
+- **Similaridade, não filtragem colaborativa** (RN-62): peça parecida com o perfil, não "quem comprou isto comprou aquilo", porque cada peça é única.
+- **O vetor de cada perfil fica em memória** (até 128 perfis): a home chama a rota a cada carregamento, e o mesmo perfil não chama a IA de novo. Mudar o perfil muda o texto, e o texto novo gera outro vetor.
+- **Nunca é erro, nunca vem vazia** enquanto houver catálogo (RN-38, RN-61). Vem o feed genérico, com `personalized: false`, em três casos: a pessoa não tem estilo no perfil; a IA falhou ao gerar o vetor do perfil; ou nenhuma peça tem vetor ainda (ambiente sem IA, como a staging).
+- **Peça publicada agora aparece** na recomendação sem rodar script, porque a publicação gera o vetor dela ([#245](https://github.com/Vintex-Ages/back-end/issues/245)).
 
 ## Testar localmente
 

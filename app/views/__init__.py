@@ -20,6 +20,7 @@ from app.views.order_routes import router as order_router
 from app.views.product_routes import me_router as product_me_router
 from app.views.product_routes import router as product_router
 from app.views.product_routes import sales_router as sales_router
+from app.views.recommendation_routes import router as recommendation_router
 from app.views.seller_verification_routes import router as seller_verification_router
 from app.views.store_routes import me_router as store_me_router
 from app.views.store_routes import router as store_router
@@ -40,6 +41,7 @@ api_router.include_router(media_public_router)
 api_router.include_router(order_router)
 api_router.include_router(product_router)
 api_router.include_router(product_me_router)
+api_router.include_router(recommendation_router)
 api_router.include_router(sales_router)
 api_router.include_router(seller_verification_router)
 api_router.include_router(store_router)
