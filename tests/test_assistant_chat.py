@@ -20,7 +20,11 @@ from app.models.product import Product
 from app.models.seller import Seller
 from app.models.store import Store
 from app.models.user import User
-from app.services.ai.base import AIProvider, AIProviderError
+from app.services.ai.base import (
+    AIProvider,
+    AIProviderError,
+    AIProviderUnavailableError,
+)
 
 pytestmark = pytest.mark.postgres
 
@@ -39,7 +43,7 @@ class _StubEmbeddingProvider(AIProvider):
         raise NotImplementedError
 
     async def stream_interpret_search(self, query, history=()):
-        raise NotImplementedError
+        raise AIProviderUnavailableError("sem interpretação")
         yield  # pragma: no cover
 
     def embed(self, texts):
@@ -51,7 +55,7 @@ class _FailingProvider(AIProvider):
         raise NotImplementedError
 
     async def stream_interpret_search(self, query, history=()):
-        raise NotImplementedError
+        raise AIProviderUnavailableError("sem interpretação")
         yield  # pragma: no cover
 
     def embed(self, texts):
@@ -155,7 +159,10 @@ def test_chat_catalogo_vazio_devolve_lista_vazia_sem_erro(
 
     assert response.status_code == 200
     events = _sse_events(response.text)
-    assert events == [{"type": "products", "products": []}, {"type": "done"}]
+    assert events == [
+        {"type": "products", "products": [], "match_type": "exact"},
+        {"type": "done"},
+    ]
 
 
 def test_chat_falha_do_provider_vira_evento_de_erro_nao_500(

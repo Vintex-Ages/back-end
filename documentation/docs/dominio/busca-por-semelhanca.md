@@ -41,7 +41,7 @@ Desde a [#245](https://github.com/Vintex-Ages/back-end/issues/245), a própria p
 | `done` | vetor gravado, do modelo em `embedding_model` |
 | `failed` | a IA falhou ou não está configurada; o motivo está em `embedding_error` |
 
-- **O texto que vira vetor é um só** (`texto_da_peca`), usado pela publicação e pelo backfill: os atributos da RN-49 (categoria, tamanho, cor, marca, conservação, cidade da loja, preço e descrição), mais o nome e o estilo, que o backfill já usava.
+- **O texto que vira vetor é um só** (`texto_da_peca`), usado pela publicação e pelo backfill: os atributos da RN-49 (categoria, tamanho, cor, marca, conservação, cidade da loja, preço e descrição), mais o nome e o estilo, que o backfill já usava, e a composição do tecido ([#257](https://github.com/Vintex-Ages/back-end/issues/257)). A composição entra no fim e só quando existe, então a peça sem ela gera o mesmo texto de antes e os vetores já gravados continuam valendo.
 - **Falha da IA não bloqueia** a publicação nem a edição (RN-57): a peça fica sem vetor, com `failed` e o motivo. Sem vetor, o backfill a encontra depois e marca `done`. Por isso uma edição apaga o vetor antigo em vez de mantê-lo: ele descreveria a peça de antes, e o backfill não o encontraria.
 - **Sem IA configurada** (`AI_PROVIDER=unavailable`, como na staging hoje), a peça publica normalmente e fica `failed` com "Nenhum provedor de IA configurado", e o log é informativo, sem alarme. Para a busca por significado funcionar num ambiente, ele precisa de um provedor de embedding e do backfill do catálogo.
 - **Vetores gravados antes desta mudança** usaram o texto antigo (sem categoria, conservação, cidade e preço). Continuam válidos, do mesmo modelo; para refazê-los com o texto novo, basta apagar o vetor (`embedding = NULL`) e rodar o backfill.
@@ -62,9 +62,9 @@ Filtro que não casa com nenhuma peça devolve página vazia: aí é o filtro, e
 
 | Uso | Issue | Situação |
 |---|---|---|
-| Conversa com a Vintex (`POST /api/ai/chat`) | [#149](https://github.com/Vintex-Ages/back-end/issues/149) | as 5 mais próximas, sem filtro |
+| [Conversa com a Vintex](./conversa-com-a-vintex) (`POST /api/ai/chat`) | [#149](https://github.com/Vintex-Ages/back-end/issues/149) | as 5 mais próximas, com os filtros da pergunta |
 | Rotular direto e alternativa no chat | [#231](https://github.com/Vintex-Ages/back-end/issues/231) | a fazer, usa a distância |
-| Filtro por atributo na conversa | [#260](https://github.com/Vintex-Ages/back-end/issues/260) | a fazer, usa os filtros |
+| Filtro por atributo na conversa | [#260](https://github.com/Vintex-Ages/back-end/issues/260) | feito, usa os filtros |
 | Recomendações pelo perfil de estilo (`GET /api/users/me/recommendations`) | [#253](https://github.com/Vintex-Ages/back-end/issues/253) | feito, ver abaixo |
 | Busca por foto | [#255](https://github.com/Vintex-Ages/back-end/issues/255) | a fazer, usa paginação e filtros |
 | Sugestão de preço | [#254](https://github.com/Vintex-Ages/back-end/issues/254) | a fazer, compara preços das parecidas |

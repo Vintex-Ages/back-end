@@ -31,6 +31,7 @@ from app.schemas.product_schema import (
     SalesSummaryResponse,
     SuggestionsResponse,
 )
+from app.services import media_rules
 from app.services.ai.base import ImageAnalysisResult
 from app.services.ai.queue import ImageAnalysisQueueError, enqueue_image_analysis
 from app.services.product_embedding import (
@@ -182,6 +183,7 @@ class ProductController:
             color=product.color or "",
             size=product.size or "",
             condition=product.condition or "",
+            composition=product.composition or "",
             price=product.price,
             status=product.status,
             city=address.city if address else "",
@@ -207,6 +209,7 @@ class ProductController:
                 "Você ainda não tem uma loja cadastrada.",
                 code=ErrorCode.STORE_NOT_FOUND,
             )
+        _recusar_foto_de_etiqueta(data.images)
 
         product = Product(
             store=store,
@@ -218,6 +221,7 @@ class ProductController:
             color=data.color,
             size=data.size,
             condition=data.condition,
+            composition=data.composition,
             price=data.price,
             status="rascunho",
             images=[
@@ -277,6 +281,7 @@ class ProductController:
                 "Peça publicada precisa de ao menos uma foto.",
                 fields={"images": "Mantenha ao menos uma foto."},
             )
+        _recusar_foto_de_etiqueta(data.images)
 
         texto_antes = texto_da_peca(product)
         updates = data.model_dump(
@@ -392,6 +397,7 @@ class ProductController:
             color=product.color,
             size=product.size,
             condition=product.condition,
+            composition=product.composition,
             price=product.price,
             quantity=product.quantity,
             status=product.status,
@@ -515,3 +521,17 @@ class ProductController:
         product.status = "despublicado"
         self.repository.commit()
         return self._to_response(product)
+
+
+def _recusar_foto_de_etiqueta(images: list[str] | None) -> None:
+    """A foto da etiqueta não entra na galeria da peça (back-end#257).
+
+    Ela existe para a IA ler marca, tamanho e composição. Na galeria, apareceria
+    na vitrine como foto do produto, e contaria para a foto que publicar exige
+    (RN-47): uma peça só com a etiqueta poderia ir ao ar.
+    """
+    if images and any(media_rules.e_foto_de_etiqueta(url) for url in images):
+        raise ValidationError(
+            "A foto da etiqueta não entra na galeria da peça.",
+            fields={"images": "Envie só fotos da peça; a etiqueta vai à parte."},
+        )
