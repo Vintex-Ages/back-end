@@ -1,7 +1,7 @@
 """add composition em products
 
 Revision ID: e8b4c2a7f1d3
-Revises: d2f6b8c4a1e7
+Revises: f1a3c5e7b9d2
 Create Date: 2026-10-26
 
 Composição do tecido, lida da etiqueta pela análise da foto (back-end#257).
@@ -16,7 +16,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "e8b4c2a7f1d3"
-down_revision: Union[str, None] = "d2f6b8c4a1e7"
+down_revision: Union[str, None] = "f1a3c5e7b9d2"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
