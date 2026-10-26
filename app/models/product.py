@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from app.models.store import Store
 
 AIStatus = Literal["pending", "processing", "done", "failed"]
+EmbeddingStatus = Literal["pending", "done", "failed"]
 
 
 class Product(BaseModel):
@@ -43,6 +44,11 @@ class Product(BaseModel):
         CheckConstraint(
             "ai_status IS NULL OR ai_status IN ('pending', 'processing', 'done', 'failed')",
             name="ck_products_ai_status",
+        ),
+        CheckConstraint(
+            "embedding_status IS NULL"
+            " OR embedding_status IN ('pending', 'done', 'failed')",
+            name="ck_products_embedding_status",
         ),
         Index("ix_products_status", "status"),
         Index("ix_products_category", "category"),
@@ -91,6 +97,11 @@ class Product(BaseModel):
         EmbeddingVector(EMBEDDING_DIM)
     )
     embedding_model: Mapped[str | None] = mapped_column(String(60))
+    # Situação e erro da geração do vetor na publicação (back-end#245), como
+    # `ai_status`/`ai_error` registram a análise da foto. Nulo: nenhuma geração
+    # pedida, como no rascunho ou no catálogo anterior a esta coluna.
+    embedding_status: Mapped[EmbeddingStatus | None] = mapped_column(String(20))
+    embedding_error: Mapped[str | None] = mapped_column(Text)
 
     # URL da capa (foto de menor posição), preenchida só por quem pede com
     # `with_expression` na própria consulta — a listagem do vendedor

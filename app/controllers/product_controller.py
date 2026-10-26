@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from datetime import timedelta
 from typing import Literal
 
@@ -32,12 +33,24 @@ from app.schemas.product_schema import (
 )
 from app.services.ai.base import ImageAnalysisResult
 from app.services.ai.queue import ImageAnalysisQueueError, enqueue_image_analysis
+from app.services.product_embedding import (
+    apagar_embedding,
+    pedir_embedding,
+    precisa_de_embedding,
+    texto_da_peca,
+)
 
 
 class ProductController:
-    def __init__(self, db: Session):
+    def __init__(
+        self, db: Session, agendar_embedding: Callable[[int], None] | None = None
+    ):
         self.repository = ProductRepository(db)
         self.stores = StoreRepository(db)
+        # Quem gera o vetor em segundo plano (back-end#245): a rota liga ao
+        # `BackgroundTasks`. Sem ele, a peça fica `pending` e o backfill a
+        # encontra, porque continua sem vetor.
+        self._agendar_embedding = agendar_embedding or (lambda _product_id: None)
 
     def get_feed(
         self, params: PageParams, filters: ProductFilters, q: str | None = None
@@ -265,11 +278,20 @@ class ProductController:
                 fields={"images": "Mantenha ao menos uma foto."},
             )
 
+        texto_antes = texto_da_peca(product)
         updates = data.model_dump(
             exclude_unset=True, exclude={"images", "ai_corrections"}
         )
         for field, value in updates.items():
             setattr(product, field, value)
+        regravar_vetor = False
+        if texto_da_peca(product) != texto_antes:
+            # O vetor descreve o texto de antes (back-end#245): sai já. A peça
+            # ativa ganha o novo em segundo plano; fora do ar, ao publicar.
+            apagar_embedding(product)
+            if product.status == "ativo":
+                pedir_embedding(product)
+                regravar_vetor = True
 
         if data.images is not None:
             product.images = [
@@ -287,6 +309,8 @@ class ProductController:
             )
 
         self.repository.commit()
+        if regravar_vetor:
+            self._agendar_embedding(product.id)
         return self._to_response(product)
 
     def publish(self, user_id: int, product_id: int) -> ProductDraftResponse:
@@ -307,7 +331,16 @@ class ProductController:
             )
 
         product.status = "ativo"
+        # Entra na busca por significado (back-end#245): o vetor é gerado em
+        # segundo plano, depois da resposta, como a análise da foto. Republicar
+        # uma peça que já tem vetor do modelo ativo não pede outro. Falha da
+        # IA não desfaz a publicação (RN-57).
+        gerar_vetor = precisa_de_embedding(product)
+        if gerar_vetor:
+            pedir_embedding(product)
         self.repository.commit()
+        if gerar_vetor:
+            self._agendar_embedding(product.id)
         return self._to_response(product)
 
     def _get_owned_publicavel(self, user_id: int, product_id: int) -> Product:

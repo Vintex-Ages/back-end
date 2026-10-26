@@ -1,7 +1,7 @@
 from decimal import Decimal
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
 from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy.orm import Session
 
@@ -23,6 +23,7 @@ from app.schemas.product_schema import (
     ProductFilters,
     SalesSummaryResponse,
 )
+from app.services.product_embedding import gerar_embedding_da_peca
 
 router = APIRouter(prefix="/products", tags=["Products"])
 
@@ -35,8 +36,16 @@ me_router = APIRouter(prefix="/users/me/products", tags=["Products"])
 sales_router = APIRouter(prefix="/users/me/sales", tags=["Sales"])
 
 
-def get_controller(db: Session = Depends(get_db)) -> ProductController:
-    return ProductController(db)
+def get_controller(
+    background_tasks: BackgroundTasks, db: Session = Depends(get_db)
+) -> ProductController:
+    # O vetor da busca por semelhança é gerado depois da resposta (back-end#245).
+    return ProductController(
+        db,
+        agendar_embedding=lambda product_id: background_tasks.add_task(
+            gerar_embedding_da_peca, product_id
+        ),
+    )
 
 
 def product_filters(

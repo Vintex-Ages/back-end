@@ -31,4 +31,8 @@ Com `APP_ENV=production`, dois padrões de desenvolvimento são recusados em vez
 - **`JWT_SECRET` igual ao padrão** derruba a aplicação na inicialização (`_recusa_segredo_padrao_em_producao`).
 - **`SEED_ADMIN_PASSWORD` vazio** faz `python -m app.seeds.admin` recusar rodar: a conta da administradora não pode nascer com a senha de desenvolvimento ([#61](https://github.com/Vintex-Ages/back-end/issues/61)).
 
+## Nos testes
+
+`tests/conftest.py` fixa `DATABASE_URL` (SQLite em memória) e `AI_PROVIDER=unavailable` antes de importar a aplicação, para os testes não herdarem o `.env` de quem roda. Sem isso, com `AI_PROVIDER=google` e uma chave real no `.env`, publicar uma peça num teste chamaria o Gemini ([#245](https://github.com/Vintex-Ages/back-end/issues/245)). Teste que precisa de IA troca o provider por um dublê.
+
 Variável nova entra nos dois lugares: no `Settings`, com comentário dizendo para que serve, e no `.env.example`, sem valor real.
