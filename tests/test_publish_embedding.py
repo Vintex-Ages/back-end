@@ -49,7 +49,7 @@ class _ProviderPorPalavras(AIProvider):
         raise NotImplementedError
 
     async def stream_interpret_search(self, query, history=()):  # pragma: no cover
-        raise NotImplementedError
+        raise AIProviderUnavailableError("sem interpretação")
         yield
 
     def embed(self, texts):

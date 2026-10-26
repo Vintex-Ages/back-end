@@ -22,6 +22,8 @@ Por isso o embedding **não tem fallback de modelo**, diferente da visão (`GOOG
 
 `_e_indisponibilidade` (`app/services/ai/google.py`) decide se uma falha do provedor faz tentar o próximo modelo de `GOOGLE_VISION_MODEL`. Contam o **503** (`UNAVAILABLE`, falta de capacidade) e o **429** (`RESOURCE_EXHAUSTED`, cota do provedor esgotada, [#258](https://github.com/Vintex-Ages/back-end/issues/258)): nos dois, aquele modelo não responde agora e outro pode responder. Se todos falharem, o erro é o mesmo `AIProviderError`, e a sugestão de anúncio responde `503 AI_UNAVAILABLE` nos dois casos.
 
+A mesma cadeia serve à interpretação da pergunta do chat (`stream_interpret_search`, [#260](https://github.com/Vintex-Ages/back-end/issues/260)): uma chamada com saída estruturada (`InterpretacaoDaPergunta`), que o controller transforma em filtro do catálogo. Lá, a falha não vira erro: a busca segue só por similaridade ([Conversa com a Vintex](../dominio/conversa-com-a-vintex#filtro-e-similaridade)).
+
 Os demais (404 de nome que não existe, 400 de entrada recusada) são erro nosso e falham no primeiro modelo: tentar outro esconderia a causa. A cota do chat, que evita chegar no 429, está em [Conversa com a Vintex](../dominio/conversa-com-a-vintex#cota-do-dia).
 
 ## Onde isso importa

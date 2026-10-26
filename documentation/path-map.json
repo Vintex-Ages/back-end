@@ -40,6 +40,8 @@
     { "pattern": "app/repositories/ai_chat_usage_repository.py", "page": "dominio/conversa-com-a-vintex" },
     { "pattern": "app/models/ai_chat_usage.py", "page": "dominio/conversa-com-a-vintex" },
     { "pattern": "tests/test_chat_quota.py", "page": "dominio/conversa-com-a-vintex" },
+    { "pattern": "tests/test_chat_filtros.py", "page": "dominio/conversa-com-a-vintex" },
+    { "pattern": "app/services/ai/search_interpretation.py", "page": "dominio/conversa-com-a-vintex" },
     { "pattern": "tests/test_fallback_de_modelo.py", "page": "arquitetura/provedor-ia" },
     { "pattern": "app/models/__init__.py", "page": "arquitetura/migrations" },
     { "pattern": "scripts/backfill_embeddings.py", "page": "dominio/busca-por-semelhanca" },

@@ -48,7 +48,7 @@ class _Provider(AIProvider):
         return ImageAnalysisResult()
 
     async def stream_interpret_search(self, query, history=()):  # noqa: ANN001, ANN201
-        raise NotImplementedError
+        raise AIProviderUnavailableError("sem interpretação")
         yield  # pragma: no cover
 
     def embed(self, texts):  # noqa: ANN001, ANN201
