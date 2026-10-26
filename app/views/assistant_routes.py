@@ -28,7 +28,7 @@ def listing_suggestions(
     user: User = Depends(require_auth),
     controller: AssistantController = Depends(get_controller),
 ) -> ImageAnalysisResult:
-    return controller.suggest_listing(body.image_urls)
+    return controller.suggest_listing(body.image_urls, body.label_image_url)
 
 
 @router.post("/chat")

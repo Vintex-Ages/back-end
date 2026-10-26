@@ -69,6 +69,9 @@ class Product(BaseModel):
     color: Mapped[str | None] = mapped_column(String(50))
     size: Mapped[str | None] = mapped_column(String(30))
     condition: Mapped[str | None] = mapped_column(String(50))
+    # Composição do tecido, lida da etiqueta (back-end#257). Texto livre e
+    # opcional: sem etiqueta legível fica vazia, e o vendedor escreve se quiser.
+    composition: Mapped[str | None] = mapped_column(String(200))
     price: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     status: Mapped[str] = mapped_column(

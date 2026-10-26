@@ -16,12 +16,15 @@ from app.config import Settings, settings
 # `POST /api/users/me/store`; sem um prefixo proprio, logo de brecho e foto de
 # peca ficariam misturadas no bucket para sempre, e qualquer limpeza de fotos
 # de peca apagada levaria logo junto.
-MediaKind = Literal["photo", "video", "receipt", "logo"]
+# `label` e a foto da etiqueta (back-end#257): so a IA a le, para marca, tamanho
+# e composicao. O prefixo proprio e o que a separa da galeria da peca.
+MediaKind = Literal["photo", "video", "receipt", "logo", "label"]
 MEDIA_PREFIXES: dict[MediaKind, str] = {
     "photo": "products/photos/",
     "video": "products/videos/",
     "receipt": "payments/receipts/",
     "logo": "stores/logos/",
+    "label": "products/labels/",
 }
 
 
