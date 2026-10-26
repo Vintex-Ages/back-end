@@ -1,22 +1,38 @@
-from collections.abc import Callable
+from __future__ import annotations
+
+import logging
+from collections.abc import Callable, Sequence
 from datetime import timedelta
 from typing import Literal
 
 from sqlalchemy.orm import Session
 
+from app.controllers.media_controller import ArquivoRecebido
 from app.core.clock import utcnow_naive
 from app.core.comissao import dividir
-from app.core.errors import AppError, Conflict, ErrorCode, NotFound, ValidationError
+from app.core.errors import (
+    AppError,
+    Conflict,
+    ErrorCode,
+    NotFound,
+    ServiceUnavailable,
+    ValidationError,
+)
 from app.core.pagination import PageParams
 from app.models.product import Product
 from app.models.product_ai_correction import ProductAiCorrection
 from app.models.product_image import ProductImage
-from app.repositories.product_repository import ProductFeedRow, ProductRepository
+from app.repositories.product_repository import (
+    ProductFeedRow,
+    ProductRepository,
+    ProductSimilarRow,
+)
 from app.repositories.store_repository import StoreRepository
 from app.schemas.product_management_schema import ProductManagementPage
 from app.schemas.product_schema import (
     AiCorrectionResponse,
     FeedResponse,
+    InterpretedPhotoResponse,
     ProductAIStatusResponse,
     ProductAIStatusValue,
     ProductDetailResponse,
@@ -26,19 +42,33 @@ from app.schemas.product_schema import (
     ProductDraftUpdate,
     ProductFeedItemResponse,
     ProductFilters,
+    ProductImageSearchItem,
+    ProductImageSearchResponse,
     ProductMediaResponse,
     ProductStoreResponse,
     SalesSummaryResponse,
     SuggestionsResponse,
 )
 from app.services import media_rules
-from app.services.ai.base import ImageAnalysisResult
+from app.services.ai import AIProviderError, get_ai_provider, modelo_de_embedding
+from app.services.ai.base import ImageAnalysisResult, ImagePhoto
 from app.services.ai.queue import ImageAnalysisQueueError, enqueue_image_analysis
+from app.services.chat_quota import ChatQuota, CotaEsgotada
 from app.services.product_embedding import (
     apagar_embedding,
     pedir_embedding,
     precisa_de_embedding,
+    texto_da_foto,
     texto_da_peca,
+)
+
+logger = logging.getLogger(__name__)
+
+# Mensagem única da busca por foto quando a IA não responde (RN-57): o
+# provedor não é culpa de quem mandou a foto, e o front precisa poder dizer
+# isso em vez de "nenhuma peça parecida".
+_BUSCA_INDISPONIVEL = (
+    "A busca por foto está indisponível agora. Tente de novo em instantes."
 )
 
 
@@ -48,6 +78,10 @@ class ProductController:
     ):
         self.repository = ProductRepository(db)
         self.stores = StoreRepository(db)
+        # Mesmo orçamento diário do provedor que o chat (back-end#258): a
+        # busca por foto gasta duas chamadas (análise e embedding), então
+        # sem cota uma pessoa zeraria o dia do projeto.
+        self.quota = ChatQuota(db)
         # Quem gera o vetor em segundo plano (back-end#245): a rota liga ao
         # `BackgroundTasks`. Sem ele, a peça fica `pending` e o backfill a
         # encontra, porque continua sem vetor.
@@ -154,6 +188,136 @@ class ProductController:
         if len(palavras) == 1 and palavras[0].lower() == q.strip().lower():
             return []
         return palavras
+
+    def search_by_image(
+        self,
+        foto: ArquivoRecebido,
+        filters: ProductFilters,
+        params: PageParams,
+        pessoa: str,
+    ) -> ProductImageSearchResponse:
+        """Busca por foto: análise -> texto -> vetor -> peças parecidas (#255).
+
+        A foto **não é gravada**: ela passa pela análise do provedor, vira
+        texto com os atributos lidos e esse texto vira o vetor da consulta.
+        Nenhum armazenamento de mídia é tocado.
+
+        A cota é a mesma do chat (back-end#258), com o assunto próprio: são
+        duas chamadas ao provedor por busca, no mesmo orçamento diário.
+
+        Sem filtro, `find_similar` nunca devolve lista vazia enquanto houver
+        peça ativa com vetor (RN-61). Com filtro que não casa, a busca
+        relaxa os filtros como o chat; se nem assim houver peça com vetor
+        (catálogo sem backfill), devolve o catálogo, e não lista vazia.
+        """
+        tipo = _validar_foto(foto)
+
+        try:
+            provider = get_ai_provider()
+            modelo = modelo_de_embedding()
+        except AIProviderError as exc:
+            logger.exception("Provedor de IA indisponível para a busca por foto")
+            raise ServiceUnavailable(
+                _BUSCA_INDISPONIVEL, code=ErrorCode.AI_UNAVAILABLE
+            ) from exc
+
+        self._reservar_busca(pessoa)
+
+        try:
+            analise = provider.analyze_image_bytes([ImagePhoto(foto.conteudo, tipo)])
+        except AIProviderError as exc:
+            logger.exception("Falha ao analisar a foto da busca")
+            raise ServiceUnavailable(
+                _BUSCA_INDISPONIVEL, code=ErrorCode.AI_UNAVAILABLE
+            ) from exc
+
+        texto = texto_da_foto(analise)
+        if not texto:
+            # A IA respondeu e não reconheceu nada. Sem texto não há vetor,
+            # e inventar um seria apresentar ruído como semelhança.
+            return self._catalogo_como_resultado(params, filters, analise)
+
+        try:
+            vetores = provider.embed([texto])
+        except AIProviderError as exc:
+            logger.exception("Falha ao gerar o vetor da busca por foto")
+            raise ServiceUnavailable(
+                _BUSCA_INDISPONIVEL, code=ErrorCode.AI_UNAVAILABLE
+            ) from exc
+        if not vetores:
+            logger.error("Provedor não devolveu vetor para a busca por foto")
+            raise ServiceUnavailable(_BUSCA_INDISPONIVEL, code=ErrorCode.AI_UNAVAILABLE)
+
+        rows, total = self._similares(vetores[0], modelo, params, filters)
+        if not rows:
+            return self._catalogo_como_resultado(params, filters, analise)
+        return ProductImageSearchResponse(
+            items=[
+                ProductImageSearchItem.from_row(row, distance=row["distance"])
+                for row in rows
+            ],
+            interpreted=_interpretada(analise),
+            page=params.page,
+            page_size=params.page_size,
+            total=total,
+        )
+
+    def _reservar_busca(self, pessoa: str) -> None:
+        """Conta a busca na cota diária do provedor, com o assunto da rota."""
+        try:
+            self.quota.reservar(pessoa, assunto="buscas por foto")
+        except CotaEsgotada as cota:
+            logger.info("Cota da busca por foto esgotada (%s): %s", cota.escopo, pessoa)
+            raise AppError(
+                cota.mensagem,
+                code=ErrorCode.QUOTA_EXCEEDED,
+                status_code=429,
+            ) from cota
+
+    def _similares(
+        self,
+        vetor: Sequence[float],
+        modelo: str,
+        params: PageParams,
+        filters: ProductFilters,
+    ) -> tuple[list[ProductSimilarRow], int]:
+        """As mais próximas que passam nos filtros; sem elas, relaxa.
+
+        O filtro corta por E com a semelhança; se não sobra nada, o mesmo
+        caminho do chat: primeiro só a categoria, depois o catálogo inteiro.
+        RN-61: filtro sem peça não pode virar "não encontrado".
+        """
+        rows, total = self.repository.find_similar(vetor, modelo, params, filters)
+        if rows or not filters.applied():
+            return rows, total
+        for relaxado in _relaxamentos(filters):
+            rows, total = self.repository.find_similar(vetor, modelo, params, relaxado)
+            if rows:
+                return rows, total
+        return rows, total
+
+    def _catalogo_como_resultado(
+        self,
+        params: PageParams,
+        filters: ProductFilters,
+        analise: ImageAnalysisResult,
+    ) -> ProductImageSearchResponse:
+        """O catálogo no lugar de lista vazia (RN-61), com `distance` nula.
+
+        Dois casos chegam aqui: a IA não reconheceu nada na foto (sem texto,
+        sem vetor) ou nenhuma peça tem vetor do modelo ativo. `distance`
+        fica nula porque não houve comparação — zero seria dizer "idêntica".
+        """
+        rows, total = self.repository.get_active_feed(params, filters)
+        if not rows and filters.applied():
+            rows, total = self.repository.get_active_feed(params, ProductFilters())
+        return ProductImageSearchResponse(
+            items=[ProductImageSearchItem.from_row(row) for row in rows],
+            interpreted=_interpretada(analise),
+            page=params.page,
+            page_size=params.page_size,
+            total=total,
+        )
 
     # `ativo`, `reservado` e `vendido` sao publicos (RN-26); `vendido` precisa
     # continuar, porque o detalhe mostra o selo de vendida, e `reservado` (peca
@@ -521,6 +685,60 @@ class ProductController:
         product.status = "despublicado"
         self.repository.commit()
         return self._to_response(product)
+
+
+def _validar_foto(foto: ArquivoRecebido) -> str:
+    """Tipo normalizado da foto da busca, ou o erro do contrato (#255).
+
+    Os limites são os de `media_rules`, os mesmos da análise de anúncio,
+    mas os status são os da busca: 415 para tipo e 413 para tamanho, como
+    o comprovante (back-end#249). A rota genérica de mídia continua 422.
+    """
+    tipo = (foto.content_type or "").split(";")[0].strip().lower()
+    if tipo not in media_rules.ALLOWED_PHOTO_TYPES:
+        raise AppError(
+            "A busca aceita fotos em JPEG, PNG, WebP ou HEIC.",
+            code=ErrorCode.IMAGE_INVALID_TYPE,
+            status_code=415,
+        )
+    if not foto.conteudo:
+        raise ValidationError("A foto da busca está vazia.")
+    if len(foto.conteudo) > media_rules.MAX_BYTES_PER_FILE:
+        raise AppError(
+            "A foto passa do limite de "
+            f"{media_rules.MAX_BYTES_PER_FILE // (1024 * 1024)}MiB.",
+            code=ErrorCode.IMAGE_TOO_LARGE,
+            status_code=413,
+        )
+    return tipo
+
+
+def _interpretada(analise: ImageAnalysisResult) -> InterpretedPhotoResponse:
+    """O que a análise leu da foto, no formato da resposta (RN-58).
+
+    Só o que a IA devolveu: marca vazia quando não havia etiqueta legível,
+    como na sugestão de anúncio. É o que faz a busca parecer inteligente em
+    vez de mágica — o mesmo princípio dos chips do chat.
+    """
+    return InterpretedPhotoResponse(
+        category=analise.category.value if analise.category else "",
+        color=analise.color.value if analise.color else "",
+        brand=analise.brand.value if analise.brand else "",
+    )
+
+
+def _relaxamentos(filtros: ProductFilters) -> list[ProductFilters]:
+    """Do mais próximo do pedido ao catálogo inteiro.
+
+    Mesma ordem do chat (`AssistantController._relaxamentos`): primeiro só
+    a categoria, porque quem filtrou "Calças" prefere outras calças a uma
+    jaqueta; depois o catálogo sem filtro, que é o último passo do feed.
+    """
+    passos = []
+    if filtros.category and len(filtros.applied()) > 1:
+        passos.append(ProductFilters(category=filtros.category))
+    passos.append(ProductFilters())
+    return passos
 
 
 def _recusar_foto_de_etiqueta(images: list[str] | None) -> None:

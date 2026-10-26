@@ -35,6 +35,10 @@ class CotaEsgotada(Exception):
     escopo: Literal["pessoa", "projeto"]
     limite: int
     volta_em: datetime
+    # O que a cota conta: "perguntas" no chat, "buscas por foto" na busca por
+    # imagem (back-end#255). É o mesmo orçamento diário do provedor; só muda
+    # o substantivo da mensagem, para ela falar do que a pessoa fez.
+    assunto: str = "perguntas"
 
     @property
     def mensagem(self) -> str:
@@ -42,11 +46,11 @@ class CotaEsgotada(Exception):
         quando = f"em {volta:%d/%m} às {volta:%H}h (horário de Brasília)"
         if self.escopo == "pessoa":
             return (
-                f"Você atingiu o limite de {self.limite} perguntas por dia à "
+                f"Você atingiu o limite de {self.limite} {self.assunto} por dia à "
                 f"Vintex. Volta a funcionar {quando}."
             )
         return (
-            "A Vintex atingiu o limite de perguntas do dia para todo mundo. "
+            f"A Vintex atingiu o limite de {self.assunto} do dia para todo mundo. "
             f"Volta a funcionar {quando}."
         )
 
@@ -71,19 +75,33 @@ class ChatQuota:
         self.db = db
         self.uso = AIChatUsageRepository(db)
 
-    def reservar(self, pessoa: str, agora: datetime | None = None) -> None:
+    def reservar(
+        self,
+        pessoa: str,
+        agora: datetime | None = None,
+        *,
+        assunto: str = "perguntas",
+    ) -> None:
         """Conta uma pergunta para a pessoa e para o projeto, ou levanta
-        `CotaEsgotada` sem contar nenhuma das duas."""
+        `CotaEsgotada` sem contar nenhuma das duas.
+
+        `assunto` só muda o substantivo da mensagem: a busca por foto
+        (back-end#255) gasta o mesmo orçamento diário do provedor.
+        """
         agora = agora or utcnow_naive()
         dia = agora.date()
         volta_em = datetime.combine(dia + timedelta(days=1), time())
         try:
             if not self.uso.consumir(dia, pessoa, settings.CHAT_QUOTA_PER_PERSON):
-                raise CotaEsgotada("pessoa", settings.CHAT_QUOTA_PER_PERSON, volta_em)
+                raise CotaEsgotada(
+                    "pessoa", settings.CHAT_QUOTA_PER_PERSON, volta_em, assunto
+                )
             if not self.uso.consumir(
                 dia, CHAVE_DO_PROJETO, settings.CHAT_QUOTA_PER_DAY
             ):
-                raise CotaEsgotada("projeto", settings.CHAT_QUOTA_PER_DAY, volta_em)
+                raise CotaEsgotada(
+                    "projeto", settings.CHAT_QUOTA_PER_DAY, volta_em, assunto
+                )
         except Exception:
             # A da pessoa pode ter somado antes de a do projeto recusar.
             self.db.rollback()

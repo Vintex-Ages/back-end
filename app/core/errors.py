@@ -55,6 +55,14 @@ class ErrorCode:
     ORDER_NOT_AWAITING_RECEIPT = "ORDER_NOT_AWAITING_RECEIPT"
     RECEIPT_TOO_LARGE = "RECEIPT_TOO_LARGE"
     RECEIPT_INVALID_TYPE = "RECEIPT_INVALID_TYPE"
+    # Busca por foto (back-end#255). Tipo e tamanho têm status próprios no
+    # contrato (415 e 413), como o comprovante.
+    IMAGE_INVALID_TYPE = "IMAGE_INVALID_TYPE"
+    IMAGE_TOO_LARGE = "IMAGE_TOO_LARGE"
+    # Cota diária da IA esgotada. No chat é um evento com este mesmo código
+    # (back-end#258); na busca por foto, um 429 com a mensagem que diz
+    # quando volta (back-end#255).
+    QUOTA_EXCEEDED = "QUOTA_EXCEEDED"
     STORE_NOT_FOUND = "STORE_NOT_FOUND"
     LEGAL_DOCUMENT_NOT_FOUND = "LEGAL_DOCUMENT_NOT_FOUND"
     STORE_ALREADY_EXISTS = "STORE_ALREADY_EXISTS"
