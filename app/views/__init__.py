@@ -13,6 +13,7 @@ from app.views.admin_routes import router as admin_router
 from app.views.assistant_routes import router as assistant_router
 from app.views.auth_routes import router as auth_router
 from app.views.cart_routes import router as cart_router
+from app.views.favorite_routes import router as favorite_router
 from app.views.legal_routes import router as legal_router
 from app.views.media_routes import me_router as media_me_router
 from app.views.media_routes import public_router as media_public_router
@@ -35,6 +36,7 @@ api_router.include_router(admin_router)
 api_router.include_router(assistant_router)
 api_router.include_router(auth_router)
 api_router.include_router(cart_router)
+api_router.include_router(favorite_router)
 api_router.include_router(legal_router)
 api_router.include_router(media_me_router)
 api_router.include_router(media_public_router)
