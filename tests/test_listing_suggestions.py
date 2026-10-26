@@ -178,6 +178,7 @@ def test_rota_sem_reconhecer_nada_segue_200_vazio(client, monkeypatch) -> None:
         "condition": None,
         "description": None,
         "brand": None,
+        "composition": None,
     }
 
 

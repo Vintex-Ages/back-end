@@ -19,6 +19,14 @@ tamanho estiver legível numa etiqueta na foto. Não estime pelo caimento.
 - brand: a marca, APENAS se houver uma etiqueta ou logo legível na foto — \
 se não houver etiqueta visível ou não for possível ler com certeza, não \
 preencha este campo. Nunca chute a marca a partir do estilo da peça.
+- composition: a composição do tecido, copiada da etiqueta como está escrita \
+(ex.: "100% algodão", "95% poliéster, 5% elastano"), APENAS se a etiqueta \
+estiver legível na foto. Nunca estime a composição pelo aspecto ou pela \
+textura do tecido: sem etiqueta legível, não preencha este campo.
+
+Uma das fotos pode mostrar só a etiqueta da peça. Use a etiqueta para brand, \
+size e composition; category, color, condition e description saem das fotos \
+da peça, nunca da etiqueta.
 
 Nos quatro campos de lista, responda com o valor exato como está escrito \
 acima, com acento e maiúscula. Se nenhum valor da lista servir, deixe o \

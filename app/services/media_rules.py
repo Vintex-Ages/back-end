@@ -11,8 +11,10 @@ já meio cadastrada.
 
 from __future__ import annotations
 
+from urllib.parse import unquote, urlsplit
+
 from app.core.errors import ValidationError
-from app.services.media_storage import MediaKind
+from app.services.media_storage import MEDIA_PREFIXES, MediaKind
 
 # Mesmo conjunto de `app/services/ai/google.py`. HEIC entra porque iPhone
 # fotografa nele por padrão, e a IA aceita.
@@ -34,6 +36,8 @@ _ALLOWED_BY_KIND: dict[MediaKind, frozenset[str]] = {
     "video": ALLOWED_VIDEO_TYPES,
     "receipt": ALLOWED_RECEIPT_TYPES,
     "logo": ALLOWED_PHOTO_TYPES,
+    # A etiqueta vai para a mesma análise das fotos, então aceita o mesmo.
+    "label": ALLOWED_PHOTO_TYPES,
 }
 
 # Prefixos que a rota pública de leitura pode servir. `payments/receipts/` fica
@@ -43,7 +47,26 @@ _ALLOWED_BY_KIND: dict[MediaKind, frozenset[str]] = {
 # (back-end#244).
 # `logo` entra: a imagem da loja aparece na vitrine pública, igual a foto de
 # peça. `payments/receipts/` continua fora.
-PUBLIC_KINDS: frozenset[MediaKind] = frozenset({"photo", "video", "logo"})
+# `label` entra porque é por esta rota que o servidor baixa a foto para a IA
+# (back-end#257), e uma etiqueta de roupa não tem nada de sigiloso. Ficar fora
+# da galeria é outra regra: a peça recusa essa URL em `images`
+# (`e_foto_de_etiqueta`).
+PUBLIC_KINDS: frozenset[MediaKind] = frozenset({"photo", "video", "logo", "label"})
+
+_CAMINHO_DA_ETIQUETA = f"/api/media/{MEDIA_PREFIXES['label']}"
+
+
+def e_foto_de_etiqueta(url: str) -> bool:
+    """A URL aponta para uma foto de etiqueta subida por `/api/users/me/media`.
+
+    Olha só o caminho, depois de decodificado: a origem muda por ambiente
+    (`PUBLIC_BASE_URL`), o caminho da mídia não.
+    """
+    try:
+        caminho = unquote(urlsplit(url).path)
+    except ValueError:
+        return False
+    return _CAMINHO_DA_ETIQUETA in caminho
 
 
 def validar_tipo(kind: MediaKind, content_type: str | None) -> str:
