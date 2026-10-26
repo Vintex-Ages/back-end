@@ -21,6 +21,7 @@ from app.schemas.store_schema import (
     StoreAddressResponse,
     StoreCreate,
     StoreDetailResponse,
+    StoreListItemResponse,
     StoreMetricsResponse,
     StoreProductItemResponse,
     StoreResponse,
@@ -159,9 +160,22 @@ class StoreController:
             ),
             metrics=StoreMetricsResponse(
                 created_at=store.created_at,
-                products_listed=metrics["products_listed"],
+                active_count=metrics["active_count"],
+                products_listed=metrics["active_count"],
                 products_sold=metrics["products_sold"],
             ),
+        )
+
+    def list_stores(
+        self, q: str | None, params: PageParams
+    ) -> Page[StoreListItemResponse]:
+        """Brechós do RS (RN-42). `q` em branco lista todos."""
+        rows, total = self.repository.list_stores(q.strip() if q else None, params)
+        return Page[StoreListItemResponse](
+            items=[StoreListItemResponse(**row) for row in rows],
+            page=params.page,
+            page_size=params.page_size,
+            total=total,
         )
 
     def list_products(

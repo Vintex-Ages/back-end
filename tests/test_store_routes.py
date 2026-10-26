@@ -57,6 +57,7 @@ def test_get_store_sem_login_devolve_dados_e_selo(client, db_session):
     assert body["address"]["city"] == "Porto Alegre"
     assert body["metrics"] == {
         "created_at": body["metrics"]["created_at"],
+        "active_count": 0,
         "products_listed": 0,
         "products_sold": 0,
     }

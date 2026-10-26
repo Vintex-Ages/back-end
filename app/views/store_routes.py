@@ -2,8 +2,9 @@
 
 Dois routers de proposito, com publicos diferentes:
 
-- `router` (`/api/stores`): publico, sem login — dados da loja e as pecas dela
-  (BE-US007-2, back-end#142).
+- `router` (`/api/stores`): publico, sem login — a lista de brechos com busca
+  por nome (back-end#256), dados da loja e as pecas dela (BE-US007-2,
+  back-end#142).
 - `me_router` (`/api/users/me/store`): a loja do proprio vendedor, criacao e
   leitura (BE-US006-1, back-end#141). Sob `/users/me/*` pelo ADR 0001 secao 4.
 
@@ -11,7 +12,7 @@ Mesmo arquivo porque e o mesmo recurso; routers separados porque um exige
 login e o outro nao pode exigir.
 """
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.controllers.store_controller import StoreController
@@ -21,6 +22,7 @@ from app.database import get_db
 from app.schemas.store_schema import (
     StoreCreate,
     StoreDetailResponse,
+    StoreListItemResponse,
     StoreProductItemResponse,
     StoreResponse,
 )
@@ -31,6 +33,19 @@ me_router = APIRouter(prefix="/users/me/store", tags=["Store"])
 
 def get_controller(db: Session = Depends(get_db)) -> StoreController:
     return StoreController(db)
+
+
+@router.get("", response_model=Page[StoreListItemResponse])
+def list_stores(
+    q: str | None = Query(
+        None,
+        max_length=100,
+        description="Parte do nome do brechó, sem diferenciar maiúscula.",
+    ),
+    params: PageParams = Depends(page_params),
+    controller: StoreController = Depends(get_controller),
+) -> Page[StoreListItemResponse]:
+    return controller.list_stores(q, params)
 
 
 @router.get("/{store_id}", response_model=StoreDetailResponse)

@@ -36,9 +36,15 @@ class StoreAddressResponse(BaseModel):
 
 class StoreMetricsResponse(BaseModel):
     """Métricas que já existem hoje. O que não existir não entra aqui —
-    o front mostra "em breve" pra qualquer coisa fora deste conjunto."""
+    o front mostra "em breve" pra qualquer coisa fora deste conjunto.
+
+    `active_count` são as peças `ativo`, o mesmo número da listagem de
+    brechós (back-end#256). `products_listed` tem o mesmo valor: era a
+    contagem errada (incluía vendida e despublicada), e fica corrigida para
+    não quebrar quem ainda lê o nome antigo."""
 
     created_at: datetime
+    active_count: int
     products_listed: int
     products_sold: int
 
@@ -51,6 +57,22 @@ class StoreDetailResponse(BaseModel):
     verified: bool
     address: StoreAddressResponse | None
     metrics: StoreMetricsResponse
+
+
+class StoreListItemResponse(BaseModel):
+    """Um brechó na listagem pública (`GET /api/stores`, back-end#256).
+
+    O endereço vem achatado em `city`/`state`, nulos quando a loja não tem
+    endereço (`stores.address_id` é anulável)."""
+
+    id: int
+    name: str
+    description: str | None
+    logo_url: str | None
+    verified: bool
+    city: str | None
+    state: str | None
+    active_count: int
 
 
 class StoreProductItemResponse(BaseModel):
