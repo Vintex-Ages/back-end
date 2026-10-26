@@ -1,16 +1,17 @@
 from collections.abc import AsyncIterator
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.controllers.assistant_controller import AssistantController
-from app.core.security import require_auth
+from app.core.security import optional_user, require_auth
 from app.database import get_db
 from app.models.user import User
 from app.schemas.chat_schema import ChatRequest
 from app.schemas.product_schema import ListingSuggestionsRequest
 from app.services.ai.base import ImageAnalysisResult
+from app.services.chat_quota import chave_da_pessoa
 
 router = APIRouter(prefix="/ai", tags=["Assistant"])
 
@@ -33,10 +34,18 @@ def listing_suggestions(
 @router.post("/chat")
 async def chat(
     body: ChatRequest,
+    request: Request,
+    # Sem login (RN-65): o chat é acessível do catálogo público. Com sessão, a
+    # cota conta pela pessoa; sem, pela origem da requisição (back-end#258).
+    user: User | None = Depends(optional_user),
     controller: AssistantController = Depends(get_controller),
 ) -> StreamingResponse:
+    pessoa = chave_da_pessoa(
+        user.id if user else None, request.client.host if request.client else None
+    )
+
     async def event_stream() -> AsyncIterator[str]:
-        async for event in controller.chat(body.messages):
+        async for event in controller.chat(body.messages, pessoa):
             yield f"data: {event.model_dump_json()}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
