@@ -18,12 +18,14 @@ from app.models.store import Store
 from app.repositories.legal_document_repository import LegalDocumentRepository
 from app.repositories.store_repository import StoreRepository
 from app.schemas.store_schema import (
+    StoreAddressCreate,
     StoreAddressResponse,
     StoreCreate,
     StoreDetailResponse,
     StoreMetricsResponse,
     StoreProductItemResponse,
     StoreResponse,
+    StoreUpdate,
 )
 
 
@@ -115,6 +117,7 @@ class StoreController:
                 pix_key=data.pix_key,
             )
             saved_store = self.repository.save(store)
+            self.db.commit()
         except IntegrityError as error:
             # Duplicidade de documento já foi excluída pelo pre-check acima;
             # a causa restante aqui é uma corrida (duplo submit concorrente
@@ -125,13 +128,60 @@ class StoreController:
                 "Não foi possível criar a loja com os dados informados.",
                 code=ErrorCode.STORE_ALREADY_EXISTS,
             ) from error
+        self.db.refresh(saved_store)
         return self._to_response(saved_store)
 
     def get_own_store(self, user_id: int) -> StoreResponse:
+        return self._to_response(self._get_own_or_404(user_id))
+
+    def update(self, user_id: int, data: StoreUpdate) -> StoreResponse:
+        """Edita a própria loja, campo a campo (back-end#221).
+
+        Antes só existiam `get` e `post`: loja criada sem logo ficava sem logo
+        para sempre, e chave Pix ou endereço digitados errado exigiam banco na
+        mão. O documento não passa por aqui (ver `StoreUpdate`).
+        """
+        store = self._get_own_or_404(user_id)
+        campos = data.model_dump(exclude_unset=True)
+
+        if "address" in campos:
+            store.address = self._endereco_atualizado(store.address, data.address)
+        for campo in ("name", "description", "pix_key"):
+            if campo in campos:
+                setattr(store, campo, campos[campo])
+        if "logo_url" in campos:
+            store.logo_url = str(data.logo_url) if data.logo_url else None
+
+        self.db.commit()
+        self.db.refresh(store)
+        return self._to_response(store)
+
+    @staticmethod
+    def _endereco_atualizado(
+        atual: Address | None, novo: StoreAddressCreate | None
+    ) -> Address | None:
+        """O endereço vem inteiro, como no cadastro: substitui o que havia.
+
+        Reaproveita a linha quando a loja já tem endereço, para não deixar
+        `addresses` órfão a cada edição. `null` tira o endereço da loja.
+        """
+        if novo is None:
+            return None
+        endereco = atual or Address()
+        endereco.street = novo.street
+        endereco.number = novo.number
+        endereco.complement = novo.complement
+        endereco.neighborhood = novo.neighborhood
+        endereco.city = novo.city
+        endereco.state = novo.state.upper()
+        endereco.zip_code = novo.zip_code
+        return endereco
+
+    def _get_own_or_404(self, user_id: int) -> Store:
         store = self.repository.get_by_user_id(user_id)
         if store is None:
             raise NotFound("Loja não encontrada.", code=ErrorCode.STORE_NOT_FOUND)
-        return self._to_response(store)
+        return store
 
     def get_store(self, store_id: int) -> StoreDetailResponse:
         store = self._get_or_404(store_id)
