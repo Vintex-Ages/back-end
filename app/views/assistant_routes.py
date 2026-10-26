@@ -5,10 +5,15 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.controllers.assistant_controller import AssistantController
+from app.controllers.price_suggestion_controller import PriceSuggestionController
 from app.core.security import optional_user, require_auth
 from app.database import get_db
 from app.models.user import User
 from app.schemas.chat_schema import ChatRequest
+from app.schemas.price_suggestion_schema import (
+    PriceSuggestionRequest,
+    PriceSuggestionResponse,
+)
 from app.schemas.product_schema import ListingSuggestionsRequest
 from app.services.ai.base import ImageAnalysisResult
 from app.services.chat_quota import chave_da_pessoa
@@ -29,6 +34,21 @@ def listing_suggestions(
     controller: AssistantController = Depends(get_controller),
 ) -> ImageAnalysisResult:
     return controller.suggest_listing(body.image_urls, body.label_image_url)
+
+
+@router.post("/price-suggestions", response_model=PriceSuggestionResponse)
+def price_suggestions(
+    body: PriceSuggestionRequest,
+    # RN-27: ação de vendedor, como a sugestão de anúncio.
+    user: User = Depends(require_auth),
+    db: Session = Depends(get_db),
+) -> PriceSuggestionResponse:
+    """Faixa de preço a partir das peças parecidas do catálogo (back-end#254).
+
+    Não chama o provedor de IA e não grava nada. Sem base suficiente, responde
+    200 com `min` e `max` nulos.
+    """
+    return PriceSuggestionController(db).sugerir(body)
 
 
 @router.post("/chat")
