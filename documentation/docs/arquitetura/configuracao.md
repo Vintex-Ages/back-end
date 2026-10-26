@@ -21,6 +21,7 @@ Para rodar localmente: `cp .env.example .env` (ver o README).
 | `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` | `admin@vintex.example.com`, vazio | conta da administradora criada pelo seed ([Autorização por papel](./fundacao-http#autorização-por-papel)) |
 | `AI_PROVIDER`, `GOOGLE_*` | `unavailable` | provedor de IA da API ([Provedor de IA](./provedor-ia)) |
 | `CHAT_QUOTA_PER_PERSON`, `CHAT_QUOTA_PER_DAY` | `5`, `40` | perguntas ao chat por dia, por pessoa e somadas; menos de 1 é recusado ([Cota do dia](../dominio/conversa-com-a-vintex#cota-do-dia)) |
+| `PRICE_SUGGESTION_MIN_BASE` | `3` | mínimo de peças parecidas para a sugestão de preço devolver uma faixa ([Sugestão de preço](../dominio/sugestao-de-preco)) |
 | `AI_ANALYSIS_QUEUE_URL`, `SQS_ENDPOINT_URL`, `AI_WORKER_PROVIDER`, `FREELLMAPI_*` | vazios / `unavailable` | fila e worker de análise de imagens ([Mensageria](../infraestrutura/mensageria)) |
 | `PUBLIC_BASE_URL`, `MEDIA_INTERNAL_BASE_URL` | vazios | base das URLs de mídia devolvidas e baixadas pelo servidor |
 | `AWS_REGION`, `S3_ENDPOINT_URL`, `MEDIA_BUCKET` | `us-east-2`, vazio | storage de mídia; sem `MEDIA_BUCKET`, as rotas de mídia respondem 503 |

@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     CHAT_QUOTA_PER_PERSON: int = Field(default=5, ge=1)
     CHAT_QUOTA_PER_DAY: int = Field(default=40, ge=1)
 
+    # Sugestão de preço (back-end#254): abaixo de tantas peças parecidas no
+    # catálogo, a faixa vem nula em vez de um número sem base.
+    PRICE_SUGGESTION_MIN_BASE: int = Field(default=3, ge=1)
+
     # Embedding do catálogo (BE-US027-1, back-end#92). Só lido quando
     # AI_PROVIDER=google; a chave vem do Google AI Studio (camada gratuita).
     GOOGLE_API_KEY: str = ""

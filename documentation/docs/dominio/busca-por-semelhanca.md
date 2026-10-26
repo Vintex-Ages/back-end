@@ -67,7 +67,7 @@ Filtro que não casa com nenhuma peça devolve página vazia: aí é o filtro, e
 | Filtro por atributo na conversa | [#260](https://github.com/Vintex-Ages/back-end/issues/260) | a fazer, usa os filtros |
 | Recomendações pelo perfil de estilo (`GET /api/users/me/recommendations`) | [#253](https://github.com/Vintex-Ages/back-end/issues/253) | feito, ver abaixo |
 | Busca por foto | [#255](https://github.com/Vintex-Ages/back-end/issues/255) | a fazer, usa paginação e filtros |
-| Sugestão de preço | [#254](https://github.com/Vintex-Ages/back-end/issues/254) | a fazer, compara preços das parecidas |
+| [Sugestão de preço](./sugestao-de-preco) | [#254](https://github.com/Vintex-Ages/back-end/issues/254) | feito, compara preços das parecidas, sem gerar vetor novo |
 
 ## Recomendação pelo perfil de estilo
 

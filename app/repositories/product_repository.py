@@ -1,9 +1,11 @@
+import operator
 from collections.abc import Sequence
 from datetime import datetime
 from decimal import Decimal
+from functools import reduce
 from typing import TypedDict, cast
 
-from sqlalchemy import ScalarSelect, Select, func, select, update
+from sqlalchemy import ScalarSelect, Select, case, func, literal, select, update
 from sqlalchemy.orm import Session, joinedload, selectinload, with_expression
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -271,6 +273,65 @@ class ProductRepository:
             .all()
         )
         return [cast(ProductSimilarRow, dict(row)) for row in rows], total
+
+    def vetores_pelo_nome(
+        self,
+        palavras: Sequence[str],
+        embedding_model: str,
+        filters: ProductFilters,
+        limite: int,
+        desempate: Sequence[str] = (),
+    ) -> list[Sequence[float]]:
+        """Vetores das peças ativas cujo nome mais casa com as palavras
+        (back-end#254).
+
+        É o ponto de partida da sugestão de preço sem chamar o provedor de IA:
+        a peça que está sendo cadastrada ainda não tem vetor, mas as do
+        catálogo têm. Vence quem tem mais palavras do nome em comum; com
+        "tênis nike azul", um "Tênis Nike Azul" é referência, e um "Tênis
+        Branco" só se nenhum nome tiver mais palavras. Sem acento e sem caixa,
+        como a busca textual (RN-41). As palavras já vêm normalizadas.
+
+        `desempate` (as palavras da descrição) só decide entre nomes que casam
+        igual: "Jaqueta" com descrição "jeans" prefere a "Jaqueta jeans". Peça
+        que só casa pelo desempate não é referência.
+        """
+        if not palavras:
+            return []
+        nome = func.immutable_unaccent(func.lower(Product.name))
+
+        def acertos_de(lista: Sequence[str]) -> ColumnElement[int]:
+            return reduce(
+                operator.add,
+                [case((nome.contains(p, autoescape=True), 1), else_=0) for p in lista],
+            )
+
+        acertos = acertos_de(palavras)
+        # `ORDER BY 0` o Postgres lê como "a coluna da posição 0" e recusa: sem
+        # desempate, a ordem não passa por ele.
+        extras = acertos_de(desempate) if desempate else literal(0)
+        ordem = [acertos.desc(), extras.desc()] if desempate else [acertos.desc()]
+        rows = self.db.execute(
+            select(
+                Product.embedding,
+                acertos.label("acertos"),
+                extras.label("extras"),
+            )
+            .join(Store, Store.id == Product.store_id)
+            .outerjoin(Address, Store.address_id == Address.id)
+            .where(
+                *self._condicoes_do_catalogo(filters),
+                Product.embedding.is_not(None),
+                Product.embedding_model == embedding_model,
+                acertos > 0,
+            )
+            .order_by(*ordem, Product.id)
+            .limit(limite)
+        ).all()
+        if not rows:
+            return []
+        melhor = (rows[0].acertos, rows[0].extras)
+        return [row.embedding for row in rows if (row.acertos, row.extras) == melhor]
 
     def get_detail_by_id(self, product_id: int) -> Product | None:
         stmt = (
