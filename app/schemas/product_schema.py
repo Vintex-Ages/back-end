@@ -113,6 +113,20 @@ class FeedResponse(BaseModel):
     suggestions: SuggestionsResponse | None = None
 
 
+class RecommendationsResponse(BaseModel):
+    """O "Garimpados para Você" (back-end#253). O item é o mesmo do feed.
+
+    `personalized: false` quando a lista é o feed genérico: sem perfil de
+    estilo (RN-38), ou sem como recomendar ainda. Nunca é erro.
+    """
+
+    items: list[ProductFeedItemResponse]
+    personalized: bool
+    page: int
+    page_size: int
+    total: int
+
+
 class ProductMediaResponse(BaseModel):
     type: str = "image"
     url: str
