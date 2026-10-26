@@ -111,7 +111,11 @@ def _preco(valor: float | None) -> Decimal | None:
         preco = Decimal(str(valor))
     except InvalidOperation:
         return None
-    return preco if preco >= 0 else None
+    # `NaN` e `Infinity` passam pelo `float` do schema. Comparar `NaN` levanta
+    # `InvalidOperation`, que não é erro de provedor e derrubaria o chat.
+    if not preco.is_finite() or preco < 0:
+        return None
+    return preco
 
 
 def _texto_do_preco(preco: Decimal) -> str:

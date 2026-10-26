@@ -85,7 +85,14 @@ def test_preco_vira_texto_sem_casas_desnecessarias() -> None:
 
 @pytest.mark.parametrize(
     ("minimo", "maximo"),
-    [(500.0, 100.0), (-10.0, None), (None, -1.0)],
+    [
+        (500.0, 100.0),
+        (-10.0, None),
+        (None, -1.0),
+        (float("nan"), None),
+        (None, float("nan")),
+        (None, float("inf")),
+    ],
 )
 def test_faixa_de_preco_impossivel_nao_vira_filtro(
     minimo: float | None, maximo: float | None
