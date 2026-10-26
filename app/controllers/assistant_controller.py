@@ -53,7 +53,9 @@ class AssistantController:
         self.repository = ProductRepository(db)
         self.quota = ChatQuota(db)
 
-    def suggest_listing(self, image_urls: Sequence[str]) -> ImageAnalysisResult:
+    def suggest_listing(
+        self, image_urls: Sequence[str], label_image_url: str | None = None
+    ) -> ImageAnalysisResult:
         """Preenchimento automático do cadastro a partir da foto (back-end#150).
 
         A IA não trava o cadastro (RN-57): o vendedor sempre pode preencher à
@@ -67,12 +69,16 @@ class AssistantController:
         excesso de demanda. Agora a falha sobe como 503 `AI_UNAVAILABLE`, o
         front a distingue e diz o que de fato houve. Resultado vazio volta a
         significar só uma coisa: a IA respondeu e não reconheceu nada.
+
+        A foto da etiqueta (back-end#257) vai junto, na mesma chamada: é uma
+        análise só, e o prompt diz que dela saem marca, tamanho e composição.
         """
-        if not image_urls:
+        urls = [*image_urls, label_image_url] if label_image_url else list(image_urls)
+        if not urls:
             return ImageAnalysisResult()
 
         try:
-            return get_ai_provider().analyze_image(image_urls)
+            return get_ai_provider().analyze_image(urls)
         except AIProviderError as exc:
             logger.exception("Falha ao analisar fotos para preenchimento automático")
             raise ServiceUnavailable(

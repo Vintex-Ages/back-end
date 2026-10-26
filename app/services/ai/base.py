@@ -59,6 +59,9 @@ class ImageAnalysisResult(BaseModel):
     # Só preenchida quando a etiqueta/marca está legível na foto (RN-58,
     # back-end#150) — sem isso, fica `None`. A IA não chuta marca.
     brand: SuggestedField | None = None
+    # Composição do tecido, com o mesmo cuidado da marca (back-end#257): só
+    # sai de etiqueta legível, nunca do aspecto do tecido.
+    composition: SuggestedField | None = None
 
 
 class ChatTurn(BaseModel):

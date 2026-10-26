@@ -148,6 +148,7 @@ class ProductDetailResponse(BaseModel):
     color: str = ""
     size: str = ""
     condition: str = ""
+    composition: str = ""
     price: Decimal
     status: str
     city: str = ""
@@ -186,6 +187,8 @@ class ProductDraftCreate(BaseModel):
     color: str | None = None
     size: str | None = None
     condition: str | None = None
+    # O limite é o da coluna: sem ele, texto maior viraria 500 no commit.
+    composition: str | None = Field(default=None, max_length=200)
     price: Decimal
     images: list[str] = Field(default_factory=list)
     ai_corrections: list[AiCorrectionInput] = Field(default_factory=list)
@@ -204,6 +207,7 @@ class ProductDraftUpdate(BaseModel):
     color: str | None = Field(default=None, max_length=50)
     size: str | None = Field(default=None, max_length=30)
     condition: str | None = Field(default=None, max_length=50)
+    composition: str | None = Field(default=None, max_length=200)
     price: Decimal | None = Field(default=None, gt=0, decimal_places=2)
     images: list[str] | None = None
     ai_corrections: list[AiCorrectionInput] = Field(default_factory=list)
@@ -235,6 +239,7 @@ class ProductDraftResponse(BaseModel):
     color: str | None
     size: str | None
     condition: str | None
+    composition: str | None = None
     price: Decimal
     quantity: int
     status: str
@@ -287,3 +292,7 @@ class ListingSuggestionsRequest(BaseModel):
     """
 
     image_urls: list[str] = Field(max_length=8)
+    # Foto da etiqueta, à parte das fotos da peça (back-end#257): sobe com
+    # `kind=label` e entra só na análise, nunca na galeria. Fora do limite de
+    # oito porque é uma foto a mais, e opcional.
+    label_image_url: str | None = None

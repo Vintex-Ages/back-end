@@ -26,7 +26,7 @@ O detalhe público (`GET /api/products/{id}`) declara o que é público, e não 
 
 | De → para | Gatilho |
 | --- | --- |
-| `rascunho → ativo` | vendedor publica: `POST /users/me/products/{id}/publish`, exige ao menos uma foto (RN-47) e grava o vetor da [busca por semelhança](./busca-por-semelhanca#quando-a-peça-ganha-vetor) |
+| `rascunho → ativo` | vendedor publica: `POST /users/me/products/{id}/publish`, exige ao menos uma foto (RN-47), que não pode ser a da [etiqueta](./etiqueta-e-composicao), e grava o vetor da [busca por semelhança](./busca-por-semelhanca#quando-a-peça-ganha-vetor) |
 | `despublicado → ativo` | vendedor republica, pela mesma rota |
 | `ativo → despublicado` | vendedor despublica: `POST /users/me/products/{id}/unpublish` |
 | `ativo → reservado` | comprador cria o pedido ([#247](https://github.com/Vintex-Ages/back-end/issues/247)) |

@@ -76,6 +76,7 @@ def test_detail_retorna_atributos_media_e_loja(client, db_session):
         "color": "Azul",
         "size": "M",
         "condition": "Usado - bom estado",
+        "composition": "",
         "price": 199.90,
         "status": "ativo",
         "city": "Porto Alegre",

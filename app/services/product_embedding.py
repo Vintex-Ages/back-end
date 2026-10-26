@@ -40,6 +40,9 @@ def texto_da_peca(product: Product) -> str:
     cidade, preço e descrição), mais o nome e o estilo, que o backfill já
     usava: sem o nome, "jaqueta" ficaria de fora do vetor de uma jaqueta.
     A cidade é a do endereço da loja.
+
+    A composição entra no fim (back-end#257): peça sem composição gera o mesmo
+    texto de antes, então os vetores já gravados continuam valendo.
     """
     endereco = product.store.address if product.store else None
     partes = [
@@ -53,6 +56,7 @@ def texto_da_peca(product: Product) -> str:
         product.style,
         endereco.city if endereco else None,
         f"R$ {product.price}" if product.price is not None else None,
+        product.composition,
     ]
     return " ".join(parte for parte in partes if parte)
 
