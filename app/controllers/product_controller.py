@@ -602,6 +602,13 @@ class ProductController:
     def list_for_seller(
         self, user_id: int, params: PageParams, status: str | None
     ) -> ProductManagementPage:
+        """Peças do vendedor; sem filtro, sem rascunho (RN-51).
+
+        O rascunho entra só quando é pedido (`status=rascunho`), que é o que a
+        aba de rascunhos do painel faz (back-end#271). Ele é cadastro pela
+        metade, e não peça em gestão de saldo: misturá-lo à lista de anunciadas
+        e vendidas faria a contagem do painel mentir.
+        """
         page = self.repository.list_for_seller(user_id, params, status)
         return ProductManagementPage(
             items=page.items,
@@ -685,6 +692,34 @@ class ProductController:
         product.status = "despublicado"
         self.repository.commit()
         return self._to_response(product)
+
+    def discard_draft(self, user_id: int, product_id: int) -> None:
+        """Apaga o rascunho do vendedor, com as fotos e as correções da IA (#271).
+
+        Descartar é apagar: o rascunho nunca foi público e não tem histórico a
+        preservar. A RN-52, que manda despublicar sem apagar, vale para o
+        anúncio que já esteve no ar — não para cadastro abandonado.
+
+        Peça em qualquer outra situação é recusada: vendida responde
+        `PRODUCT_SOLD` (RN-53) e as demais `PRODUCT_NOT_EDITABLE`. Peça de outro
+        vendedor responde 404 pela regra do `_get_owned`, sem confirmar que o id
+        existe.
+        """
+        product = self._get_owned(user_id, product_id)
+        if product.status == "vendido":
+            raise AppError(
+                "Peça vendida não pode ser descartada.",
+                code=ErrorCode.PRODUCT_SOLD,
+                status_code=409,
+            )
+        if product.status != "rascunho":
+            raise AppError(
+                "Só peça em rascunho pode ser descartada.",
+                code=ErrorCode.PRODUCT_NOT_EDITABLE,
+                status_code=409,
+            )
+        self.repository.delete(product)
+        self.repository.commit()
 
 
 def _validar_foto(foto: ArquivoRecebido) -> str:

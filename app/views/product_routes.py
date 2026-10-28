@@ -223,11 +223,16 @@ async def search_by_image(
 
 @me_router.get("", response_model=ProductManagementPage)
 def list_seller_products(
-    status: Literal["ativo", "vendido", "despublicado"] | None = Query(None),
+    status: Literal["rascunho", "ativo", "vendido", "despublicado"] | None = Query(
+        None, description="Situação da peça; sem filtro, o rascunho fica de fora."
+    ),
     params: PageParams = Depends(page_params),
     user_id: int = Depends(get_current_user_id),
     controller: ProductController = Depends(get_controller),
 ) -> ProductManagementPage:
+    # `rascunho` entrou no filtro no #271: a aba de rascunhos do painel pede
+    # `?status=rascunho`. Sem filtro a lista continua sem rascunho (RN-51),
+    # então esta rota não é o caminho para "todas as situações".
     return controller.list_for_seller(user_id, params, status)
 
 
@@ -273,6 +278,26 @@ def update_product(
     controller: ProductController = Depends(get_controller),
 ) -> ProductDraftResponse:
     return controller.update(user_id, product_id, data)
+
+
+# Descartar o rascunho é apagar a peça (#271): ela nunca foi pública e não há
+# histórico a preservar. As fotos vão junto, pelo cascade do modelo. Peça de
+# outro vendedor responde 404, igual a inexistente.
+@me_router.delete(
+    "/{product_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Descarta um rascunho",
+    responses={
+        404: {"description": "PRODUCT_NOT_FOUND"},
+        409: {"description": "PRODUCT_NOT_EDITABLE | PRODUCT_SOLD"},
+    },
+)
+def discard_draft(
+    product_id: int,
+    user_id: int = Depends(get_current_user_id),
+    controller: ProductController = Depends(get_controller),
+) -> None:
+    controller.discard_draft(user_id, product_id)
 
 
 # Mesmo schema das outras transicoes do recurso (`#230`): o front trata as tres
