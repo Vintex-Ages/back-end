@@ -48,6 +48,12 @@ A conversa anterior vai junto para a IA (os 6 últimos turnos): "e em vermelho?"
 
 A interpretação usa os modelos de geração de `GOOGLE_VISION_MODEL`, os mesmos da análise de foto, com o mesmo fallback no `503` e no `429` ([Provedor de IA](../arquitetura/provedor-ia#indisponibilidade-503-e-429)).
 
+## Texto de terceiro é dado, não instrução
+
+A pergunta e a conversa anterior são escritas por quem usa o site, e o modelo não deve obedecê-las. Desde a [#262](https://github.com/Vintex-Ages/back-end/issues/262), `montar_pergunta` envolve a conversa e a pergunta nas marcas `<<<INICIO_DO_TEXTO_DE_TERCEIRO>>>` e `<<<FIM_DO_TEXTO_DE_TERCEIRO>>>`, e `INTERPRET_SEARCH_PROMPT` diz que o bloco é dado a interpretar: pedido para ignorar regras, mudar o formato da resposta ou responder outra coisa é ignorado. Marcador escrito dentro do texto é neutralizado, para o conteúdo não fechar o bloco e escrever fora dele. Instrução e dado vão em partes separadas da chamada (`app/services/ai/untrusted_text.py`).
+
+A descrição da peça não passa pelo prompt da conversa: ela é parte do texto que vira vetor e volta ao card como dado. Se voltar como turno do chat, volta dentro do mesmo bloco.
+
 ## Cota do dia
 
 O provedor de IA roda na camada gratuita, que dá **50 requisições por dia ao projeto inteiro**, somando o chat, a análise da foto no cadastro e o vetor da peça publicada. Sem cota, uma pessoa que fizesse 50 perguntas zerava o dia, e o vendedor que cadastrasse uma peça depois recebia falha na análise da foto.

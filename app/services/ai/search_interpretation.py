@@ -25,6 +25,7 @@ from pydantic import BaseModel
 
 from app.constants.catalog import CATEGORIES, COLORS, CONDITIONS, SIZES, lista
 from app.services.ai.base import ChatTurn, InterpretedQuery
+from app.services.ai.untrusted_text import INSTRUCAO_DE_DADOS, delimitar
 
 # Turnos anteriores que vão junto: o bastante para "e em azul?" saber do que
 # se fala, sem mandar a conversa inteira a cada pergunta.
@@ -69,12 +70,18 @@ Nos campos de lista, use o valor exato como está escrito acima, com acento e \
 maiúscula. Se nenhum valor servir, deixe nulo: é melhor sem filtro que com o \
 filtro errado. Use a conversa anterior só para entender a pergunta atual \
 ("e em azul?" mantém o resto do que foi pedido antes).
+
+{INSTRUCAO_DE_DADOS}
 """
 
 
 def montar_pergunta(query: str, history: Sequence[ChatTurn] = ()) -> str:
     """O texto que vai ao modelo depois do prompt: a conversa recente e a
-    pergunta, cada mensagem cortada num tamanho fixo."""
+    pergunta, cada mensagem cortada num tamanho fixo.
+
+    Tudo aqui é texto de terceiro, então vai dentro do bloco de dado
+    (back-end#262): o modelo lê para interpretar, não para obedecer.
+    """
     linhas = []
     recentes = list(history)[-_TURNOS_DE_CONTEXTO:]
     if recentes:
@@ -84,7 +91,7 @@ def montar_pergunta(query: str, history: Sequence[ChatTurn] = ()) -> str:
             linhas.append(f"{quem}: {turno.text[:_CARACTERES_POR_TURNO]}")
         linhas.append("")
     linhas.append(f"Pergunta atual: {query[:_CARACTERES_POR_TURNO]}")
-    return "\n".join(linhas)
+    return delimitar("\n".join(linhas))
 
 
 def _sem_acento(texto: str) -> str:
