@@ -76,3 +76,19 @@ def test_load_path_map_le_o_arquivo_real_do_projeto():
 
     assert len(entries) > 0
     assert all(isinstance(e, PathMapEntry) for e in entries)
+
+
+def test_terraform_composition_maps_base_and_runtime_without_schema_change():
+    entries = load_path_map(
+        Path(__file__).resolve().parents[1] / "documentation/path-map.json"
+    )
+    for path in (
+        "infra/terraform/aws/main.tf",
+        "scripts/infra/terraform_env.py",
+        "tests/test_terraform_make.py",
+    ):
+        assert match_page(path, entries) == "infraestrutura/aws-shared"
+    assert (
+        match_page("infra/terraform/aws/tests/staging.tftest.hcl", entries)
+        == "infraestrutura/aws-staging"
+    )

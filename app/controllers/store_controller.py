@@ -5,24 +5,28 @@ Junta os dois lados que nasceram em issues separadas: a loja publica
 classe porque operam a mesma entidade e o mesmo repositorio.
 """
 
-from datetime import datetime, timezone
-
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.errors import Conflict, ErrorCode, NotFound
+from app.core.clock import utcnow_naive
+from app.core.errors import Conflict, ErrorCode, NotFound, ValidationError
 from app.core.pagination import Page, PageParams
 from app.models.address import Address
+from app.models.legal_document import SELLER_CONTRACT
 from app.models.seller import Seller
 from app.models.store import Store
+from app.repositories.legal_document_repository import LegalDocumentRepository
 from app.repositories.store_repository import StoreRepository
 from app.schemas.store_schema import (
+    StoreAddressCreate,
     StoreAddressResponse,
     StoreCreate,
     StoreDetailResponse,
+    StoreListItemResponse,
     StoreMetricsResponse,
     StoreProductItemResponse,
     StoreResponse,
+    StoreUpdate,
 )
 
 
@@ -30,6 +34,7 @@ class StoreController:
     def __init__(self, db: Session):
         self.db = db
         self.repository = StoreRepository(db)
+        self.legal_documents = LegalDocumentRepository(db)
 
     def create(self, user_id: int, data: StoreCreate) -> StoreResponse:
         if self.repository.get_by_user_id(user_id) is not None:
@@ -46,6 +51,24 @@ class StoreController:
                 code=ErrorCode.DOCUMENT_ALREADY_REGISTERED,
             )
 
+        # Data de aceite só existe se houve aceite. A #216 tornou
+        # `terms_version` opcional com o argumento de que gravar versão
+        # chumbada registraria um aceite que ninguém deu — e deixou o carimbo
+        # de data saindo do mesmo jeito, que é a mesma mentira pelo outro lado:
+        # um campo jurídico com a data de um aceite sem versão.
+        #
+        # E a versão tem que existir: gravar `v999-nao-existe` registrava um
+        # aceite jurídico apontando para um texto que ninguém leu
+        # (back-end#217). O vendedor aceita o contrato de venda.
+        if data.terms_version and not self.legal_documents.exists(
+            SELLER_CONTRACT, data.terms_version
+        ):
+            raise ValidationError(
+                "Versão do contrato não encontrada.",
+                fields={"terms_version": "versão inexistente"},
+            )
+        aceito_em = utcnow_naive() if data.terms_version else None
+
         try:
             seller = self.repository.get_seller_by_user_id(user_id)
             if seller is None:
@@ -54,15 +77,18 @@ class StoreController:
                     document_type=data.document_type,
                     document_value=data.document_value,
                     terms_version=data.terms_version,
-                    terms_accepted_at=datetime.now(timezone.utc),
+                    terms_accepted_at=aceito_em,
                 )
                 self.db.add(seller)
                 self.db.flush()
             else:
                 seller.document_type = data.document_type
                 seller.document_value = data.document_value
-                seller.terms_version = data.terms_version
-                seller.terms_accepted_at = datetime.now(timezone.utc)
+                # Vendedor que já aceitou não perde o registro por reenviar o
+                # cadastro sem a versão: só sobrescreve quando vem aceite novo.
+                if data.terms_version:
+                    seller.terms_version = data.terms_version
+                    seller.terms_accepted_at = aceito_em
 
             # O endereco e opcional (modelagem secao 1.4: `address_id` sem NN),
             # mas quando vem tem que virar linha em `addresses` -- senao o
@@ -92,6 +118,7 @@ class StoreController:
                 pix_key=data.pix_key,
             )
             saved_store = self.repository.save(store)
+            self.db.commit()
         except IntegrityError as error:
             # Duplicidade de documento já foi excluída pelo pre-check acima;
             # a causa restante aqui é uma corrida (duplo submit concorrente
@@ -102,13 +129,60 @@ class StoreController:
                 "Não foi possível criar a loja com os dados informados.",
                 code=ErrorCode.STORE_ALREADY_EXISTS,
             ) from error
+        self.db.refresh(saved_store)
         return self._to_response(saved_store)
 
     def get_own_store(self, user_id: int) -> StoreResponse:
+        return self._to_response(self._get_own_or_404(user_id))
+
+    def update(self, user_id: int, data: StoreUpdate) -> StoreResponse:
+        """Edita a própria loja, campo a campo (back-end#221).
+
+        Antes só existiam `get` e `post`: loja criada sem logo ficava sem logo
+        para sempre, e chave Pix ou endereço digitados errado exigiam banco na
+        mão. O documento não passa por aqui (ver `StoreUpdate`).
+        """
+        store = self._get_own_or_404(user_id)
+        campos = data.model_dump(exclude_unset=True)
+
+        if "address" in campos:
+            store.address = self._endereco_atualizado(store.address, data.address)
+        for campo in ("name", "description", "pix_key"):
+            if campo in campos:
+                setattr(store, campo, campos[campo])
+        if "logo_url" in campos:
+            store.logo_url = str(data.logo_url) if data.logo_url else None
+
+        self.db.commit()
+        self.db.refresh(store)
+        return self._to_response(store)
+
+    @staticmethod
+    def _endereco_atualizado(
+        atual: Address | None, novo: StoreAddressCreate | None
+    ) -> Address | None:
+        """O endereço vem inteiro, como no cadastro: substitui o que havia.
+
+        Reaproveita a linha quando a loja já tem endereço, para não deixar
+        `addresses` órfão a cada edição. `null` tira o endereço da loja.
+        """
+        if novo is None:
+            return None
+        endereco = atual or Address()
+        endereco.street = novo.street
+        endereco.number = novo.number
+        endereco.complement = novo.complement
+        endereco.neighborhood = novo.neighborhood
+        endereco.city = novo.city
+        endereco.state = novo.state.upper()
+        endereco.zip_code = novo.zip_code
+        return endereco
+
+    def _get_own_or_404(self, user_id: int) -> Store:
         store = self.repository.get_by_user_id(user_id)
         if store is None:
             raise NotFound("Loja não encontrada.", code=ErrorCode.STORE_NOT_FOUND)
-        return self._to_response(store)
+        return store
 
     def get_store(self, store_id: int) -> StoreDetailResponse:
         store = self._get_or_404(store_id)
@@ -136,9 +210,22 @@ class StoreController:
             ),
             metrics=StoreMetricsResponse(
                 created_at=store.created_at,
-                products_listed=metrics["products_listed"],
+                active_count=metrics["active_count"],
+                products_listed=metrics["active_count"],
                 products_sold=metrics["products_sold"],
             ),
+        )
+
+    def list_stores(
+        self, q: str | None, params: PageParams
+    ) -> Page[StoreListItemResponse]:
+        """Brechós do RS (RN-42). `q` em branco lista todos."""
+        rows, total = self.repository.list_stores(q.strip() if q else None, params)
+        return Page[StoreListItemResponse](
+            items=[StoreListItemResponse(**row) for row in rows],
+            page=params.page,
+            page_size=params.page_size,
+            total=total,
         )
 
     def list_products(
@@ -172,6 +259,7 @@ class StoreController:
             description=store.description,
             logo_url=store.logo_url,
             pix_key=store.pix_key,
+            verified=store.seller.verified,
             document_type=store.seller.document_type,
             document_value=store.seller.document_value,
             terms_version=store.seller.terms_version,

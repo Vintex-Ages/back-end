@@ -8,7 +8,7 @@ def make_seller(
     db_session,
     user_id: int,
     document_type: str = "CPF",
-    document_value: str = "123.456.789-00",
+    document_value: str = "123.456.789-09",
     verified: bool = False,
 ) -> Seller:
     user = User(
@@ -28,31 +28,32 @@ def make_seller(
     return seller
 
 
-def test_verification_muda_pendente_para_confiavel(client, db_session) -> None:
+def test_verification_muda_pendente_para_confiavel(
+    client, db_session, auth_headers
+) -> None:
     make_seller(db_session, user_id=1)
 
-    response = client.post(
-        "/api/users/me/store/verification", headers={"X-User-Id": "1"}
-    )
+    response = client.post("/api/users/me/store/verification", headers=auth_headers(1))
 
     assert response.status_code == 200
     assert response.json() == {"verified": True}
 
 
-def test_verification_e_idempotente(client, db_session) -> None:
+def test_verification_e_idempotente(client, db_session, auth_headers) -> None:
     make_seller(db_session, user_id=1, verified=True)
 
-    response = client.post(
-        "/api/users/me/store/verification", headers={"X-User-Id": "1"}
-    )
+    response = client.post("/api/users/me/store/verification", headers=auth_headers(1))
 
     assert response.status_code == 200
     assert response.json() == {"verified": True}
 
 
-def test_verification_404_quando_usuario_nao_e_vendedor(client) -> None:
+def test_verification_404_quando_usuario_nao_e_vendedor(
+    client, auth_headers, usuario_sem_loja
+) -> None:
     response = client.post(
-        "/api/users/me/store/verification", headers={"X-User-Id": "1"}
+        "/api/users/me/store/verification",
+        headers=auth_headers(usuario_sem_loja.id),
     )
 
     assert response.status_code == 404
@@ -60,20 +61,37 @@ def test_verification_404_quando_usuario_nao_e_vendedor(client) -> None:
 
 
 def test_verification_422_quando_documento_nao_bate_com_o_tipo(
-    client, db_session
+    client,
+    db_session,
+    auth_headers,
 ) -> None:
     make_seller(
         db_session,
         user_id=1,
         document_type="CNPJ",
-        document_value="123.456.789-00",
+        document_value="123.456.789-09",
     )
 
-    response = client.post(
-        "/api/users/me/store/verification", headers={"X-User-Id": "1"}
-    )
+    response = client.post("/api/users/me/store/verification", headers=auth_headers(1))
 
     assert response.status_code == 422
     body = response.json()
     assert body["error"]["code"] == "VALIDATION_ERROR"
     assert "document_value" in body["error"]["fields"]
+
+
+def test_verification_422_para_documento_antigo_que_so_passava_na_contagem(
+    client,
+    db_session,
+    auth_headers,
+) -> None:
+    """Vendedor gravado antes da back-end#217 com `00000000000` não ganha o
+    selo: o documento é conferido de novo na hora de verificar."""
+    seller = make_seller(db_session, user_id=1, document_value="00000000000")
+
+    response = client.post("/api/users/me/store/verification", headers=auth_headers(1))
+
+    assert response.status_code == 422
+    assert "document_value" in response.json()["error"]["fields"]
+    db_session.refresh(seller)
+    assert seller.verified is False

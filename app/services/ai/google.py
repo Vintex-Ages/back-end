@@ -1,70 +1,50 @@
 """Provedor real do Google AI Studio (BE-US027-1, back-end#92).
 
 Primeira chamada real a uma API de IA no projeto — até aqui, `unavailable`
-era o único provider (VE-06). Cobre `embed` e `analyze_image`;
-`stream_interpret_search` (VS-027, geração de texto conversacional) ainda
-não tem implementação real, então degrada como `UnavailableAIProvider` em
-vez de fingir suportar algo que não foi escrito.
+era o único provider (VE-06). Cobre `embed`, `analyze_image` e, desde a
+#260, `stream_interpret_search`: a pergunta do chat separada em filtro e
+similaridade. Não gera texto conversacional; a resposta são as peças reais.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator, Sequence
 
 import httpx
 from google import genai
 from google.genai import types
+from pydantic import BaseModel
 
 from app.config import settings
-from app.constants.catalog import CATEGORIES, COLORS, CONDITIONS, SIZES, lista
 from app.constants.embedding import EMBEDDING_DIM
+from app.services.ai.analysis_prompt import ANALYZE_IMAGE_PROMPT
 from app.services.ai.base import (
     AIProvider,
     AIProviderError,
     AIProviderUnavailableError,
     ChatTurn,
     ImageAnalysisResult,
+    ImagePhoto,
+    SearchDone,
     SearchStreamEvent,
 )
-
-_NOT_IMPLEMENTED = (
-    "GoogleAIProvider ainda não implementa este método (fora do escopo do back-end#92)."
+from app.services.ai.media_urls import image_download_url
+from app.services.ai.search_interpretation import (
+    INTERPRET_SEARCH_PROMPT,
+    InterpretacaoDaPergunta,
+    interpretacao_da_resposta,
+    montar_pergunta,
 )
+
+_ANALYZE_IMAGE_PROMPT = ANALYZE_IMAGE_PROMPT
 
 # Os quatro campos de lista fechada citam o vocabulário do catálogo
 # (`app/constants/catalog.py`). Sem isso o modelo responde texto livre —
 # "Camiseta" para categoria, "Branco e preto" para cor — e o formulário
 # descarta, porque nenhum dos dois existe nas opções da tela. Dar a lista
 # muda o preenchimento de 2 campos para 5.
-_ANALYZE_IMAGE_PROMPT = f"""\
-Você está ajudando um vendedor de brechó a cadastrar uma peça de roupa a \
-partir das fotos dela. Analise as imagens e sugira, em português:
-
-- category: escolha UM valor exato desta lista: {lista(CATEGORIES)}. \
-É a família da peça no catálogo, não o tipo dela: uma camiseta é "Roupas", \
-um tênis é "Sapatos", uma bolsa é "Acessórios".
-- color: escolha UM valor exato desta lista: {lista(COLORS)}. \
-Se a peça tiver mais de uma cor, escolha a predominante; use "Estampado" \
-quando não houver uma cor dominante.
-- size: escolha UM valor exato desta lista: {lista(SIZES)}, e só se o \
-tamanho estiver legível numa etiqueta na foto. Não estime pelo caimento.
-- condition: escolha UM valor exato desta lista: {lista(CONDITIONS)}.
-- description: uma frase curta descrevendo a peça. Texto livre.
-- brand: a marca, APENAS se houver uma etiqueta ou logo legível na foto — \
-se não houver etiqueta visível ou não for possível ler com certeza, não \
-preencha este campo. Nunca chute a marca a partir do estilo da peça.
-
-Nos quatro campos de lista, responda com o valor exato como está escrito \
-acima, com acento e maiúscula. Se nenhum valor da lista servir, deixe o \
-campo nulo — é melhor vazio que aproximado, porque o vendedor corrige um \
-campo vazio mas não percebe um valor errado.
-
-Para cada campo que conseguir sugerir, dê um `value` e uma `confidence` \
-(0 a 1) de quão certo você está. Deixe o campo nulo se não conseguir \
-sugerir algo com razoável confiança — melhor um campo vazio que um chute.
-"""
-
 # Teto para a chamada ao modelo (o SDK conta em milissegundos).
 _GOOGLE_TIMEOUT_MS = 30_000
 
@@ -80,26 +60,63 @@ def modelos_de_visao() -> list[str]:
     return _lista(settings.GOOGLE_VISION_MODEL)
 
 
-def modelos_de_embedding() -> list[str]:
-    """`GOOGLE_EMBEDDING_MODEL` como lista, mesmo formato do de visão.
+# Não existe `modelos_de_embedding()`, e é decisão, não esquecimento.
+#
+# O primeiro critério da `#209` pedia lista de modelos para visão **e** para
+# embedding. O `#224` implementou o de embedding e foi revertido no `#227`,
+# porque o critério estava errado quando eu o escrevi:
+#
+#   1. `find_similar` não filtra por `embedding_model`. Se o fallback
+#      disparasse, o vetor da pergunta viria de um modelo e os do catálogo de
+#      outro — e distância entre espaços vetoriais diferentes é ruído
+#      apresentado como resultado. Um 503 é melhor: falha alto, o front mostra
+#      "indisponível", e ninguém recebe resposta errada com cara de certa.
+#   2. `scripts/backfill_embeddings.py` lê `GOOGLE_EMBEDDING_MODEL` cru para
+#      gravar em `Product.embedding_model` (`String(60)`) e para decidir o que
+#      reprocessar. Com lista, gravaria a lista inteira e reprocessaria o
+#      catálogo a cada mudança de ordem.
+#
+# Fallback de visão é diferente e continua: cada `analyze_image` é
+# independente, não há vetor guardado com que o resultado precise ser
+# comparável.
+#
+# A `#246` fechou os dois pontos: `find_similar` só compara vetores do modelo
+# que `modelo_de_embedding()` devolve, e o backfill passa a recusar lista. O
+# fallback continua de fora: com o filtro, ele não devolveria ruído, mas
+# esvaziaria a busca, porque nenhuma peça do catálogo teria o outro modelo.
 
-    Era o primeiro critério da `#209` e ficou de fora quando o `#210` entregou
-    só o lado da visão (back-end#220). **Cada mensagem da conversa com a
-    Vintex chama `embed()`** para vetorizar a pergunta, então um 503 aqui
-    derruba a conversa e a busca por similaridade inteiras — e a capacidade do
-    provedor oscila por modelo: medido em 27/09, 4 falhas em 5 chamadas num
-    intervalo de vinte minutos, com outros modelos respondendo no mesmo
-    período.
+
+def modelo_de_embedding() -> str:
+    """O nome do modelo de embedding ativo, um só (back-end#246).
+
+    É ele que vai para `Product.embedding_model` no backfill e é por ele que
+    `find_similar` filtra. Lista separada por vírgula é recusada: gravaria a
+    lista inteira na coluna e compararia vetores de espaços diferentes.
     """
-    return _lista(settings.GOOGLE_EMBEDDING_MODEL)
+    nome = settings.GOOGLE_EMBEDDING_MODEL.strip()
+    if not nome or "," in nome:
+        raise AIProviderError(
+            "GOOGLE_EMBEDDING_MODEL aceita um nome de modelo só, sem lista: "
+            f"recebeu {settings.GOOGLE_EMBEDDING_MODEL!r}."
+        )
+    return nome
 
 
 def _e_indisponibilidade(exc: Exception) -> bool:
-    """503 do provedor, pelo código do SDK ou pela mensagem."""
+    """503 ou 429 do provedor, pelo código do SDK ou pela mensagem.
+
+    O 429 (`RESOURCE_EXHAUSTED`) é a cota do provedor esgotada, o que a camada
+    gratuita responde quando acabam as requisições (back-end#258). Para quem
+    pede, é o mesmo que um 503: aquele modelo não responde agora, e outro pode
+    responder. Antes o 429 caía direto no erro, sem tentar o próximo.
+    """
     codigo = getattr(exc, "code", None) or getattr(exc, "status_code", None)
-    if codigo == 503:
+    if codigo in (503, 429):
         return True
-    return "503" in str(exc) and "UNAVAILABLE" in str(exc).upper()
+    texto = str(exc).upper()
+    return ("503" in texto and "UNAVAILABLE" in texto) or (
+        "429" in texto and "RESOURCE_EXHAUSTED" in texto
+    )
 
 
 logger = logging.getLogger(__name__)
@@ -118,6 +135,30 @@ _ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp", "image/heic"}
 _DOWNLOAD_CHUNK_SIZE = 64 * 1024
 
 
+def _partes_das_fotos(images: Sequence[ImagePhoto]) -> list[types.Part]:
+    """O prompt e uma parte por foto — o formato que o modelo multimodal lê.
+
+    Extraído de `analyze_image` (back-end#255): o download já produzia
+    exatamente `(bytes, mime_type)`, e a busca por foto manda essa mesma
+    dupla direto, sem URL. Tipo e tamanho são conferidos aqui também, e não
+    só no download: quem chama `analyze_image_bytes` pode não ter passado
+    por lá.
+    """
+    parts = [types.Part.from_text(text=ANALYZE_IMAGE_PROMPT)]
+    for foto in images:
+        mime_type = foto.mime_type.split(";")[0].strip().lower()
+        if mime_type not in _ALLOWED_CONTENT_TYPES:
+            raise AIProviderError(
+                f"Tipo de arquivo não suportado para a foto: {mime_type or 'desconhecido'!r}."
+            )
+        if len(foto.data) > _MAX_IMAGE_BYTES:
+            raise AIProviderError(
+                f"Foto excede o tamanho máximo de {_MAX_IMAGE_BYTES // (1024 * 1024)}MiB."
+            )
+        parts.append(types.Part.from_bytes(data=foto.data, mime_type=mime_type))
+    return parts
+
+
 class GoogleAIProvider(AIProvider):
     def __init__(self) -> None:
         if not settings.GOOGLE_API_KEY:
@@ -134,10 +175,48 @@ class GoogleAIProvider(AIProvider):
         )
 
     def analyze_image(self, image_urls: Sequence[str]) -> ImageAnalysisResult:
+        """Sugere atributos a partir das fotos indicadas por URL.
+
+        Baixa cada foto e delega a análise aos bytes (back-end#255): o
+        caminho da busca por foto não tem URL, e os dois precisam montar as
+        mesmas partes para o modelo.
+        """
         if not image_urls:
             return ImageAnalysisResult()
+        return self.analyze_image_bytes(self._baixar_fotos(image_urls))
 
-        parts = [types.Part.from_text(text=_ANALYZE_IMAGE_PROMPT)]
+    def analyze_image_bytes(self, images: Sequence[ImagePhoto]) -> ImageAnalysisResult:
+        """Sugere atributos a partir dos bytes das fotos (back-end#255).
+
+        Não grava nada e não baixa nada: é o caminho da busca por foto, que
+        recebe a imagem no corpo da requisição.
+        """
+        if not images:
+            return ImageAnalysisResult()
+
+        result = self._gerar_com_fallback(_partes_das_fotos(images))
+
+        parsed = result.parsed
+        if isinstance(parsed, ImageAnalysisResult):
+            return parsed
+        if result.text:
+            try:
+                return ImageAnalysisResult.model_validate_json(result.text)
+            except ValueError as exc:
+                raise AIProviderError(
+                    f"Resposta do provedor não bate com o formato esperado: {exc}"
+                ) from exc
+        raise AIProviderError("Provedor não devolveu uma análise para as fotos.")
+
+    @staticmethod
+    def _baixar_fotos(image_urls: Sequence[str]) -> list[ImagePhoto]:
+        """Baixa cada foto, com teto por foto e no total, e o tipo declarado.
+
+        O teto por foto é conferido enquanto baixa, não depois: sem isso,
+        uma foto arbitrariamente grande seria carregada inteira em memória
+        antes de qualquer verificação (revisão da Adrielle no PR #200).
+        """
+        fotos: list[ImagePhoto] = []
         total_bytes = 0
         try:
             with httpx.Client(
@@ -146,7 +225,7 @@ class GoogleAIProvider(AIProvider):
                 headers=_IMAGE_DOWNLOAD_HEADERS,
             ) as client:
                 for url in image_urls:
-                    with client.stream("GET", url) as photo:
+                    with client.stream("GET", image_download_url(url)) as photo:
                         photo.raise_for_status()
                         mime_type = photo.headers.get("content-type", "").split(";")[0]
                         if mime_type not in _ALLOWED_CONTENT_TYPES:
@@ -167,46 +246,66 @@ class GoogleAIProvider(AIProvider):
                                     f"Fotos somadas excedem o tamanho máximo de {_MAX_TOTAL_BYTES // (1024 * 1024)}MiB."
                                 )
 
-                    parts.append(
-                        types.Part.from_bytes(data=bytes(chunks), mime_type=mime_type)
-                    )
+                    fotos.append(ImagePhoto(data=bytes(chunks), mime_type=mime_type))
         except httpx.HTTPError as exc:
             raise AIProviderError(f"Falha ao baixar foto da peça: {exc}") from exc
-
-        result = self._gerar_com_fallback(parts)
-
-        parsed = result.parsed
-        if isinstance(parsed, ImageAnalysisResult):
-            return parsed
-        if result.text:
-            try:
-                return ImageAnalysisResult.model_validate_json(result.text)
-            except ValueError as exc:
-                raise AIProviderError(
-                    f"Resposta do provedor não bate com o formato esperado: {exc}"
-                ) from exc
-        raise AIProviderError("Provedor não devolveu uma análise para as fotos.")
+        return fotos
 
     async def stream_interpret_search(
         self, query: str, history: Sequence[ChatTurn] = ()
     ) -> AsyncIterator[SearchStreamEvent]:
-        raise AIProviderUnavailableError(_NOT_IMPLEMENTED)
-        yield  # pragma: no cover - nunca alcançado; mantém a função geradora
+        """Separa a pergunta em filtro e similaridade (back-end#260).
+
+        Uma chamada só, com saída estruturada, nos mesmos modelos de geração
+        da análise de foto (`GOOGLE_VISION_MODEL`), com o mesmo fallback no
+        503 e no 429. Não emite texto: o que a pessoa lê é o que foi
+        interpretado (`InterpretedQuery`) e as peças, que o controller busca.
+        """
+        parts = [
+            types.Part.from_text(text=INTERPRET_SEARCH_PROMPT),
+            types.Part.from_text(text=montar_pergunta(query, history)),
+        ]
+        # O SDK é síncrono: no event loop, seguraria as outras requisições
+        # enquanto o modelo responde.
+        result = await asyncio.to_thread(
+            self._gerar_com_fallback,
+            parts,
+            schema=InterpretacaoDaPergunta,
+            tarefa="interpretar a pergunta",
+        )
+
+        parsed = result.parsed
+        if not isinstance(parsed, InterpretacaoDaPergunta):
+            if not result.text:
+                raise AIProviderError("Provedor não devolveu a interpretação.")
+            try:
+                parsed = InterpretacaoDaPergunta.model_validate_json(result.text)
+            except ValueError as exc:
+                raise AIProviderError(
+                    f"Interpretação fora do formato esperado: {exc}"
+                ) from exc
+
+        yield interpretacao_da_resposta(parsed)
+        yield SearchDone()
 
     def _gerar_com_fallback(
-        self, parts: list[types.Part]
+        self,
+        parts: list[types.Part],
+        *,
+        schema: type[BaseModel] = ImageAnalysisResult,
+        tarefa: str = "analisar as fotos",
     ) -> types.GenerateContentResponse:
-        """Tenta os modelos configurados em ordem, pulando os que dão 503.
+        """Tenta os modelos configurados em ordem, pulando os que dão 503 ou 429.
 
-        Só o 503 faz seguir para o próximo: é falta de capacidade do provedor,
-        e outro modelo costuma estar de pé no mesmo instante. 404 (nome que
+        Só esses fazem seguir para o próximo: é falta de capacidade ou de cota
+        do provedor, e outro modelo costuma estar de pé no mesmo instante. 404 (nome que
         não existe para a chave) e 400 (entrada recusada) são erro nosso, e
         tentar outro só esconderia a causa.
         """
         modelos = modelos_de_visao()
         if not modelos:
             # Sem isto, lista vazia caía no `raise` do fim com `ultimo = None` e
-            # produzia "Falha ao analisar as fotos: None", que não diz nada.
+            # produzia "Falha ao ...: None", que não diz nada.
             raise AIProviderError(
                 "GOOGLE_VISION_MODEL está vazio: nenhum modelo para tentar."
             )
@@ -219,13 +318,13 @@ class GoogleAIProvider(AIProvider):
                     contents=[types.Content(parts=parts)],
                     config=types.GenerateContentConfig(
                         response_mime_type="application/json",
-                        response_schema=ImageAnalysisResult,
+                        response_schema=schema,
                     ),
                 )
             except Exception as exc:  # SDK do Google não documenta uma exceção só
                 ultimo = exc
                 if not _e_indisponibilidade(exc) or indice == len(modelos) - 1:
-                    raise AIProviderError(f"Falha ao analisar as fotos: {exc}") from exc
+                    raise AIProviderError(f"Falha ao {tarefa}: {exc}") from exc
 
                 logger.warning(
                     "Modelo %s indisponível (503); tentando %s",
@@ -233,45 +332,7 @@ class GoogleAIProvider(AIProvider):
                     modelos[indice + 1],
                 )
 
-        raise AIProviderError(f"Falha ao analisar as fotos: {ultimo}")
-
-    def _embed_com_fallback(
-        self, contents: list[types.Content]
-    ) -> types.EmbedContentResponse:
-        """Mesma regra do `_gerar_com_fallback`, para o embedding.
-
-        Só o 503 faz seguir para o próximo modelo: é falta de capacidade do
-        provedor. 404 (nome que não existe para a chave) e 400 (entrada
-        recusada) são erro nosso, e tentar outro esconderia a causa.
-        """
-        modelos = modelos_de_embedding()
-        if not modelos:
-            raise AIProviderError(
-                "GOOGLE_EMBEDDING_MODEL está vazio: nenhum modelo para tentar."
-            )
-        ultimo: Exception | None = None
-
-        for indice, modelo in enumerate(modelos):
-            try:
-                return self._client.models.embed_content(
-                    model=modelo,
-                    contents=contents,
-                    config=types.EmbedContentConfig(
-                        output_dimensionality=EMBEDDING_DIM
-                    ),
-                )
-            except Exception as exc:  # SDK do Google não documenta uma exceção só
-                ultimo = exc
-                if not _e_indisponibilidade(exc) or indice == len(modelos) - 1:
-                    raise AIProviderError(f"Falha ao gerar embedding: {exc}") from exc
-
-                logger.warning(
-                    "Modelo de embedding %s indisponível (503); tentando %s",
-                    modelo,
-                    modelos[indice + 1],
-                )
-
-        raise AIProviderError(f"Falha ao gerar embedding: {ultimo}")
+        raise AIProviderError(f"Falha ao {tarefa}: {ultimo}")
 
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
         if not texts:
@@ -282,7 +343,16 @@ class GoogleAIProvider(AIProvider):
         # texto. Encapsular cada texto no seu próprio `Content` é o que faz o
         # batch devolver um vetor por entrada, na mesma ordem.
         contents = [types.Content(parts=[types.Part(text=text)]) for text in texts]
-        response = self._embed_com_fallback(contents)
+        # Um nome de modelo só, de propósito — o bloco de comentário no topo
+        # deste arquivo explica por que não há fallback aqui.
+        try:
+            response = self._client.models.embed_content(
+                model=settings.GOOGLE_EMBEDDING_MODEL,
+                contents=contents,
+                config=types.EmbedContentConfig(output_dimensionality=EMBEDDING_DIM),
+            )
+        except Exception as exc:  # SDK do Google não documenta uma exceção só
+            raise AIProviderError(f"Falha ao gerar embedding: {exc}") from exc
 
         if response.embeddings is None or len(response.embeddings) != len(texts):
             raise AIProviderError(

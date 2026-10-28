@@ -5,7 +5,7 @@ alembic==1.13.2
 psycopg2-binary==2.9.9
 pydantic-settings==2.5.2
 python-dotenv==1.2.2
-pyjwt==2.14.0
+pyjwt==2.15.1
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
 email-validator==2.2.0
@@ -21,6 +21,6 @@ pytest-asyncio==1.4.0
 pytest-cov==7.1.0
 httpx==0.28.1
 ruff==0.6.8
-black==26.3.1
+black==26.10.1
 mypy==1.14.1
 pip-audit==2.7.3

@@ -1,9 +1,11 @@
+from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Literal
 
 from sqlalchemy import (
     JSON,
     CheckConstraint,
+    DateTime,
     ForeignKey,
     Index,
     Integer,
@@ -11,7 +13,7 @@ from sqlalchemy import (
     String,
     Text,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, query_expression, relationship
 
 from app.constants.embedding import EMBEDDING_DIM
 from app.models.base_model import BaseModel
@@ -23,19 +25,30 @@ if TYPE_CHECKING:
     from app.models.store import Store
 
 AIStatus = Literal["pending", "processing", "done", "failed"]
+EmbeddingStatus = Literal["pending", "done", "failed"]
 
 
 class Product(BaseModel):
     __tablename__ = "products"
     __table_args__ = (
         CheckConstraint("quantity = 1", name="ck_products_quantity"),
+        # `reservado`: peça num pedido aberto, ainda sem comprovante aprovado
+        # (back-end#243). Nas leituras se comporta como `vendido` — sai do
+        # catálogo e da busca, continua no detalhe, dá 409 no carrinho — porque
+        # todas elas já filtram por `ativo`. Não é `vendido` porque o resumo
+        # financeiro soma `vendido` como dinheiro recebido.
         CheckConstraint(
-            "status IN ('rascunho', 'ativo', 'vendido', 'despublicado')",
+            "status IN ('rascunho', 'ativo', 'reservado', 'vendido', 'despublicado')",
             name="ck_products_status",
         ),
         CheckConstraint(
             "ai_status IS NULL OR ai_status IN ('pending', 'processing', 'done', 'failed')",
             name="ck_products_ai_status",
+        ),
+        CheckConstraint(
+            "embedding_status IS NULL"
+            " OR embedding_status IN ('pending', 'done', 'failed')",
+            name="ck_products_embedding_status",
         ),
         Index("ix_products_status", "status"),
         Index("ix_products_category", "category"),
@@ -44,6 +57,7 @@ class Product(BaseModel):
         Index("ix_products_color", "color"),
         Index("ix_products_price", "price"),
         Index("ix_products_ai_status", "ai_status"),
+        Index("ix_products_sold_at", "sold_at"),
     )
 
     store_id: Mapped[int] = mapped_column(ForeignKey("stores.id"), nullable=False)
@@ -55,11 +69,19 @@ class Product(BaseModel):
     color: Mapped[str | None] = mapped_column(String(50))
     size: Mapped[str | None] = mapped_column(String(30))
     condition: Mapped[str | None] = mapped_column(String(50))
+    # Composição do tecido, lida da etiqueta (back-end#257). Texto livre e
+    # opcional: sem etiqueta legível fica vazia, e o vendedor escreve se quiser.
+    composition: Mapped[str | None] = mapped_column(String(200))
     price: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     status: Mapped[str] = mapped_column(
         String(30), nullable=False, default="ativo", server_default="ativo"
     )
+    # Quando a peça foi vendida. Nada nesta sprint transforma peça em vendida:
+    # não existe checkout (VS-022, #44), então quem preenche é o seed. Sem esta
+    # coluna não existe "no período" — a data de última alteração não serve,
+    # porque muda a cada edição (back-end#146).
+    sold_at: Mapped[datetime | None] = mapped_column(DateTime)
 
     # Pipeline assíncrono de ingestão de IA (VE-05, back-end#62).
     # `ai_status` nulo significa "nenhuma análise de IA foi solicitada para
@@ -78,6 +100,16 @@ class Product(BaseModel):
         EmbeddingVector(EMBEDDING_DIM)
     )
     embedding_model: Mapped[str | None] = mapped_column(String(60))
+    # Situação e erro da geração do vetor na publicação (back-end#245), como
+    # `ai_status`/`ai_error` registram a análise da foto. Nulo: nenhuma geração
+    # pedida, como no rascunho ou no catálogo anterior a esta coluna.
+    embedding_status: Mapped[EmbeddingStatus | None] = mapped_column(String(20))
+    embedding_error: Mapped[str | None] = mapped_column(Text)
+
+    # URL da capa (foto de menor posição), preenchida só por quem pede com
+    # `with_expression` na própria consulta — a listagem do vendedor
+    # (back-end#265). Não é coluna: em qualquer outra consulta fica `None`.
+    cover_image_url: Mapped[str | None] = query_expression()
 
     store: Mapped["Store"] = relationship(back_populates="products")
     images: Mapped[list["ProductImage"]] = relationship(

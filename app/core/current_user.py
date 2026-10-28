@@ -1,12 +1,21 @@
-"""Identidade do usuário logado — placeholder até a autenticação (#151) mergear.
+"""Identidade do usuário logado.
 
-Nenhuma rota fica esperando a autenticação: quem chama recebe o id via
-header `X-User-Id` e usa `Depends(get_current_user_id)`. Quando a #151
-entrar, a troca é o corpo desta função, em um arquivo só.
+Toda rota que precisa saber quem é a pessoa depende de `get_current_user_id`.
+Até a `#151` isto era um placeholder: lia o id de um cabeçalho `X-User-Id` e, na
+falta dele, devolvia o usuário do seed. Ou seja, as rotas da Sprint 2 não tinham
+autenticação nenhuma — aceitavam leitura e escrita sem token, e trocavam de
+usuário por cabeçalho.
+
+Agora resolve pela sessão real. Continua sendo um arquivo só, e nenhuma rota
+mudou: era exatamente o que a `#151` declarava que seria.
 """
 
-from fastapi import Header
+from fastapi import Depends
+
+from app.core.security import get_current_user
+from app.models.user import User
 
 
-def get_current_user_id(x_user_id: int | None = Header(default=None)) -> int:
-    return x_user_id or 1  # usuário do seed
+def get_current_user_id(user: User = Depends(get_current_user)) -> int:
+    """Id do usuário autenticado. Sem token válido, `get_current_user` levanta 401."""
+    return user.id

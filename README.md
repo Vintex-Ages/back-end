@@ -96,9 +96,24 @@ Dados sintéticos para desenvolvimento e demo. Rode **depois** de `alembic upgra
 python -m app.seeds.lojas   # endereços, vendedores e lojas (RS)
 python -m app.seeds.pecas   # peças e imagens, distribuídas entre as lojas
 python -m app.seeds.legal   # v0 dos termos de uso e do contrato de venda
+python -m app.seeds.admin   # conta da administradora
 ```
 
 Todos são idempotentes — rodar de novo não duplica.
+
+### Conta da administradora
+
+As contas das lojas não fazem login. A da administradora faz: é com ela que se
+entra nas rotas de `/api/admin`, como a fila de comprovantes.
+
+| | |
+| --- | --- |
+| E-mail | `admin@vintex.example.com` (`SEED_ADMIN_EMAIL`) |
+| Senha em desenvolvimento | `vintex-admin-dev` |
+| Senha em produção | obrigatória em `SEED_ADMIN_PASSWORD`; sem ela o seed recusa rodar |
+
+Se a conta já existe, o seed só garante o papel de administradora e não troca a
+senha.
 
 ## Testes
 
@@ -135,12 +150,12 @@ Alvos principais:
 | `make infra-qa` | Lint, format-check e `terraform fmt/init/validate`. Nunca executa `terraform apply`. |
 | `make infra-up` | Reconstrói a API, sobe o Compose `vintex-infra`, aplica migrations locais e prepara recursos sintéticos. |
 | `make infra-down` | Derruba somente os containers/redes/volumes do projeto `vintex-infra`. |
-| `make infra-local-test` | Roda os testes locais (unitários, Terraform mockado, PostgreSQL, LocalStack, MiniStack, interoperabilidade) sem derrubar o ambiente. |
+| `make infra-local-test` | Roda os testes locais (unitários, Terraform mockado, PostgreSQL, LocalStack/SQS, mídia, MiniStack, interoperabilidade) sem derrubar o ambiente. |
 | `make infra-complete` | QA + subida + testes + `infra-down`, sempre derrubando o ambiente no final (mesmo em falha), preservando o código de saída da primeira falha. |
 
-Alvos granulares para diagnóstico: `lint`, `format-check`, `terraform-init`, `terraform-fmt`, `terraform-validate`, `terraform-test`, `test-unit`, `test-infra-postgres`, `test-localstack`, `test-ministack`, `test-interoperability`.
+Alvos granulares para diagnóstico: `lint`, `format-check`, `terraform-init`, `terraform-fmt`, `terraform-validate`, `terraform-test`, `test-unit`, `test-infra-postgres`, `test-localstack`, `test-sqs`, `test-media-storage`, `test-ministack`, `test-interoperability`.
 
-`test-localstack`, `test-ministack` e `test-interoperability` executam testes reais dos emuladores e do fluxo local (VE-20/VE-21/VE-22). `infra-up` aplica as migrations ao Postgres local, e `test-unit` roda no container da API. A interoperabilidade usa um consumidor SQS sintético; o worker de produto pertence à VE-18 (#169), em hold. O módulo Terraform de VPC Link pertence à VE-19 (#170), também em hold.
+`test-localstack`, `test-sqs`, `test-ai-worker`, `test-ministack` e `test-interoperability` executam testes reais dos emuladores e do fluxo local (VE-17/VE-18/VE-20/VE-21/VE-22). `infra-up` aplica as migrations ao Postgres local e provisiona as filas SQS no mesmo LocalStack do Compose; `test-unit` roda no container da API. O consumidor sintético de interoperabilidade permanece um harness de teste; o worker de produto consome a fila de análise. O módulo Terraform de VPC Link pertence à VE-19 (#170), ainda em hold.
 
 A [VE-14 (#165)](https://github.com/Vintex-Ages/back-end/issues/165) acrescenta módulos Terraform de rede e papel de execução ECS, exercitados apenas por plano mockado. A interface de cada task Fargate será criada pelo modo `awsvpc` quando a VE-19 ligar os módulos à computação; nenhum recurso AWS real é aplicado nesta fase. Veja [a documentação de Terraform](infra/terraform/README.md).
 

@@ -30,18 +30,53 @@ class ErrorCode:
     AUTH_REQUIRED = "AUTH_REQUIRED"
     INVALID_CREDENTIALS = "INVALID_CREDENTIALS"
     FORBIDDEN = "FORBIDDEN"
+    # Rota de administração pedida por quem não é administradora (back-end#61).
+    # Próprio, e não o `FORBIDDEN` genérico, para o front distinguir "sem papel"
+    # de "sem acesso a este recurso".
+    ADMIN_REQUIRED = "ADMIN_REQUIRED"
     NOT_FOUND = "NOT_FOUND"
     EMAIL_TAKEN = "EMAIL_TAKEN"
     PRODUCT_NOT_FOUND = "PRODUCT_NOT_FOUND"
+    PRODUCT_SOLD = "PRODUCT_SOLD"
+    PRODUCT_NOT_EDITABLE = "PRODUCT_NOT_EDITABLE"
     PRODUCT_UNAVAILABLE = "PRODUCT_UNAVAILABLE"
     CART_ITEM_NOT_FOUND = "CART_ITEM_NOT_FOUND"
+    # Criação do pedido (back-end#247).
+    MIXED_STORES = "MIXED_STORES"
+    PIECE_UNAVAILABLE = "PIECE_UNAVAILABLE"
+    STORE_WITHOUT_PIX = "STORE_WITHOUT_PIX"
+    # Validação do comprovante pela administradora (back-end#251).
+    ORDER_NOT_FOUND = "ORDER_NOT_FOUND"
+    ORDER_NOT_IN_REVIEW = "ORDER_NOT_IN_REVIEW"
+    # Pedido sem comprovante enviado, na rota que serve o arquivo (back-end#244).
+    RECEIPT_NOT_FOUND = "RECEIPT_NOT_FOUND"
+    # Envio do comprovante pelo comprador (back-end#249). Os nomes são os que o
+    # `orderService` do front já usa; ele traduz pelo status HTTP.
+    ORDER_NOT_AWAITING_RECEIPT = "ORDER_NOT_AWAITING_RECEIPT"
+    RECEIPT_TOO_LARGE = "RECEIPT_TOO_LARGE"
+    RECEIPT_INVALID_TYPE = "RECEIPT_INVALID_TYPE"
+    # Busca por foto (back-end#255). Tipo e tamanho têm status próprios no
+    # contrato (415 e 413), como o comprovante.
+    IMAGE_INVALID_TYPE = "IMAGE_INVALID_TYPE"
+    IMAGE_TOO_LARGE = "IMAGE_TOO_LARGE"
+    # Cota diária da IA esgotada. No chat é um evento com este mesmo código
+    # (back-end#258); na busca por foto, um 429 com a mensagem que diz
+    # quando volta (back-end#255).
+    QUOTA_EXCEEDED = "QUOTA_EXCEEDED"
     STORE_NOT_FOUND = "STORE_NOT_FOUND"
+    # Aviso inexistente ou de outra pessoa (back-end#261).
+    NOTIFICATION_NOT_FOUND = "NOTIFICATION_NOT_FOUND"
     LEGAL_DOCUMENT_NOT_FOUND = "LEGAL_DOCUMENT_NOT_FOUND"
     STORE_ALREADY_EXISTS = "STORE_ALREADY_EXISTS"
     DOCUMENT_ALREADY_REGISTERED = "DOCUMENT_ALREADY_REGISTERED"
     METHOD_NOT_ALLOWED = "METHOD_NOT_ALLOWED"
     INTERNAL_ERROR = "INTERNAL_ERROR"
     AI_UNAVAILABLE = "AI_UNAVAILABLE"
+    # Serviço indisponível que não é a camada de IA. O front despacha pelo
+    # `code`, então uma foto que não carrega não pode chegar lá rotulada como
+    # falha da IA — foi o que acontecia quando o `ServiceUnavailable` era
+    # levantado sem `code` e herdava o default da classe.
+    SERVICE_UNAVAILABLE = "SERVICE_UNAVAILABLE"
 
 
 def error_body(
@@ -115,10 +150,16 @@ class ValidationError(AppError):
 class ServiceUnavailable(AppError):
     """Dependência externa fora do ar — a falha é nossa de reportar, não do
     usuário de adivinhar. Quem chama deve poder distinguir isto de "não
-    encontrei nada"."""
+    encontrei nada".
+
+    O default é o código genérico. Era `AI_UNAVAILABLE`, e a rota de mídia que
+    levantava esta exceção sem `code=` respondia falha de configuração de
+    storage com rótulo da camada de IA. Quem é a camada de IA passa o código
+    explicitamente.
+    """
 
     status_code = status.HTTP_503_SERVICE_UNAVAILABLE
-    code = ErrorCode.AI_UNAVAILABLE
+    code = ErrorCode.SERVICE_UNAVAILABLE
 
 
 _HTTP_STATUS_CODE: dict[int, str] = {

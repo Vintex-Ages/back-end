@@ -1,18 +1,17 @@
-"""Como o `price` sai em JSON, rota por rota.
+"""`price` sai como numero em JSON em toda resposta que o tem.
 
-O `Decimal` do Pydantic serializa como **string** em JSON. Duas respostas
-corrigem isso com `@field_serializer("price") -> float` e duas nao, entao o
-mesmo campo chega como numero em algumas rotas e como string em outras.
+O `Decimal` do Pydantic serializa como **string** se ninguem interferir, e por
+um tempo duas respostas tinham `@field_serializer("price") -> float` e tres nao.
+A mesma peca chegava ao front como numero pelo feed e como string pela lista do
+vendedor, pela loja e pelo rascunho.
 
-Isso ja custou tempo duas vezes: o PR #127 anotou "price chega como string"
-como se valesse para o feed (nao vale, o feed tem serializer), e o
-`front-end#250` adicionou uma conversao no feed para um problema que nao
-existe la. Nenhum teste dizia qual era qual -- este diz.
+Isso custou tempo duas vezes: o PR #127 anotou "price chega como string" como se
+valesse para o feed (nao vale, o feed sempre teve serializer) e o
+`front-end#250` adicionou uma conversao no feed para um problema que nao existia
+la. A `#212` uniformizou; este teste e o que impede a divergencia de voltar.
 
-Nao muda comportamento. Fixa o que existe hoje para que mexer no serializer
-quebre um teste em vez de quebrar o front em silencio. Uniformizar as quatro
-(dando serializer as duas que nao tem) esta na `#212`, para depois da
-apresentacao.
+Quem adicionar um schema com `price` adiciona uma linha na lista abaixo. Sem
+serializer, o teste falha -- que e o ponto.
 """
 
 from __future__ import annotations
@@ -23,6 +22,8 @@ from decimal import Decimal
 
 import pytest
 
+from app.schemas.cart_schema import CartItemResponse
+from app.schemas.product_management_schema import ProductManagementResponse
 from app.schemas.product_schema import (
     FeedStoreResponse,
     ProductDetailResponse,
@@ -103,36 +104,49 @@ def _peca_da_loja() -> StoreProductItemResponse:
     )
 
 
+def _peca_do_vendedor() -> ProductManagementResponse:
+    return ProductManagementResponse(
+        id=41,
+        name="Jaqueta",
+        description=None,
+        category=None,
+        style=None,
+        brand=None,
+        color=None,
+        size=None,
+        condition=None,
+        price=Decimal("348.59"),
+        quantity=1,
+        status="despublicado",
+    )
+
+
+def _item_do_carrinho() -> CartItemResponse:
+    return CartItemResponse(
+        product_id=41,
+        name="Jaqueta",
+        price=Decimal("374.79"),
+        cover_image_url=None,
+        status="ativo",
+        available=True,
+    )
+
+
 @pytest.mark.parametrize(
     ("rotulo", "fabrica", "esperado"),
     [
         ("GET /api/products (feed, busca, sugestoes)", _feed, 99.9),
         ("GET /api/products/{id}", _detalhe, 149.9),
+        ("POST/PATCH/publish/unpublish de peca", _rascunho, 10.5),
+        ("GET /api/stores/{id}/products", _peca_da_loja, 199.9),
+        ("GET /api/users/me/products", _peca_do_vendedor, 348.59),
+        ("GET /api/users/me/cart", _item_do_carrinho, 374.79),
     ],
 )
-def test_price_sai_como_numero_onde_tem_field_serializer(
+def test_price_sai_como_numero_em_toda_resposta(
     rotulo: str, fabrica, esperado: float
 ) -> None:
     valor = _json(fabrica())["price"]
 
     assert isinstance(valor, float), f"{rotulo}: price veio {type(valor).__name__}"
-    assert valor == esperado
-
-
-@pytest.mark.parametrize(
-    ("rotulo", "fabrica", "esperado"),
-    [
-        ("POST/PATCH/publish de rascunho", _rascunho, "10.50"),
-        ("GET /api/stores/{id}/products", _peca_da_loja, "199.90"),
-    ],
-)
-def test_price_sai_como_string_onde_nao_tem_field_serializer(
-    rotulo: str, fabrica, esperado: str
-) -> None:
-    """Estas duas o front converte com `Number(...)`, e o tipo dele diz
-    `number | string` por causa disto. Se ganharem serializer, o front segue
-    funcionando -- mas o fixture dos testes dele fica desatualizado."""
-    valor = _json(fabrica())["price"]
-
-    assert isinstance(valor, str), f"{rotulo}: price veio {type(valor).__name__}"
     assert valor == esperado

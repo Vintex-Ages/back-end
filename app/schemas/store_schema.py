@@ -17,10 +17,11 @@ from pydantic import (
     ConfigDict,
     Field,
     ValidationInfo,
+    field_serializer,
     field_validator,
 )
 
-_DOCUMENT_DIGIT_LENGTH = {"CPF": 11, "CNPJ": 14}
+from app.core.documento import DOCUMENT_DIGITS, is_valid_document, only_digits
 
 
 class StoreAddressResponse(BaseModel):
@@ -35,9 +36,15 @@ class StoreAddressResponse(BaseModel):
 
 class StoreMetricsResponse(BaseModel):
     """Métricas que já existem hoje. O que não existir não entra aqui —
-    o front mostra "em breve" pra qualquer coisa fora deste conjunto."""
+    o front mostra "em breve" pra qualquer coisa fora deste conjunto.
+
+    `active_count` são as peças `ativo`, o mesmo número da listagem de
+    brechós (back-end#256). `products_listed` tem o mesmo valor: era a
+    contagem errada (incluía vendida e despublicada), e fica corrigida para
+    não quebrar quem ainda lê o nome antigo."""
 
     created_at: datetime
+    active_count: int
     products_listed: int
     products_sold: int
 
@@ -52,12 +59,32 @@ class StoreDetailResponse(BaseModel):
     metrics: StoreMetricsResponse
 
 
+class StoreListItemResponse(BaseModel):
+    """Um brechó na listagem pública (`GET /api/stores`, back-end#256).
+
+    O endereço vem achatado em `city`/`state`, nulos quando a loja não tem
+    endereço (`stores.address_id` é anulável)."""
+
+    id: int
+    name: str
+    description: str | None
+    logo_url: str | None
+    verified: bool
+    city: str | None
+    state: str | None
+    active_count: int
+
+
 class StoreProductItemResponse(BaseModel):
     id: int
     name: str
     price: Decimal
     cover_image_url: str | None
     status: str
+
+    @field_serializer("price")
+    def serializar_preco(self, price: Decimal) -> float:
+        return float(price)
 
 
 class StoreAddressCreate(BaseModel):
@@ -109,7 +136,7 @@ class StoreCreate(BaseModel):
     @field_validator("document_value")
     @classmethod
     def normalizar_documento(cls, valor: str, info: ValidationInfo) -> str:
-        """Confere a quantidade de dígitos e **devolve só os dígitos**.
+        """Confere o documento e **devolve só os dígitos**.
 
         Duas coisas que estavam erradas (back-end#220, migradas para cá porque
         mexem nesta mesma função):
@@ -127,16 +154,50 @@ class StoreCreate(BaseModel):
            descartada em vez de gravada.
         """
         tipo = info.data.get("document_type")
-        digitos = "".join(c for c in valor if c.isdigit())
+        digitos = only_digits(valor)
         if tipo is None:
             # `document_type` já falhou a validação; não há o que conferir aqui.
             return digitos
-        esperado = _DOCUMENT_DIGIT_LENGTH[tipo]
+        esperado = DOCUMENT_DIGITS[tipo]
         if len(digitos) != esperado:
             raise ValueError(
                 f"{tipo} deve ter {esperado} dígitos (recebeu {len(digitos)})."
             )
+        # Contar dígitos deixava passar `00000000000`, que ganhava o selo
+        # Confiável (back-end#217). A regra é a mesma do front.
+        if not is_valid_document(tipo, digitos):
+            raise ValueError(f"{tipo} inválido.")
         return digitos
+
+
+class StoreUpdate(BaseModel):
+    """Corpo de `PATCH /api/users/me/store` (back-end#221).
+
+    Os mesmos campos editáveis do `StoreCreate`, todos opcionais: só o que vier
+    no corpo muda (ver `exclude_unset` no controller), e campo ausente não é
+    apagado. `null` explícito limpa o campo, que é como se tira a logo.
+
+    O documento fica de fora, e `extra="forbid"` faz isso aparecer: trocar
+    `document_type`/`document_value` muda a identidade do vendedor e tem
+    unicidade, então é outra rota com regra própria. Sem o `forbid`, o campo
+    seria ignorado em silêncio e a resposta 200 diria que deu certo.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    description: str | None = None
+    logo_url: AnyHttpUrl | None = None
+    pix_key: str | None = Field(default=None, max_length=255)
+    address: StoreAddressCreate | None = None
+
+    @field_validator("name")
+    @classmethod
+    def _recusar_nome_nulo(cls, valor: str | None) -> str:
+        """`name` é NOT NULL: ausente não muda nada, `null` quebraria o commit."""
+        if valor is None:
+            raise ValueError("O nome da loja não pode ser nulo.")
+        return valor
 
 
 class StoreResponse(BaseModel):
@@ -151,6 +212,9 @@ class StoreResponse(BaseModel):
     # como conferir onde vai cair o dinheiro. Nao entra no retrato publico
     # (`StoreDetailResponse`): e dado do vendedor, nao da vitrine.
     pix_key: str | None
+    # Selo Confiável/Pendente (RN-73). O painel do vendedor mostra o dele, e
+    # sem o campo aqui fazia uma segunda requisição só para isso (#259).
+    verified: bool
     document_type: str
     document_value: str
     terms_version: str | None

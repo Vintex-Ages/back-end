@@ -11,13 +11,18 @@ já meio cadastrada.
 
 from __future__ import annotations
 
+from urllib.parse import unquote, urlsplit
+
 from app.core.errors import ValidationError
-from app.services.media_storage import MediaKind
+from app.services.media_storage import MEDIA_PREFIXES, MediaKind
 
 # Mesmo conjunto de `app/services/ai/google.py`. HEIC entra porque iPhone
 # fotografa nele por padrão, e a IA aceita.
 ALLOWED_PHOTO_TYPES = frozenset({"image/jpeg", "image/png", "image/webp", "image/heic"})
 ALLOWED_VIDEO_TYPES = frozenset({"video/mp4", "video/quicktime"})
+# Comprovante é imagem ou PDF (RN-20): o print do app do banco ou o PDF que o
+# próprio banco gera (back-end#244). PDF só aqui; foto de peça continua imagem.
+ALLOWED_RECEIPT_TYPES = ALLOWED_PHOTO_TYPES | {"application/pdf"}
 
 MAX_BYTES_PER_FILE = 8 * 1024 * 1024
 MAX_BYTES_PER_REQUEST = 24 * 1024 * 1024
@@ -29,17 +34,39 @@ MAX_FILES_PER_REQUEST = 8
 _ALLOWED_BY_KIND: dict[MediaKind, frozenset[str]] = {
     "photo": ALLOWED_PHOTO_TYPES,
     "video": ALLOWED_VIDEO_TYPES,
-    "receipt": ALLOWED_PHOTO_TYPES,
+    "receipt": ALLOWED_RECEIPT_TYPES,
     "logo": ALLOWED_PHOTO_TYPES,
+    # A etiqueta vai para a mesma análise das fotos, então aceita o mesmo.
+    "label": ALLOWED_PHOTO_TYPES,
 }
 
 # Prefixos que a rota pública de leitura pode servir. `payments/receipts/` fica
 # fora: comprovante de PIX é documento de uma transação entre duas pessoas, e
-# uma chave sorteada não é controle de acesso. Quando houver tela de pedido,
-# entra por rota autenticada.
+# uma chave sorteada não é controle de acesso. Quem abre o arquivo é só a
+# administradora, por `GET /api/admin/payments/{order_id}/receipt`
+# (back-end#244).
 # `logo` entra: a imagem da loja aparece na vitrine pública, igual a foto de
 # peça. `payments/receipts/` continua fora.
-PUBLIC_KINDS: frozenset[MediaKind] = frozenset({"photo", "video", "logo"})
+# `label` entra porque é por esta rota que o servidor baixa a foto para a IA
+# (back-end#257), e uma etiqueta de roupa não tem nada de sigiloso. Ficar fora
+# da galeria é outra regra: a peça recusa essa URL em `images`
+# (`e_foto_de_etiqueta`).
+PUBLIC_KINDS: frozenset[MediaKind] = frozenset({"photo", "video", "logo", "label"})
+
+_CAMINHO_DA_ETIQUETA = f"/api/media/{MEDIA_PREFIXES['label']}"
+
+
+def e_foto_de_etiqueta(url: str) -> bool:
+    """A URL aponta para uma foto de etiqueta subida por `/api/users/me/media`.
+
+    Olha só o caminho, depois de decodificado: a origem muda por ambiente
+    (`PUBLIC_BASE_URL`), o caminho da mídia não.
+    """
+    try:
+        caminho = unquote(urlsplit(url).path)
+    except ValueError:
+        return False
+    return _CAMINHO_DA_ETIQUETA in caminho
 
 
 def validar_tipo(kind: MediaKind, content_type: str | None) -> str:

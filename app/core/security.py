@@ -30,7 +30,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.core.clock import utcnow_naive
-from app.core.errors import Forbidden, Unauthorized
+from app.core.errors import ErrorCode, Forbidden, Unauthorized
 from app.database import get_db
 from app.models.user import User
 from app.repositories.seller_repository import SellerRepository
@@ -160,9 +160,15 @@ def require_seller(
 
 
 def require_admin(user: User = Depends(get_current_user)) -> User:
-    """Exige `is_admin`. Senão -> 403 `FORBIDDEN`."""
+    """Exige `is_admin`. Senão -> 403 `ADMIN_REQUIRED`.
+
+    Lê `users.is_admin` do banco, nunca a claim `is_admin` do token: um token
+    emitido antes de o papel ser retirado não pode continuar valendo como admin.
+    """
     if not user.is_admin:
-        raise Forbidden("Ação restrita a administradores.")
+        raise Forbidden(
+            "Ação restrita a administradores.", code=ErrorCode.ADMIN_REQUIRED
+        )
     return user
 
 

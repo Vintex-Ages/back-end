@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Sequence
-from typing import Literal
+from typing import Literal, NamedTuple
 
 from pydantic import BaseModel
 
@@ -59,6 +59,22 @@ class ImageAnalysisResult(BaseModel):
     # Só preenchida quando a etiqueta/marca está legível na foto (RN-58,
     # back-end#150) — sem isso, fica `None`. A IA não chuta marca.
     brand: SuggestedField | None = None
+    # Composição do tecido, com o mesmo cuidado da marca (back-end#257): só
+    # sai de etiqueta legível, nunca do aspecto do tecido.
+    composition: SuggestedField | None = None
+
+
+class ImagePhoto(NamedTuple):
+    """Bytes de uma foto e o tipo declarado (ex.: `image/jpeg`).
+
+    É a entrada de quem analisa a foto **sem URL** (back-end#255): a imagem
+    da busca chega no corpo da requisição e não é gravada, então não existe
+    endereço para `analyze_image` baixar. É também o que o download produz,
+    para os dois caminhos montarem as mesmas partes.
+    """
+
+    data: bytes
+    mime_type: str
 
 
 class ChatTurn(BaseModel):
@@ -95,17 +111,31 @@ class SearchDone(BaseModel):
 SearchStreamEvent = SearchTextDelta | InterpretedQuery | SearchDone
 
 
-class AIProvider(ABC):
+class ImageAnalysisProvider(ABC):
+    """Contrato mínimo para provedores usados pelo worker de imagens."""
+
+    @abstractmethod
+    def analyze_image(self, image_urls: Sequence[str]) -> ImageAnalysisResult:
+        """Sugere atributos da peça a partir das fotos."""
+
+    def analyze_image_bytes(self, images: Sequence[ImagePhoto]) -> ImageAnalysisResult:
+        """Sugere atributos a partir dos bytes das fotos, sem passar por URL.
+
+        Caminho da busca por foto (back-end#255), em que a imagem não é
+        gravada. O padrão falha alto de propósito: um provedor que só sabe
+        baixar URL responde 503 na busca, em vez de devolver análise vazia
+        como se a foto não tivesse nada (a lição da back-end#150).
+        """
+        raise AIProviderError("Este provedor não analisa fotos por bytes.")
+
+
+class AIProvider(ImageAnalysisProvider, ABC):
     """Interface única para os usos de IA do Vintex.
 
     Implementações concretas (um fornecedor real) entram como subclasses
     quando o time escolher o modelo. Até lá, `UnavailableAIProvider`
     (`app/services/ai/unavailable.py`) é o provider ativo por padrão.
     """
-
-    @abstractmethod
-    def analyze_image(self, image_urls: Sequence[str]) -> ImageAnalysisResult:
-        """Sugere atributos da peça a partir das fotos (VS-014, VE-05)."""
 
     @abstractmethod
     def stream_interpret_search(
