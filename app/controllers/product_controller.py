@@ -352,10 +352,7 @@ class ProductController:
             status=product.status,
             city=address.city if address else "",
             state=address.state if address else "",
-            media=[
-                ProductMediaResponse(url=image.image_url, position=image.position)
-                for image in product.images
-            ],
+            media=_midia_do_detalhe(product),
             store=ProductDetailStoreResponse(
                 id=product.store.id,
                 name=product.store.name,
@@ -374,6 +371,7 @@ class ProductController:
                 code=ErrorCode.STORE_NOT_FOUND,
             )
         _recusar_foto_de_etiqueta(data.images)
+        _validar_video(data.images, data.video_url)
 
         product = Product(
             store=store,
@@ -388,6 +386,7 @@ class ProductController:
             composition=data.composition,
             price=data.price,
             status="rascunho",
+            video_url=data.video_url,
             images=[
                 ProductImage(image_url=url, position=position)
                 for position, url in enumerate(data.images)
@@ -446,6 +445,7 @@ class ProductController:
                 fields={"images": "Mantenha ao menos uma foto."},
             )
         _recusar_foto_de_etiqueta(data.images)
+        _validar_video(data.images, data.video_url)
 
         texto_antes = texto_da_peca(product)
         updates = data.model_dump(
@@ -571,6 +571,7 @@ class ProductController:
                 city=store.address.city if store.address else None,
             ),
             images=[image.image_url for image in product.images],
+            video_url=product.video_url,
             ai_corrections=[
                 AiCorrectionResponse(
                     field=correction.field,
@@ -774,6 +775,40 @@ def _relaxamentos(filtros: ProductFilters) -> list[ProductFilters]:
         passos.append(ProductFilters(category=filtros.category))
     passos.append(ProductFilters())
     return passos
+
+
+def _midia_do_detalhe(product: Product) -> list[ProductMediaResponse]:
+    """As fotos na ordem da galeria e, se houver, o vídeo depois delas
+    (back-end#270): a capa continua sendo a primeira foto."""
+    midia = [
+        ProductMediaResponse(url=image.image_url, position=image.position)
+        for image in product.images
+    ]
+    if product.video_url:
+        posicao = max((item.position for item in midia), default=-1) + 1
+        midia.append(
+            ProductMediaResponse(type="video", url=product.video_url, position=posicao)
+        )
+    return midia
+
+
+def _validar_video(images: list[str] | None, video_url: str | None) -> None:
+    """O vídeo tem campo próprio e só aceita vídeo (back-end#270).
+
+    Na galeria ele contaria como a foto que publicar exige (RN-47), e uma peça
+    só com vídeo iria ao ar. Em `video_url`, uma foto passaria sem a checagem
+    de duração (RN-48), que é feita no upload com `kind=video`.
+    """
+    if images and any(media_rules.e_video(url) for url in images):
+        raise ValidationError(
+            "O vídeo não entra na galeria de fotos da peça.",
+            fields={"images": "Envie o vídeo em video_url."},
+        )
+    if video_url is not None and not media_rules.e_video(video_url):
+        raise ValidationError(
+            "O vídeo da peça precisa ser enviado como vídeo.",
+            fields={"video_url": "Use a URL devolvida pelo envio com kind=video."},
+        )
 
 
 def _recusar_foto_de_etiqueta(images: list[str] | None) -> None:

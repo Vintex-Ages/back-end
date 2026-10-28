@@ -239,6 +239,8 @@ class ProductDraftCreate(BaseModel):
     composition: str | None = Field(default=None, max_length=200)
     price: Decimal
     images: list[str] = Field(default_factory=list)
+    # URL devolvida por `POST /api/users/me/media` com `kind=video` (back-end#270).
+    video_url: str | None = None
     ai_corrections: list[AiCorrectionInput] = Field(default_factory=list)
 
 
@@ -258,6 +260,8 @@ class ProductDraftUpdate(BaseModel):
     composition: str | None = Field(default=None, max_length=200)
     price: Decimal | None = Field(default=None, gt=0, decimal_places=2)
     images: list[str] | None = None
+    # Ausente mantém o vídeo; outra URL troca; `null` remove (back-end#270).
+    video_url: str | None = None
     ai_corrections: list[AiCorrectionInput] = Field(default_factory=list)
 
     @field_validator("name", "price")
@@ -293,6 +297,7 @@ class ProductDraftResponse(BaseModel):
     status: str
     store: ProductStoreResponse
     images: list[str]
+    video_url: str | None = None
     ai_corrections: list[AiCorrectionResponse]
 
     @field_serializer("price")
