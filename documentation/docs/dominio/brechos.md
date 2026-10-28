@@ -44,3 +44,7 @@ Cada vendedor tem uma loja (RN-02). As rotas abaixo são públicas e funcionam d
 `active_count` conta **só peça `ativo`**. Reservada, vendida, despublicada e rascunho ficam de fora: a RN-44 manda sinalizar a peça indisponível, então a contagem diz quantas estão à venda agora, e não quantas já existiram.
 
 O perfil devolve o mesmo número em `metrics.active_count`. O campo antigo `metrics.products_listed` tem o mesmo valor: ele contava tudo que não fosse rascunho, incluindo vendida e despublicada, e o front o mostrava como "peças ativas". Ficou corrigido em vez de removido, para não quebrar quem ainda lê o nome antigo.
+
+## A avaliação no perfil
+
+`metrics.rating` é a média das estrelas, com uma casa, e `metrics.rating_count` quantas avaliações a loja tem. Loja sem avaliação devolve `rating: null`, não zero. Ver [Avaliação da loja](./avaliacao-da-loja) ([#267](https://github.com/Vintex-Ages/back-end/issues/267)).
