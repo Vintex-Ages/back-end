@@ -26,6 +26,7 @@ from app.services.ai.base import (
     AIProviderUnavailableError,
     ChatTurn,
     ImageAnalysisResult,
+    ImagePhoto,
     SearchDone,
     SearchStreamEvent,
 )
@@ -134,6 +135,30 @@ _ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp", "image/heic"}
 _DOWNLOAD_CHUNK_SIZE = 64 * 1024
 
 
+def _partes_das_fotos(images: Sequence[ImagePhoto]) -> list[types.Part]:
+    """O prompt e uma parte por foto — o formato que o modelo multimodal lê.
+
+    Extraído de `analyze_image` (back-end#255): o download já produzia
+    exatamente `(bytes, mime_type)`, e a busca por foto manda essa mesma
+    dupla direto, sem URL. Tipo e tamanho são conferidos aqui também, e não
+    só no download: quem chama `analyze_image_bytes` pode não ter passado
+    por lá.
+    """
+    parts = [types.Part.from_text(text=ANALYZE_IMAGE_PROMPT)]
+    for foto in images:
+        mime_type = foto.mime_type.split(";")[0].strip().lower()
+        if mime_type not in _ALLOWED_CONTENT_TYPES:
+            raise AIProviderError(
+                f"Tipo de arquivo não suportado para a foto: {mime_type or 'desconhecido'!r}."
+            )
+        if len(foto.data) > _MAX_IMAGE_BYTES:
+            raise AIProviderError(
+                f"Foto excede o tamanho máximo de {_MAX_IMAGE_BYTES // (1024 * 1024)}MiB."
+            )
+        parts.append(types.Part.from_bytes(data=foto.data, mime_type=mime_type))
+    return parts
+
+
 class GoogleAIProvider(AIProvider):
     def __init__(self) -> None:
         if not settings.GOOGLE_API_KEY:
@@ -150,10 +175,48 @@ class GoogleAIProvider(AIProvider):
         )
 
     def analyze_image(self, image_urls: Sequence[str]) -> ImageAnalysisResult:
+        """Sugere atributos a partir das fotos indicadas por URL.
+
+        Baixa cada foto e delega a análise aos bytes (back-end#255): o
+        caminho da busca por foto não tem URL, e os dois precisam montar as
+        mesmas partes para o modelo.
+        """
         if not image_urls:
             return ImageAnalysisResult()
+        return self.analyze_image_bytes(self._baixar_fotos(image_urls))
 
-        parts = [types.Part.from_text(text=ANALYZE_IMAGE_PROMPT)]
+    def analyze_image_bytes(self, images: Sequence[ImagePhoto]) -> ImageAnalysisResult:
+        """Sugere atributos a partir dos bytes das fotos (back-end#255).
+
+        Não grava nada e não baixa nada: é o caminho da busca por foto, que
+        recebe a imagem no corpo da requisição.
+        """
+        if not images:
+            return ImageAnalysisResult()
+
+        result = self._gerar_com_fallback(_partes_das_fotos(images))
+
+        parsed = result.parsed
+        if isinstance(parsed, ImageAnalysisResult):
+            return parsed
+        if result.text:
+            try:
+                return ImageAnalysisResult.model_validate_json(result.text)
+            except ValueError as exc:
+                raise AIProviderError(
+                    f"Resposta do provedor não bate com o formato esperado: {exc}"
+                ) from exc
+        raise AIProviderError("Provedor não devolveu uma análise para as fotos.")
+
+    @staticmethod
+    def _baixar_fotos(image_urls: Sequence[str]) -> list[ImagePhoto]:
+        """Baixa cada foto, com teto por foto e no total, e o tipo declarado.
+
+        O teto por foto é conferido enquanto baixa, não depois: sem isso,
+        uma foto arbitrariamente grande seria carregada inteira em memória
+        antes de qualquer verificação (revisão da Adrielle no PR #200).
+        """
+        fotos: list[ImagePhoto] = []
         total_bytes = 0
         try:
             with httpx.Client(
@@ -183,25 +246,10 @@ class GoogleAIProvider(AIProvider):
                                     f"Fotos somadas excedem o tamanho máximo de {_MAX_TOTAL_BYTES // (1024 * 1024)}MiB."
                                 )
 
-                    parts.append(
-                        types.Part.from_bytes(data=bytes(chunks), mime_type=mime_type)
-                    )
+                    fotos.append(ImagePhoto(data=bytes(chunks), mime_type=mime_type))
         except httpx.HTTPError as exc:
             raise AIProviderError(f"Falha ao baixar foto da peça: {exc}") from exc
-
-        result = self._gerar_com_fallback(parts)
-
-        parsed = result.parsed
-        if isinstance(parsed, ImageAnalysisResult):
-            return parsed
-        if result.text:
-            try:
-                return ImageAnalysisResult.model_validate_json(result.text)
-            except ValueError as exc:
-                raise AIProviderError(
-                    f"Resposta do provedor não bate com o formato esperado: {exc}"
-                ) from exc
-        raise AIProviderError("Provedor não devolveu uma análise para as fotos.")
+        return fotos
 
     async def stream_interpret_search(
         self, query: str, history: Sequence[ChatTurn] = ()

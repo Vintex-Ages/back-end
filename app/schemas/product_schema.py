@@ -101,6 +101,54 @@ class SuggestionsResponse(BaseModel):
     items: list[ProductFeedItemResponse]
 
 
+class InterpretedPhotoResponse(BaseModel):
+    """O que a análise leu da foto (BE-US031-1, back-end#255).
+
+    Devolver isto é o que faz a busca parecer inteligente em vez de mágica,
+    o mesmo princípio dos chips do chat. `""` quando a IA não reconheceu
+    aquele atributo — e não `None`, para o front não ter dois vazios.
+    """
+
+    category: str = ""
+    color: str = ""
+    brand: str = ""
+
+
+class ProductImageSearchItem(ProductFeedItemResponse):
+    """Item do feed mais a distância até a foto da busca (back-end#255).
+
+    `distance` é `None` quando a peça não veio da comparação vetorial: é o
+    catálogo devolvido no lugar de lista vazia (RN-61), e não houve
+    distância para calcular. 0 é a peça idêntica; quanto maior, menos
+    parecida.
+    """
+
+    distance: float | None = None
+
+    @classmethod
+    def from_row(
+        cls, row: ProductFeedRow, distance: float | None = None
+    ) -> "ProductImageSearchItem":
+        """Monta a partir de uma linha do feed ou da busca por semelhança."""
+        item = ProductFeedItemResponse.from_row(row)
+        return cls(**item.model_dump(), distance=distance)
+
+
+class ProductImageSearchResponse(BaseModel):
+    """`POST /api/products/search-by-image` (BE-US031-1, back-end#255).
+
+    O formato é o do feed paginado, com a distância em cada item, mais o
+    que a IA leu da foto. `page_size` não é campo do formulário: a busca por
+    foto devolve 20 por página, como o feed.
+    """
+
+    items: list[ProductImageSearchItem]
+    interpreted: InterpretedPhotoResponse
+    page: int
+    page_size: int
+    total: int
+
+
 class FeedResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
