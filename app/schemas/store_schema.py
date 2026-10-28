@@ -41,12 +41,17 @@ class StoreMetricsResponse(BaseModel):
     `active_count` são as peças `ativo`, o mesmo número da listagem de
     brechós (back-end#256). `products_listed` tem o mesmo valor: era a
     contagem errada (incluía vendida e despublicada), e fica corrigida para
-    não quebrar quem ainda lê o nome antigo."""
+    não quebrar quem ainda lê o nome antigo.
+
+    `rating` é a média das estrelas com uma casa (RN-74, back-end#267), e
+    `null` na loja sem avaliação: zero diria que a loja foi mal avaliada."""
 
     created_at: datetime
     active_count: int
     products_listed: int
     products_sold: int
+    rating: float | None
+    rating_count: int
 
 
 class StoreDetailResponse(BaseModel):

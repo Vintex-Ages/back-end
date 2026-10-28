@@ -328,6 +328,14 @@ def _linha_do_tempo(
     return status, history
 
 
+def status_atual(order: Order, agora: datetime) -> str:
+    """O status que o comprador vê, com as etapas simuladas. Quem precisa
+    saber se o pedido já foi entregue (`concluido`, back-end#267) pergunta
+    aqui, e não a `orders.status`, que para em `confirmado`."""
+    status, _ = _linha_do_tempo(order, agora)
+    return status
+
+
 def _validar_comprovante(arquivo: ArquivoRecebido) -> str:
     """Tipo normalizado do comprovante, ou o erro que o front espera.
 

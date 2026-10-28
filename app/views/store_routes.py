@@ -4,7 +4,8 @@ Dois routers de proposito, com publicos diferentes:
 
 - `router` (`/api/stores`): publico, sem login — a lista de brechos com busca
   por nome (back-end#256), dados da loja e as pecas dela (BE-US007-2,
-  back-end#142).
+  back-end#142). A unica excecao e avaliar a loja (back-end#267), que exige
+  login na propria rota: o recurso e o mesmo, e o publico continua aberto.
 - `me_router` (`/api/users/me/store`): a loja do proprio vendedor, criacao e
   leitura (BE-US006-1, back-end#141) e edicao (BE-US006-3, back-end#221). Sob
   `/users/me/*` pelo ADR 0001 secao 4.
@@ -17,9 +18,11 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.controllers.store_controller import StoreController
+from app.controllers.store_rating_controller import StoreRatingController
 from app.core.current_user import get_current_user_id
 from app.core.pagination import Page, PageParams, page_params
 from app.database import get_db
+from app.schemas.store_rating_schema import StoreRatingCreate, StoreRatingResponse
 from app.schemas.store_schema import (
     StoreCreate,
     StoreDetailResponse,
@@ -65,6 +68,30 @@ def list_store_products(
     controller: StoreController = Depends(get_controller),
 ) -> Page[StoreProductItemResponse]:
     return controller.list_products(store_id, params)
+
+
+def get_rating_controller(db: Session = Depends(get_db)) -> StoreRatingController:
+    return StoreRatingController(db)
+
+
+@router.post(
+    "/{store_id}/ratings",
+    response_model=StoreRatingResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Avalia a loja de um pedido entregue, de 1 a 5 estrelas",
+    responses={
+        403: {"description": "RATING_NOT_ALLOWED"},
+        404: {"description": "STORE_NOT_FOUND"},
+        409: {"description": "ALREADY_RATED"},
+    },
+)
+def rate_store(
+    store_id: int,
+    data: StoreRatingCreate,
+    user_id: int = Depends(get_current_user_id),
+    controller: StoreRatingController = Depends(get_rating_controller),
+) -> StoreRatingResponse:
+    return controller.rate(user_id, store_id, data)
 
 
 @me_router.post("", response_model=StoreResponse, status_code=status.HTTP_201_CREATED)
