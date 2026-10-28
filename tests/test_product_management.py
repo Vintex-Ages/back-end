@@ -472,8 +472,18 @@ def test_listagem_devolve_a_capa_de_posicao_zero(client, db_session, auth_header
     response = client.get("/api/users/me/products", headers=auth_headers(10))
 
     assert response.status_code == 200
+    # Rascunho não entra na listagem sem filtro (#271): a capa nula dele só
+    # aparece quando a aba de rascunhos pede `?status=rascunho`.
     capas = {item["id"]: item["cover_image_url"] for item in response.json()["items"]}
-    assert capas == {com_capa.id: "https://exemplo/1.jpg", rascunho.id: None}
+    assert capas == {com_capa.id: "https://exemplo/1.jpg"}
+
+    response = client.get(
+        "/api/users/me/products?status=rascunho", headers=auth_headers(10)
+    )
+
+    assert response.status_code == 200
+    capas = {item["id"]: item["cover_image_url"] for item in response.json()["items"]}
+    assert capas == {rascunho.id: None}
 
 
 def test_listagem_busca_as_capas_sem_uma_consulta_por_peca(
