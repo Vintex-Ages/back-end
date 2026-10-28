@@ -11,6 +11,7 @@ from app.services.ai.base import (
     AIProvider,
     AIProviderError,
     ImageAnalysisResult,
+    ImagePhoto,
     SuggestedField,
 )
 from app.services.ai.google import GoogleAIProvider
@@ -397,3 +398,67 @@ def test_analyze_image_falha_do_sdk_levanta(monkeypatch) -> None:
 
     with pytest.raises(AIProviderError):
         provider.analyze_image(["https://cdn.test/foto.jpg"])
+
+
+def test_analyze_image_bytes_monta_as_partes_sem_baixar_url(monkeypatch) -> None:
+    """A busca por foto manda os bytes direto (back-end#255).
+
+    A foto da consulta não é gravada, então não existe URL: o provedor
+    precisa analisar `(bytes, mime_type)` sem passar por download.
+    """
+    expected = ImageAnalysisResult(
+        category=SuggestedField(value="Jaquetas", confidence=0.9)
+    )
+    models = _FakeGenAIModels(_FakeGenAIResponse(parsed=expected))
+    provider = _provider_with_fake_client(monkeypatch, models)
+
+    def _nao_baixa(**_):  # noqa: ANN001, ANN202
+        raise AssertionError("a análise por bytes não pode baixar URL")
+
+    monkeypatch.setattr("app.services.ai.google.httpx.Client", _nao_baixa)
+
+    result = provider.analyze_image_bytes([ImagePhoto(b"foto-jpeg", "image/jpeg")])
+
+    assert result is expected
+    partes = models.calls[0]["contents"][0].parts
+    assert len(partes) == 2, "o prompt e uma parte por foto"
+    assert partes[1].inline_data.data == b"foto-jpeg"
+    assert partes[1].inline_data.mime_type == "image/jpeg"
+
+
+def test_analyze_image_bytes_recusa_tipo_e_tamanho(monkeypatch) -> None:
+    """O provedor confere de novo: quem chama pode não ter validado."""
+    provider = _provider_with_fake_client(monkeypatch, models=_FakeGenAIModels(None))
+
+    with pytest.raises(AIProviderError):
+        provider.analyze_image_bytes([ImagePhoto(b"x", "application/pdf")])
+
+    from app.services.ai import google as google_module
+
+    grande = b"x" * (google_module._MAX_IMAGE_BYTES + 1)
+    with pytest.raises(AIProviderError):
+        provider.analyze_image_bytes([ImagePhoto(grande, "image/jpeg")])
+
+
+def test_analyze_image_continua_baixando_e_delegando_aos_bytes(monkeypatch) -> None:
+    """O caminho por URL virou o download mais a mesma análise por bytes."""
+    expected = ImageAnalysisResult(color=SuggestedField(value="Azul", confidence=0.7))
+    provider = _provider_with_fake_client(
+        monkeypatch, models=_FakeGenAIModels(_FakeGenAIResponse(parsed=expected))
+    )
+    monkeypatch.setattr(
+        "app.services.ai.google.httpx.Client", lambda **_: _FakeHttpClient()
+    )
+    recebidas: list[ImagePhoto] = []
+    original = provider.analyze_image_bytes
+
+    def _espiao(images):  # noqa: ANN001, ANN202
+        recebidas.extend(images)
+        return original(images)
+
+    monkeypatch.setattr(provider, "analyze_image_bytes", _espiao)
+
+    result = provider.analyze_image(["https://cdn.test/foto.jpg"])
+
+    assert result is expected
+    assert recebidas == [ImagePhoto(b"fake-image-bytes", "image/jpeg")]
