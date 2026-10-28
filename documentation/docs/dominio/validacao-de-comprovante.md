@@ -20,7 +20,7 @@ aguardando_comprovante ──prazo vencido (#280)──▶ expirado
 | Transição | Quem | O que muda além do status |
 | --- | --- | --- |
 | `aguardando_comprovante → em_analise` | comprador, `POST /api/users/me/orders/{order_id}/receipt` ([#249](https://github.com/Vintex-Ages/back-end/issues/249)) | um pagamento novo, `pendente`, com nome e tipo do arquivo |
-| `em_analise → confirmado` | administradora, `POST /api/admin/payments/{order_id}/approve` | pagamento `aprovado` com quem e quando; peças `reservado → vendido` com `sold_at` |
+| `em_analise → confirmado` | administradora, `POST /api/admin/payments/{order_id}/approve` | pagamento `aprovado` com quem e quando; peças `reservado → vendido` com `sold_at`; aviso `sale` ao vendedor ([Notificações](./notificacoes)) |
 | `em_analise → aguardando_comprovante` | administradora, `POST /api/admin/payments/{order_id}/reject` | pagamento `rejeitado` com o motivo; **prazo renovado em 3 dias**; peças continuam reservadas |
 | `aguardando_comprovante → expirado` | rotina de expiração ([#280](https://github.com/Vintex-Ages/back-end/issues/280)) | peças voltam a `ativo` |
 
