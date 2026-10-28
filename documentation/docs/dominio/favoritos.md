@@ -39,6 +39,6 @@ Sem token, as três respondem `401 AUTH_REQUIRED`, com o mesmo corpo das outras 
 - **Peça vendida ou reservada continua na lista, com o `status` dizendo** (RN-44): sinalizar, não esconder.
 - **Peça despublicada sai da lista, mas a linha fica.** Se o vendedor republicar, ela volta para os favoritos. Se a peça for apagada, a linha vai junto (`ON DELETE CASCADE`).
 
-## O que não está aqui
+## O aviso ao anunciante
 
-Favoritar não avisa o anunciante. O aviso de curtida (RN-85) é a [#261](https://github.com/Vintex-Ages/back-end/issues/261).
+Favoritar avisa o vendedor dono da peça (RN-85), uma vez por pessoa e por peça, no mesmo commit do favorito. Desfavoritar não avisa. Ver [Notificações](./notificacoes) ([#261](https://github.com/Vintex-Ages/back-end/issues/261)).
