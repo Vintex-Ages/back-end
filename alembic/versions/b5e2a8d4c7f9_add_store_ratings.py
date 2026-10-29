@@ -1,7 +1,7 @@
 """add store_ratings (#267)
 
 Revision ID: b5e2a8d4c7f9
-Revises: e8b4c2a7f1d3
+Revises: a3d9f2c6e8b1
 Create Date: 2026-10-28
 
 Avaliação da loja por estrelas, de 1 a 5 e sem comentário (RN-75), uma por
@@ -16,7 +16,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "b5e2a8d4c7f9"
-down_revision: Union[str, None] = "e8b4c2a7f1d3"
+down_revision: Union[str, None] = "a3d9f2c6e8b1"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

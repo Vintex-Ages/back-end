@@ -3,6 +3,7 @@ from app.models.ai_chat_usage import AIChatUsage
 from app.models.cart import CartItem
 from app.models.favorite import Favorite
 from app.models.legal_document import LegalDocument
+from app.models.notification import Notification
 from app.models.order import Order
 from app.models.order_item import OrderItem
 from app.models.order_status_history import OrderStatusHistory
@@ -23,6 +24,7 @@ __all__ = [
     "CartItem",
     "Favorite",
     "LegalDocument",
+    "Notification",
     "Order",
     "OrderItem",
     "OrderStatusHistory",
