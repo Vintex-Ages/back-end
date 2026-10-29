@@ -60,6 +60,8 @@ def test_get_store_sem_login_devolve_dados_e_selo(client, db_session):
         "active_count": 0,
         "products_listed": 0,
         "products_sold": 0,
+        "rating": None,
+        "rating_count": 0,
     }
 
 
