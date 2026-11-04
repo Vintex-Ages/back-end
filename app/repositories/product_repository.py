@@ -377,6 +377,31 @@ class ProductRepository:
         )
         return list(self.db.scalars(stmt).unique())
 
+    def list_moderated(self, params: PageParams) -> tuple[list[Product], int]:
+        """Peças tiradas do ar pela moderação, mais recente primeiro (#327).
+
+        O filtro é `moderated_at IS NOT NULL`, e não `status = 'despublicado'`:
+        a peça que o **vendedor** pausou também está `despublicado` e não é
+        Suspensa. A capa vem na mesma consulta (back-end#265), e `moderated_by`
+        entra por join para a tela mostrar quem moderou.
+        """
+        moderadas = Product.moderated_at.is_not(None)
+        total = self.db.scalar(select(func.count(Product.id)).where(moderadas)) or 0
+        stmt = (
+            select(Product)
+            .options(
+                joinedload(Product.store),
+                joinedload(Product.moderated_by),
+                with_expression(Product.cover_image_url, _cover_image_url()),
+            )
+            .execution_options(populate_existing=True)
+            .where(moderadas)
+            .order_by(Product.moderated_at.desc(), Product.id.desc())
+            .offset(params.offset)
+            .limit(params.limit)
+        )
+        return list(self.db.scalars(stmt).unique()), total
+
     def reserve(self, product_ids: Sequence[int]) -> int:
         """`ativo -> reservado` num comando só, e devolve quantas mudaram.
 

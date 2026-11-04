@@ -14,11 +14,11 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base_model import BaseModel
 
-# Os dois eventos da RN-85: a venda, ao vendedor, e o favorito, ao anunciante.
-# Os nomes são os do modelo do front (`front-end/src/types/notification.ts`).
-# A despublicação pela administradora (RN-80, VS-034) é um terceiro tipo, que
-# entra aqui e no CHECK quando chegar: a coluna já é texto, não booleano.
-NotificationType = Literal["sale", "favorite"]
+# Os eventos de aviso in-app: a venda, ao vendedor (RN-85), o favorito, ao
+# anunciante, e a suspensão do anúncio pela administradora, ao vendedor
+# (RN-80, back-end#327). Os nomes são os do modelo do front
+# (`front-end/src/types/notification.ts`).
+NotificationType = Literal["sale", "favorite", "moderation"]
 NOTIFICATION_TYPES: tuple[str, ...] = get_args(NotificationType)
 NOTIFICATION_TYPE_CHECK = "type IN ({})".format(
     ", ".join(f"'{tipo}'" for tipo in NOTIFICATION_TYPES)

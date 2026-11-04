@@ -517,9 +517,19 @@ class ProductController:
 
         Vendida responde com o codigo proprio e nao com o conflito generico
         (RN-53) -- quem chama precisa distinguir "ja esta no ar" de "nao mexe
-        mais nesta". Reservada tambem e recusada: esta num pedido aberto.
+        mais nesta". Reservada tambem é recusada: esta num pedido aberto.
         """
         product = self._get_owned(user_id, product_id)
+        if product.moderation_reason is not None:
+            # RN-80: a moderação é reversível, mas só pela administradora.
+            # Sem esta guarda, o vendedor clicava em publicar e a peça voltava,
+            # e a moderação não valia nada.
+            raise AppError(
+                "A peça foi suspensa pela moderação e só a administradora pode"
+                " devolvê-la à vitrine.",
+                code=ErrorCode.PRODUCT_SUSPENDED,
+                status_code=409,
+            )
         if product.status == "vendido":
             raise AppError(
                 "Peça vendida não pode mudar de situação.",

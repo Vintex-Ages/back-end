@@ -1,3 +1,4 @@
+from datetime import datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, field_serializer
@@ -21,6 +22,12 @@ class ProductManagementResponse(BaseModel):
     # Foto de posição 0, a mesma regra do feed (back-end#265). Nula só em
     # rascunho sem foto: publicar exige ao menos uma (RN-47).
     cover_image_url: str | None = None
+
+    # Moderação da administradora (RN-80, back-end#327): é por aqui que o
+    # vendedor vê o motivo na peça dele. Nulos quando a peça não foi suspensa —
+    # inclusive na peça que o próprio vendedor pausou, que continua `Pausada`.
+    moderation_reason: str | None = None
+    moderated_at: datetime | None = None
 
     # `Decimal` sai como string em JSON se ninguem interferir. O front absorvia
     # com `Number(...)`, mas a mesma peca chegava como numero pelo feed e como

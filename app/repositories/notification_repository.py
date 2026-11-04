@@ -48,6 +48,24 @@ class NotificationRepository:
         )
         self.db.flush()
 
+    def add_moderation(self, user_id: int, product_id: int) -> None:
+        """Aviso da suspensão ao vendedor (RN-80, back-end#327).
+
+        Grava no mesmo commit da suspensão, como o aviso da venda: não pode
+        existir peça fora do ar sem o vendedor saber por quê. Não duplica
+        porque quem chama só avisa na primeira suspensão — suspender de novo
+        atualiza o motivo sem criar outra linha.
+        """
+        self.db.add(
+            Notification(
+                user_id=user_id,
+                type="moderation",
+                product_id=product_id,
+                created_at=utcnow_naive(),
+            )
+        )
+        self.db.flush()
+
     def add_favorite(self, user_id: int, product_id: int, actor_id: int) -> None:
         """Aviso do favorito, uma vez por peça e por quem favoritou.
 

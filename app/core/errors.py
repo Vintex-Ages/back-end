@@ -40,6 +40,11 @@ class ErrorCode:
     PRODUCT_SOLD = "PRODUCT_SOLD"
     PRODUCT_NOT_EDITABLE = "PRODUCT_NOT_EDITABLE"
     PRODUCT_UNAVAILABLE = "PRODUCT_UNAVAILABLE"
+    # Moderação da administradora (back-end#327): a peça que ela tirou do ar
+    # não volta pelo `publish` do vendedor (RN-80), e devolver uma que não está
+    # suspensa é conflito.
+    PRODUCT_SUSPENDED = "PRODUCT_SUSPENDED"
+    PRODUCT_NOT_SUSPENDED = "PRODUCT_NOT_SUSPENDED"
     CART_ITEM_NOT_FOUND = "CART_ITEM_NOT_FOUND"
     # Criação do pedido (back-end#247).
     MIXED_STORES = "MIXED_STORES"

@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Literal
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -23,6 +24,7 @@ if TYPE_CHECKING:
     from app.models.product_ai_correction import ProductAiCorrection
     from app.models.product_image import ProductImage
     from app.models.store import Store
+    from app.models.user import User
 
 AIStatus = Literal["pending", "processing", "done", "failed"]
 EmbeddingStatus = Literal["pending", "done", "failed"]
@@ -86,6 +88,18 @@ class Product(BaseModel):
     # mais uma linha em `product_images`: o vídeo complementa a galeria, não
     # conta como a foto que publicar exige (RN-47), e não vira capa.
     video_url: Mapped[str | None] = mapped_column(Text)
+
+    # Moderação da administradora (RN-80, back-end#327). É o que distingue a
+    # peça que o **vendedor** pausou da que a **moderação** tirou do ar: as duas
+    # são `despublicado` no status, e só estas três colunas contam quem tirou,
+    # quando e por quê. Preenchidas só pela rota da administradora; o `publish`
+    # do vendedor as recusa (RN-80), e o caminho de volta é a rota dela.
+    moderation_reason: Mapped[str | None] = mapped_column(String(500))
+    moderated_at: Mapped[datetime | None] = mapped_column(DateTime)
+    moderated_by_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("users.id")
+    )
+    moderated_by: Mapped["User | None"] = relationship()
 
     # Pipeline assíncrono de ingestão de IA (VE-05, back-end#62).
     # `ai_status` nulo significa "nenhuma análise de IA foi solicitada para
