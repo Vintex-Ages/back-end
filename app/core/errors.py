@@ -64,6 +64,10 @@ class ErrorCode:
     # quando volta (back-end#255).
     QUOTA_EXCEEDED = "QUOTA_EXCEEDED"
     STORE_NOT_FOUND = "STORE_NOT_FOUND"
+    # Avaliação da loja (back-end#267): sem pedido entregue daquela loja, e
+    # o segundo voto no mesmo pedido.
+    RATING_NOT_ALLOWED = "RATING_NOT_ALLOWED"
+    ALREADY_RATED = "ALREADY_RATED"
     # Aviso inexistente ou de outra pessoa (back-end#261).
     NOTIFICATION_NOT_FOUND = "NOTIFICATION_NOT_FOUND"
     LEGAL_DOCUMENT_NOT_FOUND = "LEGAL_DOCUMENT_NOT_FOUND"
