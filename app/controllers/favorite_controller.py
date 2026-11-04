@@ -4,6 +4,7 @@ from app.controllers.product_controller import ProductController
 from app.core.errors import ErrorCode, NotFound
 from app.core.pagination import Page, PageParams
 from app.repositories.favorite_repository import FavoriteRepository
+from app.repositories.notification_repository import NotificationRepository
 from app.repositories.product_repository import ProductRepository
 from app.schemas.product_schema import ProductFeedItemResponse
 
@@ -12,8 +13,8 @@ class FavoriteController:
     """Favoritos do comprador (back-end#252, RN-43).
 
     As duas escritas são idempotentes: a tela não precisa saber o estado
-    anterior para agir. Favoritar não avisa o anunciante ainda (RN-85, fatia
-    declarada na issue).
+    anterior para agir. Favoritar avisa o anunciante (RN-85, back-end#261),
+    uma vez por pessoa e por peça; desfavoritar não avisa nem apaga o aviso.
 
     Valem as mesmas situações do detalhe público (`ProductController.PUBLICOS`):
     só se favorita o que o detalhe mostra, e a lista mostra o mesmo. Peça
@@ -26,6 +27,7 @@ class FavoriteController:
         self.db = db
         self.favorites = FavoriteRepository(db)
         self.products = ProductRepository(db)
+        self.notifications = NotificationRepository(db)
 
     def list_favorites(
         self, user_id: int, params: PageParams
@@ -47,6 +49,10 @@ class FavoriteController:
             raise NotFound("Produto não encontrado.", code=ErrorCode.PRODUCT_NOT_FOUND)
 
         self.favorites.add(user_id, product_id)
+        dono = product.store.seller.user_id
+        # O vendedor que favorita a própria peça não é avisado de si mesmo.
+        if dono != user_id:
+            self.notifications.add_favorite(dono, product_id, actor_id=user_id)
         self.db.commit()
 
     def remove_favorite(self, user_id: int, product_id: int) -> None:
