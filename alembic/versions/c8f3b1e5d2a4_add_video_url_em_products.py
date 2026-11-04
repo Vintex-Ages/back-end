@@ -1,7 +1,7 @@
 """add video_url em products (#270)
 
 Revision ID: c8f3b1e5d2a4
-Revises: e8b4c2a7f1d3
+Revises: b5e2a8d4c7f9
 Create Date: 2026-10-28
 
 Vínculo da peça com o vídeo curto do anúncio (RN-48), um por peça. Aceita
@@ -15,7 +15,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "c8f3b1e5d2a4"
-down_revision: Union[str, None] = "e8b4c2a7f1d3"
+down_revision: Union[str, None] = "b5e2a8d4c7f9"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
