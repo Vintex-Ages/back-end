@@ -232,20 +232,11 @@ registry são necessários no init; isso não é acesso à conta AWS.
 
 ## Compatibilidade do host e recuperação — 22/10/2026 (#288)
 
-Complemento sobre a branch da #288 após o merge da #291 (`7a2c845`). Mantém
-Amazon Linux 2023 ARM64, t4g.small, us-east-2 e os pacotes Docker fornecidos pela
-AWS. O Compose não depende mais de `gw_priority`: o guard aceita somente os
-pares bridge/IP da API e das duas interfaces do worker. Proxy, banco e
-FreeLLMAPI continuam sem acesso a IMDS. Mínimos: Engine API 1.44 (Docker 25) e
-Compose 2.30.0; bootstrap continua fixando Compose 5.6.0.
-
-O deploy interrompe proxy/worker/API antes de atualizar o banco. A recuperação
-cobre falhas parciais da parada, atualização do banco, migration, subida e
-health check. Nenhum rollback faz downgrade do schema ou remove volumes.
-Black passa a 26.10.1 para atender ao audit de segurança
+Registro das verificações de compatibilidade feitas na #288. O comportamento está descrito em
+[Runtime da staging](./aws-staging-runtime.md): mínimos de Engine API 1.44 (Docker 25) e
+Compose 2.30.0, guard de IMDS por interface e deploy com recuperação, que nunca faz downgrade do
+schema nem remove volumes. O Black foi para 26.10.1 por causa do audit de segurança
 ([GHSA-cg8m-r9f2-5wm2](https://github.com/psf/black/security/advisories/GHSA-cg8m-r9f2-5wm2)).
-Os limites ajustados na #291 permanecem: gateway 512 MiB, parser 40 MiB,
-adaptador 8 MiB por imagem / 24 MiB no total.
 
 | Verificação repetida neste complemento | Resultado |
 | --- | --- |
