@@ -13,11 +13,13 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.controllers.admin_dashboard_controller import AdminDashboardController
 from app.controllers.payment_review_controller import PaymentReviewController
 from app.core.pagination import Page, PageParams, page_params
 from app.core.security import require_admin
 from app.database import get_db
 from app.models.user import User
+from app.schemas.admin_dashboard_schema import AdminDashboardResponse
 from app.schemas.admin_payment_schema import (
     PaymentReviewResponse,
     ReceiptQueueEntry,
@@ -37,11 +39,27 @@ def get_review_controller(db: Session = Depends(get_db)) -> PaymentReviewControl
     return PaymentReviewController(db)
 
 
+def get_dashboard_controller(db: Session = Depends(get_db)) -> AdminDashboardController:
+    return AdminDashboardController(db)
+
+
 _ERROS_DA_VALIDACAO: dict[int | str, dict[str, Any]] = {
     403: {"description": "ADMIN_REQUIRED"},
     404: {"description": "ORDER_NOT_FOUND"},
     409: {"description": "ORDER_NOT_IN_REVIEW: o pedido não está em análise"},
 }
+
+
+@router.get(
+    "/dashboard",
+    response_model=AdminDashboardResponse,
+    summary="Números gerais da plataforma, vendas e comissão por loja",
+    responses={403: {"description": "ADMIN_REQUIRED"}},
+)
+def get_dashboard(
+    controller: AdminDashboardController = Depends(get_dashboard_controller),
+) -> AdminDashboardResponse:
+    return controller.summary()
 
 
 @router.post(
