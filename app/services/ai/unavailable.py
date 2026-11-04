@@ -14,6 +14,7 @@ from app.services.ai.base import (
     AIProviderUnavailableError,
     ChatTurn,
     ImageAnalysisResult,
+    ImagePhoto,
     SearchStreamEvent,
 )
 
@@ -22,6 +23,9 @@ _MESSAGE = "Nenhum provedor de IA está configurado (AI_PROVIDER)."
 
 class UnavailableAIProvider(AIProvider):
     def analyze_image(self, image_urls: Sequence[str]) -> ImageAnalysisResult:
+        raise AIProviderUnavailableError(_MESSAGE)
+
+    def analyze_image_bytes(self, images: Sequence[ImagePhoto]) -> ImageAnalysisResult:
         raise AIProviderUnavailableError(_MESSAGE)
 
     async def stream_interpret_search(

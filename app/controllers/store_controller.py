@@ -16,6 +16,7 @@ from app.models.legal_document import SELLER_CONTRACT
 from app.models.seller import Seller
 from app.models.store import Store
 from app.repositories.legal_document_repository import LegalDocumentRepository
+from app.repositories.store_rating_repository import StoreRatingRepository
 from app.repositories.store_repository import StoreRepository
 from app.schemas.store_schema import (
     StoreAddressCreate,
@@ -35,6 +36,7 @@ class StoreController:
         self.db = db
         self.repository = StoreRepository(db)
         self.legal_documents = LegalDocumentRepository(db)
+        self.ratings = StoreRatingRepository(db)
 
     def create(self, user_id: int, data: StoreCreate) -> StoreResponse:
         if self.repository.get_by_user_id(user_id) is not None:
@@ -187,6 +189,7 @@ class StoreController:
     def get_store(self, store_id: int) -> StoreDetailResponse:
         store = self._get_or_404(store_id)
         metrics = self.repository.get_metrics(store_id)
+        avaliacao = self.ratings.summary_for_store(store_id)
 
         address = store.address
         return StoreDetailResponse(
@@ -213,6 +216,12 @@ class StoreController:
                 active_count=metrics["active_count"],
                 products_listed=metrics["active_count"],
                 products_sold=metrics["products_sold"],
+                rating=(
+                    round(avaliacao["average"], 1)
+                    if avaliacao["average"] is not None
+                    else None
+                ),
+                rating_count=avaliacao["count"],
             ),
         )
 

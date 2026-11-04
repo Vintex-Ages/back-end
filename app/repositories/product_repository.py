@@ -186,6 +186,12 @@ class ProductRepository:
         )
         if status is not None:
             stmt = stmt.where(Product.status == status)
+        else:
+            # RN-51: a área do vendedor é gestão do que está anunciado. O
+            # rascunho é cadastro pela metade e não se mistura a ela — só
+            # entra quando é pedido (`?status=rascunho`, a aba de rascunhos do
+            # painel, back-end#271).
+            stmt = stmt.where(Product.status != "rascunho")
         return paginate(
             self.db,
             stmt,
@@ -423,6 +429,16 @@ class ProductRepository:
         self.db.add(product)
         self.db.flush()
         return product
+
+    def delete(self, product: Product) -> None:
+        """Apaga a peça; fotos e correções da IA caem junto (cascade do modelo).
+
+        Só quem decide se a peça pode ser apagada é o controller — aqui é
+        persistência. O arquivo da foto não é apagado do storage: a URL veio de
+        `/users/me/media` e pode estar em outra peça do mesmo vendedor, então
+        apagar o objeto quebraria a outra.
+        """
+        self.db.delete(product)
 
     def commit(self) -> None:
         self.db.commit()

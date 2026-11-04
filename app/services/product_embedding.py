@@ -26,11 +26,35 @@ from app.services.ai import (
     get_ai_provider,
     modelo_de_embedding,
 )
+from app.services.ai.base import ImageAnalysisResult
 
 logger = logging.getLogger(__name__)
 
 _FALHA_DO_PROVEDOR = "Provedor de IA indisponível ou falhou ao gerar o vetor."
 _SEM_PROVEDOR = "Nenhum provedor de IA configurado para gerar o vetor."
+
+
+def texto_da_foto(analise: ImageAnalysisResult) -> str:
+    """O texto que a foto da busca vira, para o vetor da consulta (#255).
+
+    Só os atributos que a análise leu, na ordem de `texto_da_peca`: é o
+    mesmo espaço vetorial, então o texto da consulta precisa parecer com o
+    texto de uma peça. Descrição entra porque é o mais perto de um nome;
+    preço, cidade e estilo não existem numa foto.
+
+    Vazio quando a IA respondeu e não reconheceu nada — quem chama decide o
+    que fazer, porque um vetor de string vazia não significa nada.
+    """
+    campos = (
+        analise.category,
+        analise.description,
+        analise.brand,
+        analise.color,
+        analise.size,
+        analise.condition,
+        analise.composition,
+    )
+    return " ".join(campo.value for campo in campos if campo and campo.value)
 
 
 def texto_da_peca(product: Product) -> str:

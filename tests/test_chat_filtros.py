@@ -45,6 +45,7 @@ from app.services.ai.search_interpretation import (
     interpretacao_da_resposta,
     montar_pergunta,
 )
+from app.services.ai.untrusted_text import FIM, INICIO, delimitar
 
 # --- leitura da pergunta ----------------------------------------------------
 
@@ -147,7 +148,8 @@ def test_pergunta_leva_so_a_conversa_recente_e_cortada() -> None:
     assert "pergunta 4" not in texto
     assert "pergunta 9" in texto
     assert "Vintex: " + "x" * 500 + "\n" in texto
-    assert texto.endswith("Pergunta atual: e em azul?")
+    assert texto.startswith(INICIO + "\n")
+    assert texto.endswith("Pergunta atual: e em azul?\n" + FIM)
 
 
 # --- provedor do Google -----------------------------------------------------
@@ -217,7 +219,10 @@ def test_google_interpreta_com_saida_estruturada(monkeypatch) -> None:
     config = modelos.chamadas[0]["config"]
     assert config.response_schema is InterpretacaoDaPergunta
     textos = [p.text for p in modelos.chamadas[0]["contents"][0].parts]
-    assert textos == [INTERPRET_SEARCH_PROMPT, "Pergunta atual: tênis verde até 400"]
+    assert textos == [
+        INTERPRET_SEARCH_PROMPT,
+        delimitar("Pergunta atual: tênis verde até 400"),
+    ]
 
 
 def test_google_aceita_a_resposta_em_texto(monkeypatch) -> None:

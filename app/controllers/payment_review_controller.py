@@ -10,6 +10,7 @@ from app.core.pagination import Page, PageParams
 from app.models.order import Order
 from app.models.payment import Payment
 from app.models.user import User
+from app.repositories.notification_repository import NotificationRepository
 from app.repositories.order_repository import OrderRepository
 from app.repositories.product_repository import ProductRepository
 from app.schemas.admin_payment_schema import (
@@ -35,24 +36,30 @@ class PaymentReviewController:
     a plataforma não processa o Pix, quem confere o arquivo é uma pessoa
     (RN-13 e RN-21). Cada ação grava quem decidiu e quando (RN-22).
 
-    Pedido, pagamento, histórico e peças mudam no mesmo commit: não pode
-    existir pedido confirmado com peça ainda reservada, nem pagamento aprovado
-    com pedido em análise.
+    Pedido, pagamento, histórico, peças e o aviso ao vendedor mudam no mesmo
+    commit: não pode existir pedido confirmado com peça ainda reservada, nem
+    pagamento aprovado com pedido em análise, nem venda sem aviso.
     """
 
     def __init__(self, db: Session):
         self.orders = OrderRepository(db)
         self.products = ProductRepository(db)
+        self.notifications = NotificationRepository(db)
 
     def approve(self, order_id: int, admin: User) -> PaymentReviewResponse:
         """Confirma o pedido e a venda: a peça sai de `reservado` para `vendido`
-        e passa a contar no resumo do vendedor (RN-95)."""
+        e passa a contar no resumo do vendedor (RN-95).
+
+        É aqui, e não no checkout, que o vendedor é avisado da venda (RN-85,
+        back-end#261): é a aprovação que confirma a venda (RN-21).
+        """
         agora = utcnow_naive()
         payment = self._em_analise(order_id, para="confirmado")
         payment.status = "aprovado"
         payment.validated_by_id = admin.id
         payment.validated_at = agora
         self.products.sell_for_order(order_id, sold_at=agora)
+        self._avisar_venda(order_id)
         self.orders.commit()
         return self._to_response(order_id, "confirmado", payment, admin, agora)
 
@@ -149,6 +156,18 @@ class PaymentReviewController:
                 code=ErrorCode.ORDER_NOT_IN_REVIEW,
             )
         return payment
+
+    def _avisar_venda(self, order_id: int) -> None:
+        """Um aviso por pedido, ao dono da loja. O pedido é de uma loja só, e
+        a peça do aviso é a primeira dele: todo pedido nasce com ao menos uma."""
+        order = self.orders.get(order_id)
+        if order is None:
+            raise RuntimeError(f"Pedido {order_id} sumiu durante a aprovação.")
+        self.notifications.add_sale(
+            user_id=order.store.seller.user_id,
+            order_id=order_id,
+            product_id=order.items[0].product_id,
+        )
 
     @staticmethod
     def _to_response(

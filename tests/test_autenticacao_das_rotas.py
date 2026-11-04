@@ -35,6 +35,7 @@ ROTAS_PRIVADAS = [
     ("get", "/api/users/me/products"),
     ("post", "/api/users/me/products"),
     ("patch", "/api/users/me/products/1"),
+    ("delete", "/api/users/me/products/1"),
     ("post", "/api/users/me/products/1/publish"),
     ("post", "/api/users/me/products/1/unpublish"),
     ("get", "/api/users/me/products/1/ai-status"),
