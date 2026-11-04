@@ -1,0 +1,9 @@
+{
+  "account_id": "123456789012",
+  "sha": "0000000000000000000000000000000000000000",
+  "media_bucket": "vintex-media-staging-123456789012",
+  "queue_url": "https://sqs.us-east-2.amazonaws.com/123456789012/vintex-ai-staging",
+  "public_base_url": "http://localhost:8080",
+  "runtime_dir": "/opt/vintex/releases/0000000000000000000000000000000000000000/infra/aws/staging",
+  "frontend_dir": "/opt/vintex/releases/0000000000000000000000000000000000000000/frontend"
+}

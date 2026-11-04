@@ -1,16 +1,22 @@
 from collections.abc import AsyncIterator
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.controllers.assistant_controller import AssistantController
-from app.core.security import require_auth
+from app.controllers.price_suggestion_controller import PriceSuggestionController
+from app.core.security import optional_user, require_auth
 from app.database import get_db
 from app.models.user import User
 from app.schemas.chat_schema import ChatRequest
+from app.schemas.price_suggestion_schema import (
+    PriceSuggestionRequest,
+    PriceSuggestionResponse,
+)
 from app.schemas.product_schema import ListingSuggestionsRequest
 from app.services.ai.base import ImageAnalysisResult
+from app.services.chat_quota import chave_da_pessoa
 
 router = APIRouter(prefix="/ai", tags=["Assistant"])
 
@@ -27,16 +33,39 @@ def listing_suggestions(
     user: User = Depends(require_auth),
     controller: AssistantController = Depends(get_controller),
 ) -> ImageAnalysisResult:
-    return controller.suggest_listing(body.image_urls)
+    return controller.suggest_listing(body.image_urls, body.label_image_url)
+
+
+@router.post("/price-suggestions", response_model=PriceSuggestionResponse)
+def price_suggestions(
+    body: PriceSuggestionRequest,
+    # RN-27: ação de vendedor, como a sugestão de anúncio.
+    user: User = Depends(require_auth),
+    db: Session = Depends(get_db),
+) -> PriceSuggestionResponse:
+    """Faixa de preço a partir das peças parecidas do catálogo (back-end#254).
+
+    Não chama o provedor de IA e não grava nada. Sem base suficiente, responde
+    200 com `min` e `max` nulos.
+    """
+    return PriceSuggestionController(db).sugerir(body)
 
 
 @router.post("/chat")
 async def chat(
     body: ChatRequest,
+    request: Request,
+    # Sem login (RN-65): o chat é acessível do catálogo público. Com sessão, a
+    # cota conta pela pessoa; sem, pela origem da requisição (back-end#258).
+    user: User | None = Depends(optional_user),
     controller: AssistantController = Depends(get_controller),
 ) -> StreamingResponse:
+    pessoa = chave_da_pessoa(
+        user.id if user else None, request.client.host if request.client else None
+    )
+
     async def event_stream() -> AsyncIterator[str]:
-        async for event in controller.chat(body.messages):
+        async for event in controller.chat(body.messages, pessoa):
             yield f"data: {event.model_dump_json()}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

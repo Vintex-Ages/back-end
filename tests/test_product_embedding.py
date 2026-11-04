@@ -2,6 +2,9 @@
 
 from decimal import Decimal
 
+import pytest
+
+from app.config import settings
 from app.models.product import Product
 from app.models.store import Store
 from app.services.ai.base import AIProviderError
@@ -51,9 +54,7 @@ def test_backfill_preenche_pecas_pendentes(db_session, monkeypatch) -> None:
     monkeypatch.setattr(backfill_embeddings, "SessionLocal", TestingSessionLocal)
     stub = _StubProvider()
     monkeypatch.setattr(backfill_embeddings, "get_ai_provider", lambda: stub)
-    monkeypatch.setattr(
-        backfill_embeddings.settings, "GOOGLE_EMBEDDING_MODEL", "modelo-x"
-    )
+    monkeypatch.setattr(settings, "GOOGLE_EMBEDDING_MODEL", "modelo-x")
 
     product = make_product(db_session)
 
@@ -69,9 +70,7 @@ def test_backfill_nao_quebra_com_peca_sem_descricao(db_session, monkeypatch) -> 
     monkeypatch.setattr(backfill_embeddings, "SessionLocal", TestingSessionLocal)
     stub = _StubProvider()
     monkeypatch.setattr(backfill_embeddings, "get_ai_provider", lambda: stub)
-    monkeypatch.setattr(
-        backfill_embeddings.settings, "GOOGLE_EMBEDDING_MODEL", "modelo-x"
-    )
+    monkeypatch.setattr(settings, "GOOGLE_EMBEDDING_MODEL", "modelo-x")
 
     product = make_product(db_session, description=None)
 
@@ -87,9 +86,7 @@ def test_backfill_e_idempotente_nao_reprocessa_peca_ja_atualizada(
     monkeypatch.setattr(backfill_embeddings, "SessionLocal", TestingSessionLocal)
     stub = _StubProvider()
     monkeypatch.setattr(backfill_embeddings, "get_ai_provider", lambda: stub)
-    monkeypatch.setattr(
-        backfill_embeddings.settings, "GOOGLE_EMBEDDING_MODEL", "modelo-x"
-    )
+    monkeypatch.setattr(settings, "GOOGLE_EMBEDDING_MODEL", "modelo-x")
 
     make_product(db_session)
     backfill_embeddings.run()
@@ -106,9 +103,7 @@ def test_backfill_falha_do_provider_nao_quebra_e_mantem_pendente(
     monkeypatch.setattr(
         backfill_embeddings, "get_ai_provider", lambda: _FailingProvider()
     )
-    monkeypatch.setattr(
-        backfill_embeddings.settings, "GOOGLE_EMBEDDING_MODEL", "modelo-x"
-    )
+    monkeypatch.setattr(settings, "GOOGLE_EMBEDDING_MODEL", "modelo-x")
 
     product = make_product(db_session)
 
@@ -116,3 +111,23 @@ def test_backfill_falha_do_provider_nao_quebra_e_mantem_pendente(
 
     db_session.refresh(product)
     assert product.embedding is None
+
+
+@pytest.mark.parametrize("configurado", ["modelo-a,modelo-b", " , ", ""])
+def test_backfill_recusa_lista_ou_nome_vazio_antes_de_tocar_o_banco(
+    db_session, monkeypatch, configurado
+) -> None:
+    """Um nome só (back-end#246): é o que vai para `embedding_model`, e é por
+    ele que `find_similar` filtra. Com lista, a coluna ganharia a lista inteira."""
+    monkeypatch.setattr(backfill_embeddings, "SessionLocal", TestingSessionLocal)
+    stub = _StubProvider()
+    monkeypatch.setattr(backfill_embeddings, "get_ai_provider", lambda: stub)
+    monkeypatch.setattr(settings, "GOOGLE_EMBEDDING_MODEL", configurado)
+    product = make_product(db_session)
+
+    with pytest.raises(AIProviderError, match="um nome de modelo só"):
+        backfill_embeddings.run()
+
+    db_session.refresh(product)
+    assert product.embedding is None
+    assert stub.calls == [], "o provider nem foi chamado"

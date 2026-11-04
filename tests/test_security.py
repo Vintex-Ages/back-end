@@ -209,7 +209,8 @@ def test_require_admin_sem_flag_retorna_403(security_client, db_session):
     user = _criar_usuario(db_session, email="usuario-comum@example.com", is_admin=False)
     response = security_client.get("/admin", headers=_auth_header(_token_para(user)))
     assert response.status_code == 403
-    assert response.json()["error"]["code"] == "FORBIDDEN"
+    # Código próprio desde a back-end#61, e não o `FORBIDDEN` genérico.
+    assert response.json()["error"]["code"] == "ADMIN_REQUIRED"
 
 
 def test_require_admin_com_flag_retorna_200(security_client, db_session):

@@ -26,6 +26,19 @@ class CartItemResponse(BaseModel):
         return float(price)
 
 
+class CartStoreInfo(FeedStoreResponse):
+    """A loja no grupo do carrinho: a do feed, mais a chave Pix, a cidade e a
+    logo (back-end#259). O checkout mostra para onde o dinheiro vai antes de a
+    pessoa confirmar (RN-19). Não é o `FeedStoreResponse` direto porque o feed
+    é público e não pode expor a chave Pix.
+
+    `pix_key` e `city` são `None` quando a loja ainda não cadastrou."""
+
+    pix_key: str | None
+    city: str | None
+    logo_url: str | None
+
+
 class CartStoreResponse(BaseModel):
     """Um grupo do carrinho: as peças de uma loja e quanto pagar a ela.
 
@@ -33,7 +46,7 @@ class CartStoreResponse(BaseModel):
     vendedor — cada grupo vira uma chave Pix e um valor exato no checkout.
     """
 
-    store: FeedStoreResponse
+    store: CartStoreInfo
     items: list[CartItemResponse]
     subtotal: Decimal
 

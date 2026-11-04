@@ -11,7 +11,8 @@ Todo PR que altera um caminho listado em [`path-map.json`](https://github.com/Vi
 
 ## Onde começar
 
-- [Fundação HTTP](arquitetura/fundacao-http) — envelope de erro, paginação, prefixo `/api`.
+- [Fundação HTTP](arquitetura/fundacao-http) — envelope de erro, autorização por papel, paginação, prefixo `/api`.
+- [Configuração por ambiente](arquitetura/configuracao) — variáveis do `.env` e o que é recusado em produção.
 - [Provedor de IA](arquitetura/provedor-ia) — abstração `AIProvider`, `UnavailableAIProvider`.
 - [Infraestrutura de teste local](infraestrutura/teste-local) — Makefile, Compose `vintex-infra`, Terraform, LocalStack, MiniStack.
 

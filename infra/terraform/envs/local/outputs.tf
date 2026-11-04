@@ -117,3 +117,43 @@ output "media_public_access_block" {
   description = "Bloqueio de acesso público do bucket de mídia."
   value       = module.media_storage.public_access_block
 }
+
+output "image_analysis_queue_name" {
+  description = "Nome da fila local de análise de imagens."
+  value       = module.ai_messaging.processing_queue_name
+}
+
+output "image_analysis_queue_url" {
+  description = "URL da fila local de análise de imagens."
+  value       = module.ai_messaging.processing_queue_url
+}
+
+output "image_analysis_queue_arn" {
+  description = "ARN da fila local de análise de imagens."
+  value       = module.ai_messaging.processing_queue_arn
+}
+
+output "image_analysis_dlq_name" {
+  description = "Nome da DLQ local de análise de imagens."
+  value       = module.ai_messaging.dead_letter_queue_name
+}
+
+output "image_analysis_dlq_url" {
+  description = "URL da DLQ local de análise de imagens."
+  value       = module.ai_messaging.dead_letter_queue_url
+}
+
+output "image_analysis_dlq_arn" {
+  description = "ARN da DLQ local de análise de imagens."
+  value       = module.ai_messaging.dead_letter_queue_arn
+}
+
+output "image_analysis_max_receive_count" {
+  description = "Número máximo de entregas antes do redrive à DLQ."
+  value       = module.ai_messaging.max_receive_count
+}
+
+output "image_analysis_redrive_policy" {
+  description = "Política que envia mensagens não processadas à DLQ."
+  value       = module.ai_messaging.redrive_policy
+}

@@ -9,14 +9,20 @@ apenas `api_router`.
 
 from fastapi import APIRouter
 
+from app.views.admin_routes import router as admin_router
 from app.views.assistant_routes import router as assistant_router
 from app.views.auth_routes import router as auth_router
 from app.views.cart_routes import router as cart_router
+from app.views.favorite_routes import router as favorite_router
 from app.views.legal_routes import router as legal_router
 from app.views.media_routes import me_router as media_me_router
 from app.views.media_routes import public_router as media_public_router
+from app.views.notification_routes import router as notification_router
+from app.views.order_routes import router as order_router
 from app.views.product_routes import me_router as product_me_router
 from app.views.product_routes import router as product_router
+from app.views.product_routes import sales_router as sales_router
+from app.views.recommendation_routes import router as recommendation_router
 from app.views.seller_verification_routes import router as seller_verification_router
 from app.views.store_routes import me_router as store_me_router
 from app.views.store_routes import router as store_router
@@ -27,14 +33,20 @@ api_router = APIRouter(prefix="/api")
 
 # Routers de domínio (feed, auth, stores, styles...) são incluídos aqui
 # conforme as issues de rota forem entregues.
+api_router.include_router(admin_router)
 api_router.include_router(assistant_router)
 api_router.include_router(auth_router)
 api_router.include_router(cart_router)
+api_router.include_router(favorite_router)
 api_router.include_router(legal_router)
 api_router.include_router(media_me_router)
 api_router.include_router(media_public_router)
+api_router.include_router(notification_router)
+api_router.include_router(order_router)
 api_router.include_router(product_router)
 api_router.include_router(product_me_router)
+api_router.include_router(recommendation_router)
+api_router.include_router(sales_router)
 api_router.include_router(seller_verification_router)
 api_router.include_router(store_router)
 api_router.include_router(store_me_router)

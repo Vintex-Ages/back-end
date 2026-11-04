@@ -4,7 +4,7 @@ from decimal import Decimal
 
 import pytest
 
-from app.models import CartItem, Product, Seller, Store, User
+from app.models import Address, CartItem, Product, Seller, Store, User
 from app.seeds.lojas import seed_lojas
 from app.seeds.pecas import seed_pecas
 
@@ -39,14 +39,26 @@ def make_product(
     return product
 
 
-def as_user(user: User) -> dict[str, str]:
-    return {"X-User-Id": str(user.id)}
+@pytest.fixture
+def as_user(auth_headers):
+    """Sessão real de um usuário. Antes da `#151`, era o cabeçalho `X-User-Id`."""
+
+    def _as_user(user: User) -> dict[str, str]:
+        return auth_headers(user.id)
+
+    return _as_user
 
 
-def add(client, user: User, product: Product):
-    return client.post(
-        ITEMS_URL, json={"product_id": product.id}, headers=as_user(user)
-    )
+@pytest.fixture
+def add(as_user):
+    """Põe uma peça no carrinho de um usuário, com a sessão dele."""
+
+    def _add(client, user: User, product: Product):
+        return client.post(
+            ITEMS_URL, json={"product_id": product.id}, headers=as_user(user)
+        )
+
+    return _add
 
 
 def group_of(body: dict, store: Store) -> dict:
@@ -75,7 +87,7 @@ def cenario(db_session):
     }
 
 
-def test_adicionar_peca_ao_carrinho(client, db_session, cenario):
+def test_adicionar_peca_ao_carrinho(client, db_session, cenario, add):
     response = add(client, cenario["compradora"], cenario["jaqueta"])
 
     assert response.status_code == 200
@@ -97,7 +109,10 @@ def test_adicionar_peca_ao_carrinho(client, db_session, cenario):
 
 
 def test_adicionar_mesma_peca_de_novo_devolve_sucesso_sem_duplicar(
-    client, db_session, cenario
+    client,
+    db_session,
+    cenario,
+    add,
 ):
     primeira = add(client, cenario["compradora"], cenario["jaqueta"])
     segunda = add(client, cenario["compradora"], cenario["jaqueta"])
@@ -110,7 +125,7 @@ def test_adicionar_mesma_peca_de_novo_devolve_sucesso_sem_duplicar(
     )
 
 
-def test_listar_agrupa_por_loja_com_subtotal(client, cenario):
+def test_listar_agrupa_por_loja_com_subtotal(client, cenario, as_user, add):
     for peca in ("jaqueta", "saia", "bota"):
         add(client, cenario["compradora"], cenario[peca])
 
@@ -129,7 +144,7 @@ def test_listar_agrupa_por_loja_com_subtotal(client, cenario):
     assert group_of(body, cenario["brisa"])["subtotal"] == 80.0
 
 
-def test_paginacao_e_por_loja_e_nunca_parte_uma_loja(client, cenario):
+def test_paginacao_e_por_loja_e_nunca_parte_uma_loja(client, cenario, as_user, add):
     for peca in ("jaqueta", "saia", "bota"):
         add(client, cenario["compradora"], cenario[peca])
 
@@ -145,7 +160,7 @@ def test_paginacao_e_por_loja_e_nunca_parte_uma_loja(client, cenario):
     assert len(body["items"][0]["items"]) == 2  # a Aurora vem inteira
 
 
-def test_remover_item_recalcula_subtotal_da_loja(client, cenario):
+def test_remover_item_recalcula_subtotal_da_loja(client, cenario, as_user, add):
     for peca in ("jaqueta", "saia", "bota"):
         add(client, cenario["compradora"], cenario[peca])
 
@@ -162,7 +177,9 @@ def test_remover_item_recalcula_subtotal_da_loja(client, cenario):
     assert group_of(body, cenario["brisa"])["subtotal"] == 80.0
 
 
-def test_remover_ultima_peca_da_loja_tira_a_loja_do_carrinho(client, cenario):
+def test_remover_ultima_peca_da_loja_tira_a_loja_do_carrinho(
+    client, cenario, as_user, add
+):
     add(client, cenario["compradora"], cenario["bota"])
 
     response = client.delete(
@@ -173,7 +190,9 @@ def test_remover_ultima_peca_da_loja_tira_a_loja_do_carrinho(client, cenario):
     assert response.json()["total"] == 0
 
 
-def test_peca_vendida_vem_marcada_e_nao_entra_na_conta(client, db_session):
+def test_peca_vendida_vem_marcada_e_nao_entra_na_conta(
+    client, db_session, as_user, add
+):
     # Nesta sprint nada marca peça como vendida além do seed (não há
     # checkout), então usamos uma das peças que ele já cria como vendidas.
     # Ela entra direto no carrinho, simulando que foi vendida depois de
@@ -200,9 +219,13 @@ def test_peca_vendida_vem_marcada_e_nao_entra_na_conta(client, db_session):
     assert grupo["subtotal"] == float(ativa.price)
 
 
-def test_adicionar_peca_ja_vendida_devolve_409(client, db_session, cenario):
+# `reservado` é peça num pedido aberto (back-end#243) e responde como vendida.
+@pytest.mark.parametrize("status", ["vendido", "reservado"])
+def test_adicionar_peca_ja_vendida_devolve_409(
+    client, db_session, cenario, add, status
+):
     vendida = make_product(
-        db_session, cenario["aurora"], "Vestido", "70.00", status="vendido"
+        db_session, cenario["aurora"], "Vestido", "70.00", status=status
     )
     db_session.commit()
 
@@ -213,7 +236,10 @@ def test_adicionar_peca_ja_vendida_devolve_409(client, db_session, cenario):
 
 
 def test_adicionar_peca_ja_no_carrinho_que_foi_vendida_devolve_sucesso(
-    client, db_session, cenario
+    client,
+    db_session,
+    cenario,
+    add,
 ):
     add(client, cenario["compradora"], cenario["jaqueta"])
     cenario["jaqueta"].status = "vendido"
@@ -227,7 +253,11 @@ def test_adicionar_peca_ja_no_carrinho_que_foi_vendida_devolve_sucesso(
 
 @pytest.mark.parametrize("status", ["inexistente", "despublicado"])
 def test_adicionar_peca_inexistente_ou_despublicada_devolve_404(
-    client, db_session, cenario, status
+    client,
+    db_session,
+    cenario,
+    status,
+    as_user,
 ):
     if status == "inexistente":
         product_id = 999_999
@@ -247,7 +277,7 @@ def test_adicionar_peca_inexistente_ou_despublicada_devolve_404(
     assert response.json()["error"]["code"] == "PRODUCT_NOT_FOUND"
 
 
-def test_adicionar_sem_product_id_valido_devolve_422(client, cenario):
+def test_adicionar_sem_product_id_valido_devolve_422(client, cenario, as_user):
     response = client.post(
         ITEMS_URL, json={"product_id": 0}, headers=as_user(cenario["compradora"])
     )
@@ -257,7 +287,7 @@ def test_adicionar_sem_product_id_valido_devolve_422(client, cenario):
     assert "product_id" in response.json()["error"]["fields"]
 
 
-def test_remover_peca_que_nao_esta_no_carrinho_devolve_404(client, cenario):
+def test_remover_peca_que_nao_esta_no_carrinho_devolve_404(client, cenario, as_user):
     response = client.delete(
         f"{ITEMS_URL}/{cenario['jaqueta'].id}",
         headers=as_user(cenario["compradora"]),
@@ -267,7 +297,7 @@ def test_remover_peca_que_nao_esta_no_carrinho_devolve_404(client, cenario):
     assert response.json()["error"]["code"] == "CART_ITEM_NOT_FOUND"
 
 
-def test_ninguem_ve_o_carrinho_de_outra_pessoa(client, cenario):
+def test_ninguem_ve_o_carrinho_de_outra_pessoa(client, cenario, as_user, add):
     add(client, cenario["compradora"], cenario["jaqueta"])
 
     response = client.get(CART_URL, headers=as_user(cenario["outra"]))
@@ -277,7 +307,7 @@ def test_ninguem_ve_o_carrinho_de_outra_pessoa(client, cenario):
     assert response.json()["total"] == 0
 
 
-def test_ninguem_remove_item_do_carrinho_de_outra_pessoa(client, cenario):
+def test_ninguem_remove_item_do_carrinho_de_outra_pessoa(client, cenario, as_user, add):
     add(client, cenario["compradora"], cenario["jaqueta"])
 
     response = client.delete(
@@ -290,10 +320,56 @@ def test_ninguem_remove_item_do_carrinho_de_outra_pessoa(client, cenario):
     assert carrinho["total"] == 1
 
 
-def test_mesma_peca_pode_estar_no_carrinho_de_duas_pessoas(client, cenario):
+def test_mesma_peca_pode_estar_no_carrinho_de_duas_pessoas(client, cenario, add):
     add(client, cenario["compradora"], cenario["jaqueta"])
 
     response = add(client, cenario["outra"], cenario["jaqueta"])
 
     assert response.status_code == 200
     assert response.json()["total"] == 1
+
+
+def test_grupo_traz_chave_pix_cidade_e_logo_da_loja(
+    client, db_session, cenario, as_user, add
+):
+    """O checkout mostra para onde o dinheiro vai antes de a pessoa confirmar
+    (RN-19). Antes da back-end#259 a chave só aparecia depois do pedido."""
+    aurora = cenario["aurora"]
+    aurora.pix_key = "aurora@pix.test"
+    aurora.logo_url = "https://cdn.test/aurora.png"
+    aurora.address = Address(
+        street="Rua dos Andradas",
+        number="100",
+        city="Porto Alegre",
+        state="RS",
+        zip_code="90020000",
+    )
+    db_session.commit()
+    add(client, cenario["compradora"], cenario["jaqueta"])
+
+    body = client.get(CART_URL, headers=as_user(cenario["compradora"])).json()
+
+    assert group_of(body, aurora)["store"] == {
+        "id": aurora.id,
+        "name": "Brechó Aurora",
+        "verified": False,
+        "pix_key": "aurora@pix.test",
+        "city": "Porto Alegre",
+        "logo_url": "https://cdn.test/aurora.png",
+    }
+    assert isinstance(group_of(body, aurora)["subtotal"], float)
+
+
+def test_loja_sem_chave_pix_nem_endereco_continua_no_carrinho(
+    client, cenario, as_user, add
+):
+    """Loja que ainda não cadastrou chave, logo ou endereço devolve `null`, e
+    o carrinho não quebra: o `outerjoin` mantém a loja sem endereço."""
+    add(client, cenario["compradora"], cenario["bota"])
+
+    body = client.get(CART_URL, headers=as_user(cenario["compradora"])).json()
+
+    store = group_of(body, cenario["brisa"])["store"]
+    assert store["pix_key"] is None
+    assert store["city"] is None
+    assert store["logo_url"] is None

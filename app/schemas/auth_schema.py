@@ -49,6 +49,12 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     password: str
     phone: str | None = None
+    # Versão dos termos de uso que a pessoa aceitou (back-end#259). Nome
+    # proposto pelo front, que já envia o campo. Opcional, como o
+    # `terms_version` do cadastro da loja (#216).
+    accepted_terms_version: str | None = Field(
+        default=None, min_length=1, max_length=20
+    )
 
     @field_validator("name")
     @classmethod

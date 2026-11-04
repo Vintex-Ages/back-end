@@ -1,16 +1,14 @@
-import re
-
 from sqlalchemy.orm import Session
 
+from app.core.documento import is_valid_document
 from app.core.errors import ErrorCode, NotFound, ValidationError
 from app.models.seller import Seller
 from app.repositories.seller_repository import SellerRepository
 from app.schemas.seller_schema import SellerVerificationResponse
 
 # BE-US007-1: validação simulada — sem consulta a Receita Federal ou órgão
-# externo, só confere se o documento já informado ao virar vendedor bate no
-# formato esperado (quantidade de dígitos) para o tipo declarado.
-_DOCUMENT_DIGITS = {"CPF": 11, "CNPJ": 14}
+# externo, só confere o dígito verificador do documento já informado ao virar
+# vendedor, para o tipo declarado (back-end#217).
 
 
 class SellerController:
@@ -37,5 +35,6 @@ class SellerController:
         return SellerVerificationResponse(verified=seller.verified)
 
     def _documento_valido(self, seller: Seller) -> bool:
-        digitos = re.sub(r"\D", "", seller.document_value)
-        return len(digitos) == _DOCUMENT_DIGITS.get(seller.document_type, -1)
+        # Confere de novo, e não só no cadastro: vendedor gravado antes da
+        # back-end#217 pode ter documento que só passava na contagem.
+        return is_valid_document(seller.document_type, seller.document_value)

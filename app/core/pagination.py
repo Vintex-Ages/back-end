@@ -18,7 +18,7 @@ Uso numa rota::
 
 from __future__ import annotations
 
-from typing import Generic, Sequence, TypeVar
+from typing import Any, Generic, Sequence, TypeVar, overload
 
 from fastapi import Query
 from pydantic import BaseModel
@@ -29,6 +29,7 @@ DEFAULT_PAGE_SIZE = 20
 MAX_PAGE_SIZE = 100
 
 T = TypeVar("T")
+TSchema = TypeVar("TSchema", bound=BaseModel)
 
 
 class PageParams(BaseModel):
@@ -64,13 +65,33 @@ class Page(BaseModel, Generic[T]):
     total: int
 
 
+@overload
 def paginate(
     db: Session,
-    stmt: Select[tuple[object, ...]],
+    stmt: Select[Any],
+    params: PageParams,
+    *,
+    item_schema: type[TSchema],
+) -> Page[TSchema]: ...
+
+
+@overload
+def paginate(
+    db: Session,
+    stmt: Select[Any],
+    params: PageParams,
+    *,
+    item_schema: None = None,
+) -> Page[Any]: ...
+
+
+def paginate(
+    db: Session,
+    stmt: Select[Any],
     params: PageParams,
     *,
     item_schema: type[BaseModel] | None = None,
-) -> Page[object]:
+) -> Page[Any]:
     """Aplica a paginação a `stmt` e devolve um `Page`.
 
     Faz uma consulta de contagem e uma de dados — nunca uma por linha.
@@ -88,7 +109,7 @@ def paginate(
     else:
         items = list(rows)
 
-    return Page[object](
+    return Page[Any](
         items=items,
         page=params.page,
         page_size=params.page_size,

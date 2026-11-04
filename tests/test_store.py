@@ -78,15 +78,15 @@ def test_get_by_id_devolve_none_para_loja_inexistente(db_session):
     assert encontrada is None
 
 
-def test_get_metrics_conta_anunciadas_e_vendidas(db_session):
+def test_get_metrics_conta_so_ativas_e_as_vendidas(db_session):
+    """Uma peça em cada situação: só a `ativo` conta como ativa (back-end#256)."""
     store = persist_store(db_session)
-    persist_product(db_session, store, status="ativo")
-    persist_product(db_session, store, status="vendido")
-    persist_product(db_session, store, status="despublicado")
+    for status in ("rascunho", "ativo", "reservado", "vendido", "despublicado"):
+        persist_product(db_session, store, status=status)
 
     metrics = StoreRepository(db_session).get_metrics(store.id)
 
-    assert metrics["products_listed"] == 3
+    assert metrics["active_count"] == 1
     assert metrics["products_sold"] == 1
 
 
@@ -95,7 +95,7 @@ def test_get_metrics_sem_pecas_devolve_zero(db_session):
 
     metrics = StoreRepository(db_session).get_metrics(store.id)
 
-    assert metrics["products_listed"] == 0
+    assert metrics["active_count"] == 0
     assert metrics["products_sold"] == 0
 
 
@@ -124,7 +124,8 @@ def test_get_store_devolve_detalhe_com_selo_e_metricas(db_session):
     assert resultado.verified is True
     assert resultado.address is not None
     assert resultado.address.city == "Porto Alegre"
-    assert resultado.metrics.products_listed == 2
+    assert resultado.metrics.active_count == 1
+    assert resultado.metrics.products_listed == 1
     assert resultado.metrics.products_sold == 1
 
 

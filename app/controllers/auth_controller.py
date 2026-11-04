@@ -9,6 +9,7 @@ from __future__ import annotations
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow_naive
 from app.core.errors import Conflict, ErrorCode, Unauthorized
 from app.core.security import (
     create_access_token,
@@ -49,6 +50,10 @@ class AuthController:
             email=data.email,
             phone=data.phone,
             password_hash=hash_password(data.password),
+            terms_version=data.accepted_terms_version,
+            # Data só existe se houve aceite, pela mesma regra do cadastro da
+            # loja: data sem versão registraria um aceite que ninguém deu.
+            terms_accepted_at=utcnow_naive() if data.accepted_terms_version else None,
         )
         try:
             self.repository.create(user)
