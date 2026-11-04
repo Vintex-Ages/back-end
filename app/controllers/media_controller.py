@@ -52,6 +52,8 @@ class MediaController:
             content_type = media_rules.validar_tipo(kind, arquivo.content_type)
             total += len(arquivo.conteudo)
             media_rules.validar_tamanho(arquivo.nome, len(arquivo.conteudo), total)
+            if kind == "video":
+                media_rules.validar_duracao_do_video(arquivo.nome, arquivo.conteudo)
             arquivo.content_type = content_type
 
         itens: list[MediaItemResponse] = []

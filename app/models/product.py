@@ -82,6 +82,10 @@ class Product(BaseModel):
     # coluna não existe "no período" — a data de última alteração não serve,
     # porque muda a cada edição (back-end#146).
     sold_at: Mapped[datetime | None] = mapped_column(DateTime)
+    # Vídeo curto do anúncio, um por peça (RN-48, back-end#270). É coluna e não
+    # mais uma linha em `product_images`: o vídeo complementa a galeria, não
+    # conta como a foto que publicar exige (RN-47), e não vira capa.
+    video_url: Mapped[str | None] = mapped_column(Text)
 
     # Pipeline assíncrono de ingestão de IA (VE-05, back-end#62).
     # `ai_status` nulo significa "nenhuma análise de IA foi solicitada para
