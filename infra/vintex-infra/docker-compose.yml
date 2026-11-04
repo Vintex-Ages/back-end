@@ -39,12 +39,18 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      localstack:
+        condition: service_healthy
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-vintex_infra}
       APP_ENV: test
       AWS_REGION: us-east-2
       S3_ENDPOINT_URL: http://localstack:4566
+      SQS_ENDPOINT_URL: http://localstack:4566
+      AI_ANALYSIS_QUEUE_URL: http://localstack:4566/000000000000/vintex-local-image-analysis
       MEDIA_BUCKET: vintex-local-media
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8001}
+      MEDIA_INTERNAL_BASE_URL: http://api:8000
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
     networks:
@@ -55,6 +61,35 @@ services:
       timeout: 5s
       retries: 10
       start_period: 10s
+
+  worker:
+    image: vintex-infra-api:local
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    command: ["python", "-m", "app.workers.ai_analysis"]
+    profiles: ["ai-worker"]
+    depends_on:
+      db:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-vintex_infra}
+      APP_ENV: test
+      AWS_REGION: us-east-2
+      SQS_ENDPOINT_URL: http://localstack:4566
+      AI_ANALYSIS_QUEUE_URL: http://localstack:4566/000000000000/vintex-local-image-analysis
+      AI_WORKER_PROVIDER: ${AI_WORKER_PROVIDER:-unavailable}
+      FREELLMAPI_BASE_URL: ${FREELLMAPI_BASE_URL:-http://freellmapi:3001/v1}
+      FREELLMAPI_API_KEY: ${FREELLMAPI_API_KEY:-}
+      FREELLMAPI_MODEL: ${FREELLMAPI_MODEL:-auto}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8001}
+      MEDIA_INTERNAL_BASE_URL: http://api:8000
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+    networks:
+      - vintex-infra-net
 
   localstack:
     image: localstack/localstack:3

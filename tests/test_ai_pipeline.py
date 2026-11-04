@@ -1,8 +1,6 @@
-"""Pipeline assíncrono de ingestão de IA (`app/services/ai/pipeline.py`, VE-05)."""
+"""Persistência do processamento assíncrono de imagens."""
 
 from decimal import Decimal
-
-from fastapi import BackgroundTasks
 
 from app.models.product import Product
 from app.models.store import Store
@@ -43,8 +41,6 @@ class _StubFailingProvider(AIProvider):
 
 
 class _StubCrashingProvider(AIProvider):
-    """Simula uma falha que não é `AIProviderError` (ex.: bug do SDK do fornecedor real)."""
-
     def analyze_image(self, image_urls):
         raise KeyError("campo inesperado na resposta do fornecedor")
 
@@ -65,79 +61,83 @@ def make_product(db_session) -> Product:
     return product
 
 
-def test_enqueue_marca_pending_e_agenda_task(db_session) -> None:
-    product = make_product(db_session)
-    background_tasks = BackgroundTasks()
-
-    pipeline.enqueue_image_analysis(
-        background_tasks, product, ["https://cdn.test/foto.jpg"]
-    )
-    db_session.commit()
-
-    assert product.ai_status == "pending"
-    assert product.ai_error is None
-    assert len(background_tasks.tasks) == 1
-
-
-def test_enqueue_sem_fotos_nao_agenda_nada(db_session) -> None:
-    product = make_product(db_session)
-    background_tasks = BackgroundTasks()
-
-    pipeline.enqueue_image_analysis(background_tasks, product, [])
-
-    assert product.ai_status is None
-    assert len(background_tasks.tasks) == 0
-
-
-def test_run_image_analysis_sucesso_marca_done_com_sugestoes(
-    db_session, monkeypatch
-) -> None:
+def test_process_image_analysis_persists_suggestions(db_session, monkeypatch) -> None:
     monkeypatch.setattr(pipeline, "SessionLocal", TestingSessionLocal)
-    monkeypatch.setattr(pipeline, "get_ai_provider", lambda: _StubOkProvider())
     product = make_product(db_session)
 
-    pipeline._run_image_analysis(product.id, ["https://cdn.test/foto.jpg"])
+    completed = pipeline.process_image_analysis(
+        product.id,
+        ["https://cdn.test/foto.jpg"],
+        provider=_StubOkProvider(),
+    )
 
     db_session.refresh(product)
+    assert completed is True
     assert product.ai_status == "done"
     assert product.ai_error is None
     assert product.ai_suggestions["category"]["value"] == "Jaqueta"
 
 
-def test_run_image_analysis_falha_do_provider_marca_failed_sem_derrubar(
+def test_process_image_analysis_persists_failure_and_requests_retry(
     db_session, monkeypatch
 ) -> None:
     monkeypatch.setattr(pipeline, "SessionLocal", TestingSessionLocal)
-    monkeypatch.setattr(pipeline, "get_ai_provider", lambda: _StubFailingProvider())
     product = make_product(db_session)
 
-    pipeline._run_image_analysis(product.id, ["https://cdn.test/foto.jpg"])
+    completed = pipeline.process_image_analysis(
+        product.id,
+        ["https://cdn.test/foto.jpg"],
+        provider=_StubFailingProvider(),
+    )
 
     db_session.refresh(product)
+    assert completed is False
     assert product.ai_status == "failed"
     assert product.ai_error
     assert product.ai_suggestions is None
 
 
-def test_run_image_analysis_falha_inesperada_tambem_marca_failed_sem_derrubar(
+def test_process_image_analysis_unexpected_failure_is_persisted(
     db_session, monkeypatch
 ) -> None:
-    """Exceção que não é `AIProviderError` (ex.: fornecedor real) não deve travar a peça em `processing`."""
     monkeypatch.setattr(pipeline, "SessionLocal", TestingSessionLocal)
-    monkeypatch.setattr(pipeline, "get_ai_provider", lambda: _StubCrashingProvider())
     product = make_product(db_session)
 
-    pipeline._run_image_analysis(product.id, ["https://cdn.test/foto.jpg"])
+    completed = pipeline.process_image_analysis(
+        product.id,
+        ["https://cdn.test/foto.jpg"],
+        provider=_StubCrashingProvider(),
+    )
 
     db_session.refresh(product)
+    assert completed is False
     assert product.ai_status == "failed"
     assert product.ai_error == "Falha inesperada na análise de IA."
-    assert product.ai_suggestions is None
 
 
-def test_run_image_analysis_peca_inexistente_nao_levanta(
+def test_missing_product_is_terminal_and_can_be_acknowledged(
     db_session, monkeypatch
 ) -> None:
     monkeypatch.setattr(pipeline, "SessionLocal", TestingSessionLocal)
 
-    pipeline._run_image_analysis(999999, ["https://cdn.test/foto.jpg"])
+    assert pipeline.process_image_analysis(999999, ["https://cdn.test/a.jpg"]) is True
+
+
+def test_done_product_is_not_analyzed_twice(db_session, monkeypatch) -> None:
+    monkeypatch.setattr(pipeline, "SessionLocal", TestingSessionLocal)
+    product = make_product(db_session)
+    product.ai_status = "done"
+    db_session.commit()
+
+    class _MustNotRunProvider(_StubOkProvider):
+        def analyze_image(self, image_urls):
+            raise AssertionError("a tarefa concluída não deve ser repetida")
+
+    assert (
+        pipeline.process_image_analysis(
+            product.id,
+            ["https://cdn.test/foto.jpg"],
+            provider=_MustNotRunProvider(),
+        )
+        is True
+    )

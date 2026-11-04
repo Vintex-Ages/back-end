@@ -26,16 +26,13 @@ me_router = APIRouter(prefix="/users/me/media", tags=["Media"])
 public_router = APIRouter(prefix="/media", tags=["Media"])
 
 
-def get_controller(request: Request) -> MediaController:
-    """A base da URL vem da configuração e, na falta dela, da requisição.
+def get_media_storage() -> MediaStorage:
+    """O storage de mídia, para qualquer rota que leia ou grave arquivo.
 
-    Em desenvolvimento a base da requisição já é a certa (`localhost:8000`),
-    que o próprio servidor alcança. Em outro ambiente, onde o endereço que o
-    navegador usa não é o que o servidor usa, `PUBLIC_BASE_URL` resolve.
+    Também usado pela rota do comprovante da administradora (back-end#244).
     """
-    base = settings.PUBLIC_BASE_URL or str(request.base_url)
     try:
-        storage = MediaStorage.from_settings()
+        return MediaStorage.from_settings()
     except ValueError as exc:
         # Sem `MEDIA_BUCKET` o `from_settings` levantava `ValueError` dentro da
         # dependency, e toda requisição virava 500 `INTERNAL_ERROR` — inclusive
@@ -44,6 +41,18 @@ def get_controller(request: Request) -> MediaController:
         raise ServiceUnavailable(
             "O armazenamento de mídia não está configurado neste ambiente."
         ) from exc
+
+
+def get_controller(
+    request: Request, storage: MediaStorage = Depends(get_media_storage)
+) -> MediaController:
+    """A base da URL vem da configuração e, na falta dela, da requisição.
+
+    Em desenvolvimento a base da requisição já é a certa (`localhost:8000`),
+    que o próprio servidor alcança. Em outro ambiente, onde o endereço que o
+    navegador usa não é o que o servidor usa, `PUBLIC_BASE_URL` resolve.
+    """
+    base = settings.PUBLIC_BASE_URL or str(request.base_url)
     return MediaController(storage, base)
 
 

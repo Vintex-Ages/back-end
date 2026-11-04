@@ -77,6 +77,9 @@ def test_lista_separada_por_virgula_vira_lista(monkeypatch) -> None:
     [
         (_Erro(503, "UNAVAILABLE"), True),
         (Exception("503 UNAVAILABLE. high demand"), True),
+        # Cota do provedor esgotada (back-end#258).
+        (_Erro(429, "RESOURCE_EXHAUSTED"), True),
+        (Exception("429 RESOURCE_EXHAUSTED. Quota exceeded"), True),
         (_Erro(404, "NOT_FOUND"), False),
         (_Erro(400, "INVALID_ARGUMENT"), False),
         (Exception("qualquer outra coisa"), False),
@@ -93,6 +96,23 @@ def test_503_no_primeiro_usa_o_segundo(monkeypatch) -> None:
         "primeiro,segundo",
         {
             "primeiro": _Erro(503, "UNAVAILABLE. high demand"),
+            "segundo": _Resposta(esperado),
+        },
+    )
+
+    assert p._gerar_com_fallback([]).parsed == esperado
+    assert duble.chamados == ["primeiro", "segundo"]
+
+
+def test_429_no_primeiro_usa_o_segundo(monkeypatch) -> None:
+    """Cota do dia esgotada num modelo (back-end#258): a cota da camada
+    gratuita é por modelo, e o próximo da lista pode ainda ter."""
+    esperado = ImageAnalysisResult()
+    p, duble = _provider(
+        monkeypatch,
+        "primeiro,segundo",
+        {
+            "primeiro": _Erro(429, "RESOURCE_EXHAUSTED. Quota exceeded"),
             "segundo": _Resposta(esperado),
         },
     )
@@ -120,13 +140,41 @@ def test_404_no_primeiro_nao_tenta_o_segundo(monkeypatch) -> None:
 
 
 def test_todos_indisponiveis_levanta_erro_de_provedor(monkeypatch) -> None:
+    """Esgotar a cadeia nao basta mais: so levanta depois das rodadas (#264).
+
+    Este teste afirmava uma passada so, `["a", "b", "c"]`. A #264 mudou isso de
+    proposito: medido em 05/10, os tres modelos responderam 503 no mesmo
+    instante e voltaram em menos de dois minutos, entao trocar de modelo nao
+    cobria o congestionamento simultaneo.
+    """
     p, duble = _provider(
         monkeypatch,
         "a,b,c",
         {n: _Erro(503, "UNAVAILABLE") for n in ("a", "b", "c")},
     )
+    monkeypatch.setattr(mod.time, "sleep", lambda _s: None)
 
     with pytest.raises(AIProviderError, match="Falha ao analisar"):
         p._gerar_com_fallback([])
 
-    assert duble.chamados == ["a", "b", "c"]
+    assert duble.chamados == ["a", "b", "c"] * mod._RODADAS
+
+
+def test_todos_sem_cota_levanta_o_mesmo_erro_do_503(monkeypatch) -> None:
+    """O mesmo `AIProviderError` que a rota já traduz em 503 `AI_UNAVAILABLE`
+    (`test_listing_suggestions_*`): o front não precisa de um caso novo.
+
+    A cota esgotada (429) é indisponibilidade como o 503, então também passa
+    pelas rodadas da #264 -- são `_RODADAS` passadas pela cadeia, não uma.
+    """
+    p, duble = _provider(
+        monkeypatch,
+        "a,b",
+        {"a": _Erro(429, "RESOURCE_EXHAUSTED"), "b": _Erro(503, "UNAVAILABLE")},
+    )
+    monkeypatch.setattr(mod.time, "sleep", lambda _s: None)
+
+    with pytest.raises(AIProviderError, match="Falha ao analisar"):
+        p._gerar_com_fallback([])
+
+    assert duble.chamados == ["a", "b"] * mod._RODADAS
