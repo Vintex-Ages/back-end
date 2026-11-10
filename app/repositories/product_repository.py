@@ -6,7 +6,13 @@ from functools import reduce
 from typing import TypedDict, cast
 
 from sqlalchemy import ScalarSelect, Select, case, func, literal, select, update
-from sqlalchemy.orm import Session, joinedload, selectinload, with_expression
+from sqlalchemy.orm import (
+    QueryableAttribute,
+    Session,
+    joinedload,
+    selectinload,
+    with_expression,
+)
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.core.pagination import Page, PageParams, paginate
@@ -39,6 +45,7 @@ class ProductFeedRow(TypedDict):
     id: int
     name: str
     price: Decimal
+    category: str | None
     cover_image_url: str | None
     status: str
     store_id: int
@@ -79,6 +86,7 @@ def _feed_select() -> Select[tuple[object, ...]]:
         Product.id,
         Product.name,
         Product.price,
+        Product.category,
         _cover_image_url().label("cover_image_url"),
         Product.status,
         Store.id.label("store_id"),
@@ -107,7 +115,13 @@ class ProductRepository:
         )
 
     def get_active_feed(
-        self, params: PageParams, filters: ProductFilters, q: str | None = None
+        self,
+        params: PageParams,
+        filters: ProductFilters,
+        q: str | None = None,
+        *,
+        exclude_category: str | None = None,
+        exclude_product_id: int | None = None,
     ) -> tuple[list[ProductFeedRow], int]:
         stmt = (
             _feed_select()
@@ -115,7 +129,10 @@ class ProductRepository:
             # A localizacao e da loja. O outer join preserva lojas sem endereco
             # quando city/state nao foram informados.
             .outerjoin(Address, Store.address_id == Address.id)
-            .where(*self._condicoes_do_catalogo(filters))
+            .where(
+                *self._condicoes_do_catalogo(filters),
+                *self._exclusoes(exclude_category, exclude_product_id),
+            )
             .order_by(Product.created_at.desc(), Product.id.desc())
         )
 
@@ -155,18 +172,44 @@ class ProductRepository:
         for field_name, column in filter_columns.items():
             value = getattr(filters, field_name)
             if value is not None:
-                normalized_column = func.lower(column)
-                normalized_value = func.lower(value)
-                if self.db.get_bind().dialect.name == "postgresql":
-                    normalized_column = func.immutable_unaccent(normalized_column)
-                    normalized_value = func.immutable_unaccent(normalized_value)
-                conditions.append(normalized_column == normalized_value)
+                conditions.append(self._normalizado(column) == self._normalizado(value))
         if filters.price_min is not None:
             conditions.append(Product.price >= filters.price_min)
         if filters.price_max is not None:
             conditions.append(Product.price <= filters.price_max)
         if filters.store_id is not None:
             conditions.append(Store.id == filters.store_id)
+        return conditions
+
+    def _normalizado(
+        self, expr: QueryableAttribute[str | None] | str
+    ) -> ColumnElement[str]:
+        """Minúsculo e, no Postgres, sem acento (RN-41): "Calça" e "calca"
+        comparam iguais. O SQLite dos testes sem banco não tem `unaccent`."""
+        normalized = func.lower(expr)
+        if self.db.get_bind().dialect.name == "postgresql":
+            normalized = func.immutable_unaccent(normalized)
+        return normalized
+
+    def _exclusoes(
+        self, exclude_category: str | None, exclude_product_id: int | None
+    ) -> list[ColumnElement[bool]]:
+        """O que a combinação de peças tira da lista (back-end#328).
+
+        `exclude_category` deixa só peças **com** categoria e diferente dela,
+        comparada sem acento e sem caixa: peça sem categoria não pode ser
+        afirmada como "de outra categoria". `""` tira só as sem categoria.
+        `None` nos dois não tira nada, que é o caso do feed e da busca.
+        """
+        conditions: list[ColumnElement[bool]] = []
+        if exclude_category is not None:
+            conditions.append(Product.category.is_not(None))
+            conditions.append(
+                self._normalizado(Product.category)
+                != self._normalizado(exclude_category)
+            )
+        if exclude_product_id is not None:
+            conditions.append(Product.id != exclude_product_id)
         return conditions
 
     def list_for_seller(
@@ -240,6 +283,9 @@ class ProductRepository:
         embedding_model: str,
         params: PageParams,
         filters: ProductFilters | None = None,
+        *,
+        exclude_category: str | None = None,
+        exclude_product_id: int | None = None,
     ) -> tuple[list[ProductSimilarRow], int]:
         """Peças ativas mais próximas do vetor da busca, paginadas, e o total
         (BE-US027-3, back-end#149; paginação, filtros e distância na #246).
@@ -253,6 +299,9 @@ class ProductRepository:
           rotular. Não há limiar aqui dentro: uma busca sem nada parecido
           ainda devolve as mais próximas, e a lista não volta vazia enquanto
           houver catálogo (RN-61).
+        - **`exclude_category` e `exclude_product_id`** servem à combinação de
+          peças (back-end#328): a mesma semelhança, com a categoria da peça de
+          origem e ela mesma fora (`_exclusoes`).
 
         Nunca inventa peça: só o que já existe no catálogo real (RN-65).
         """
@@ -264,6 +313,7 @@ class ProductRepository:
             .outerjoin(Address, Store.address_id == Address.id)
             .where(
                 *self._condicoes_do_catalogo(filters or ProductFilters()),
+                *self._exclusoes(exclude_category, exclude_product_id),
                 Product.embedding.is_not(None),
                 Product.embedding_model == embedding_model,
             )

@@ -16,6 +16,7 @@ from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
+from app.controllers.combination_controller import CombinationController
 from app.controllers.media_controller import ArquivoRecebido
 from app.controllers.product_controller import ProductController
 from app.core.current_user import get_current_user_id
@@ -28,6 +29,7 @@ from app.schemas.product_management_schema import (
     ProductManagementPage,
 )
 from app.schemas.product_schema import (
+    CombinationsResponse,
     FeedResponse,
     ProductAIStatusResponse,
     ProductDetailResponse,
@@ -268,6 +270,26 @@ def get_product_detail(
     controller: ProductController = Depends(get_controller),
 ) -> ProductDetailResponse:
     return controller.get_detail(product_id)
+
+
+def get_combination_controller(
+    db: Session = Depends(get_db),
+) -> CombinationController:
+    return CombinationController(db)
+
+
+@router.get(
+    "/{product_id}/combinations",
+    response_model=CombinationsResponse,
+    summary="Peças de outras categorias que combinam com a peça",
+    responses={404: {"description": "PRODUCT_NOT_FOUND"}},
+)
+def get_product_combinations(
+    product_id: int,
+    controller: CombinationController = Depends(get_combination_controller),
+) -> CombinationsResponse:
+    """Pública, como o detalhe. A peça de origem pode estar vendida (RN-63)."""
+    return controller.combinations(product_id)
 
 
 @me_router.patch("/{product_id}", response_model=ProductDraftResponse)
