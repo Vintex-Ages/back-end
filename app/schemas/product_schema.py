@@ -175,6 +175,54 @@ class RecommendationsResponse(BaseModel):
     total: int
 
 
+class CombinationStoreResponse(BaseModel):
+    id: int
+    name: str
+
+
+class CombinationItemResponse(BaseModel):
+    """Uma peça que combina com a peça aberta (back-end#328)."""
+
+    id: int
+    name: str
+    price: Decimal
+    category: str
+    cover_image_url: str | None
+    store: CombinationStoreResponse
+
+    @classmethod
+    def from_row(cls, row: ProductFeedRow) -> "CombinationItemResponse":
+        return cls(
+            id=row["id"],
+            name=row["name"],
+            price=row["price"],
+            category=row["category"] or "",
+            cover_image_url=row["cover_image_url"],
+            store=CombinationStoreResponse(id=row["store_id"], name=row["store_name"]),
+        )
+
+    @field_serializer("price")
+    def serializar_preco(self, price: Decimal) -> float:
+        return float(price)
+
+
+class CombinationsResponse(BaseModel):
+    """`GET /api/products/{id}/combinations` (BE-US030-1, back-end#328).
+
+    `match_type` tem o sentido do feed e da conversa: `fallback` quando as
+    peças não vieram da semelhança, e sim do catálogo de outras categorias.
+    `total_amount` é a soma dos preços de `pieces`.
+    """
+
+    pieces: list[CombinationItemResponse]
+    match_type: Literal["exact", "fallback"]
+    total_amount: Decimal
+
+    @field_serializer("total_amount")
+    def serializar_total(self, total_amount: Decimal) -> float:
+        return float(total_amount)
+
+
 class ProductMediaResponse(BaseModel):
     type: str = "image"
     url: str
