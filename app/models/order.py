@@ -23,8 +23,8 @@ if TYPE_CHECKING:
     from app.models.store import Store
     from app.models.user import User
 
-# Os seis estados da RN-82, na ordem do fluxo, mais `expirado`: o pedido sem
-# comprovante aprovado em 3 dias sai do fluxo e a peça volta a `ativo`
+# Os seis estados da RN-82, na ordem do fluxo, mais `expirado`: o pedido cujo
+# comprovante não foi enviado em 3 dias sai do fluxo e a peça volta a `ativo`
 # (back-end#243). Os nomes são os do contrato do front
 # (`front-end/src/types/order.ts`).
 #
@@ -101,8 +101,8 @@ class Order(BaseModel):
     platform_fee: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     total_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
 
-    # Prazo para o comprovante ser aprovado. Vencido, o pedido vai para
-    # `expirado` e a peça volta a `ativo`.
+    # Prazo para o comprador enviar o comprovante. Vencido sem envio, o pedido
+    # vai para `expirado` e a peça volta a `ativo`.
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
     # Endereço de entrega copiado na compra. É cópia, não FK para

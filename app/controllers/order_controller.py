@@ -34,8 +34,8 @@ from app.services.media_storage import MediaStorage
 
 logger = logging.getLogger(__name__)
 
-# Prazo para o comprovante ser aprovado. Vencido, o pedido expira e a peça
-# volta a `ativo` (back-end#243).
+# Prazo para o comprador enviar o comprovante. Vencido sem envio, o pedido
+# expira e a peça volta a `ativo` (back-end#243).
 PRAZO_DO_COMPROVANTE = timedelta(days=3)
 _STATUS_INICIAL = "aguardando_comprovante"
 
