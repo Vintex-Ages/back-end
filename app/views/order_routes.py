@@ -9,10 +9,15 @@ from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
 from app.controllers.media_controller import ArquivoRecebido
+from app.controllers.order_complaint_controller import OrderComplaintController
 from app.controllers.order_controller import OrderController
 from app.core.current_user import get_current_user_id
 from app.core.pagination import Page, PageParams, page_params
 from app.database import get_db
+from app.schemas.order_complaint_schema import (
+    OrderComplaintCreate,
+    OrderComplaintResponse,
+)
 from app.schemas.order_schema import (
     OrderCreate,
     OrderListItemResponse,
@@ -58,6 +63,35 @@ def list_my_orders(
     controller: OrderController = Depends(get_controller),
 ) -> Page[OrderListItemResponse]:
     return controller.list_mine(user_id, params)
+
+
+def get_complaint_controller(
+    db: Session = Depends(get_db),
+) -> OrderComplaintController:
+    return OrderComplaintController(db)
+
+
+@router.post(
+    "/{order_id}/complaints",
+    response_model=OrderComplaintResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Reporta que o pedido não chegou ou chegou danificado",
+    responses={
+        404: {"description": "ORDER_NOT_FOUND: inexistente ou de outra pessoa"},
+        409: {
+            "description": "COMPLAINT_NOT_ALLOWED: pedido ainda não confirmado"
+            " · ALREADY_REPORTED"
+        },
+        422: {"description": "motivo fora dos dois valores ou texto vazio"},
+    },
+)
+def report_problem(
+    order_id: int,
+    data: OrderComplaintCreate,
+    user_id: int = Depends(get_current_user_id),
+    controller: OrderComplaintController = Depends(get_complaint_controller),
+) -> OrderComplaintResponse:
+    return controller.report(user_id, order_id, data)
 
 
 @router.post(

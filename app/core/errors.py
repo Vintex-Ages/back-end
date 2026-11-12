@@ -68,6 +68,10 @@ class ErrorCode:
     # o segundo voto no mesmo pedido.
     RATING_NOT_ALLOWED = "RATING_NOT_ALLOWED"
     ALREADY_RATED = "ALREADY_RATED"
+    # Reclamação do pedido (back-end#268): pedido ainda não confirmado, e a
+    # segunda reclamação no mesmo pedido.
+    COMPLAINT_NOT_ALLOWED = "COMPLAINT_NOT_ALLOWED"
+    ALREADY_REPORTED = "ALREADY_REPORTED"
     # Aviso inexistente ou de outra pessoa (back-end#261).
     NOTIFICATION_NOT_FOUND = "NOTIFICATION_NOT_FOUND"
     LEGAL_DOCUMENT_NOT_FOUND = "LEGAL_DOCUMENT_NOT_FOUND"

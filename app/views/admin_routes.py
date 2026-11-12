@@ -13,6 +13,7 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.controllers.order_complaint_controller import OrderComplaintController
 from app.controllers.payment_review_controller import PaymentReviewController
 from app.core.pagination import Page, PageParams, page_params
 from app.core.security import require_admin
@@ -23,6 +24,7 @@ from app.schemas.admin_payment_schema import (
     ReceiptQueueEntry,
     RejectRequest,
 )
+from app.schemas.order_complaint_schema import AdminComplaintEntry
 from app.services.media_storage import MediaStorage
 from app.views.media_routes import get_media_storage
 
@@ -128,3 +130,20 @@ def reject_payment(
     controller: PaymentReviewController = Depends(get_review_controller),
 ) -> PaymentReviewResponse:
     return controller.reject(order_id, admin, data.reason)
+
+
+def get_complaint_controller(db: Session = Depends(get_db)) -> OrderComplaintController:
+    return OrderComplaintController(db)
+
+
+@router.get(
+    "/complaints",
+    response_model=Page[AdminComplaintEntry],
+    summary="Reclamações de pedidos, mais antiga primeiro",
+    responses={403: {"description": "ADMIN_REQUIRED"}},
+)
+def list_complaints(
+    params: PageParams = Depends(page_params),
+    controller: OrderComplaintController = Depends(get_complaint_controller),
+) -> Page[AdminComplaintEntry]:
+    return controller.list_for_admin(params)

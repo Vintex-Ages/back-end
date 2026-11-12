@@ -5,6 +5,7 @@ from app.models.favorite import Favorite
 from app.models.legal_document import LegalDocument
 from app.models.notification import Notification
 from app.models.order import Order
+from app.models.order_complaint import OrderComplaint
 from app.models.order_item import OrderItem
 from app.models.order_status_history import OrderStatusHistory
 from app.models.payment import Payment
@@ -26,6 +27,7 @@ __all__ = [
     "LegalDocument",
     "Notification",
     "Order",
+    "OrderComplaint",
     "OrderItem",
     "OrderStatusHistory",
     "Payment",
