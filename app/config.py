@@ -41,6 +41,11 @@ class Settings(BaseSettings):
     CHAT_QUOTA_PER_PERSON: int = Field(default=5, ge=1)
     CHAT_QUOTA_PER_DAY: int = Field(default=40, ge=1)
 
+    # Requisições por dia que o provedor de IA dá ao projeto inteiro
+    # (back-end#263). Só lido pela leitura do consumo, para dizer quanto resta:
+    # quem limita de fato é o provedor, e quem limita o chat são as cotas acima.
+    AI_PROVIDER_DAILY_LIMIT: int = Field(default=50, ge=1)
+
     # Sugestão de preço (back-end#254): abaixo de tantas peças parecidas no
     # catálogo, a faixa vem nula em vez de um número sem base.
     PRICE_SUGGESTION_MIN_BASE: int = Field(default=3, ge=1)

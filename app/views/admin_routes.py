@@ -6,6 +6,7 @@ da #244) nasce exigindo o papel.
 Esquecer o `Depends` numa rota nova não abre a rota (RN-32).
 """
 
+from datetime import date
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Query, Request
@@ -13,6 +14,7 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.controllers.ai_usage_controller import AIUsageController
 from app.controllers.payment_review_controller import PaymentReviewController
 from app.core.pagination import Page, PageParams, page_params
 from app.core.security import require_admin
@@ -23,6 +25,7 @@ from app.schemas.admin_payment_schema import (
     ReceiptQueueEntry,
     RejectRequest,
 )
+from app.schemas.ai_usage_schema import AIUsageResponse
 from app.services.media_storage import MediaStorage
 from app.views.media_routes import get_media_storage
 
@@ -35,6 +38,10 @@ router = APIRouter(
 
 def get_review_controller(db: Session = Depends(get_db)) -> PaymentReviewController:
     return PaymentReviewController(db)
+
+
+def get_ai_usage_controller(db: Session = Depends(get_db)) -> AIUsageController:
+    return AIUsageController(db)
 
 
 _ERROS_DA_VALIDACAO: dict[int | str, dict[str, Any]] = {
@@ -128,3 +135,18 @@ def reject_payment(
     controller: PaymentReviewController = Depends(get_review_controller),
 ) -> PaymentReviewResponse:
     return controller.reject(order_id, admin, data.reason)
+
+
+@router.get(
+    "/ai-usage",
+    response_model=AIUsageResponse,
+    summary="Consumo do provedor de IA no dia, por funcionalidade e por modelo",
+    responses={403: {"description": "ADMIN_REQUIRED"}},
+)
+def get_ai_usage(
+    day: date | None = Query(
+        None, description="Dia em UTC (AAAA-MM-DD). Sem ele, o de hoje."
+    ),
+    controller: AIUsageController = Depends(get_ai_usage_controller),
+) -> AIUsageResponse:
+    return controller.consumo(day)
