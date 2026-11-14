@@ -30,6 +30,7 @@ from app.services.ai.base import (
     SearchDone,
     SearchTextDelta,
 )
+from app.services.ai.registro import definir_funcionalidade
 from app.services.chat_quota import ChatQuota, CotaEsgotada
 
 logger = logging.getLogger("vintex.assistant")
@@ -77,6 +78,7 @@ class AssistantController:
         if not urls:
             return ImageAnalysisResult()
 
+        definir_funcionalidade("cadastro_foto")
         try:
             return get_ai_provider().analyze_image(urls)
         except AIProviderError as exc:
@@ -101,6 +103,7 @@ class AssistantController:
         filtro e corta, o resto ordena por similaridade. O que foi lido vai
         para a tela no evento `interpreted`.
         """
+        definir_funcionalidade("conversa")
         query = _last_user_message(messages)
         if query is None:
             yield ChatErrorEvent(message=_SEM_PERGUNTA)

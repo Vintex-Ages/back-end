@@ -27,6 +27,7 @@ from app.services.ai import (
     modelo_de_embedding,
 )
 from app.services.ai.base import ImageAnalysisResult
+from app.services.ai.registro import definir_funcionalidade
 
 logger = logging.getLogger(__name__)
 
@@ -137,6 +138,7 @@ def gerar_embedding_da_peca(
 
 
 def _gravar(product: Product) -> None:
+    definir_funcionalidade("publicacao")
     try:
         modelo = modelo_de_embedding()
         vetores = get_ai_provider().embed([texto_da_peca(product)])

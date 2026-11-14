@@ -53,6 +53,7 @@ from app.services import media_rules
 from app.services.ai import AIProviderError, get_ai_provider, modelo_de_embedding
 from app.services.ai.base import ImageAnalysisResult, ImagePhoto
 from app.services.ai.queue import ImageAnalysisQueueError, enqueue_image_analysis
+from app.services.ai.registro import definir_funcionalidade
 from app.services.chat_quota import ChatQuota, CotaEsgotada
 from app.services.product_embedding import (
     apagar_embedding,
@@ -211,6 +212,7 @@ class ProductController:
         (catálogo sem backfill), devolve o catálogo, e não lista vazia.
         """
         tipo = _validar_foto(foto)
+        definir_funcionalidade("busca_imagem")
 
         try:
             provider = get_ai_provider()

@@ -20,6 +20,7 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.models.product import Product
 from app.services.ai import AIProviderError, get_ai_provider, modelo_de_embedding
+from app.services.ai.registro import definir_funcionalidade
 from app.services.product_embedding import texto_da_peca
 
 logger = logging.getLogger("vintex.scripts.backfill_embeddings")
@@ -28,6 +29,7 @@ BATCH_SIZE = 10
 
 
 def run() -> None:
+    definir_funcionalidade("backfill")
     # Um nome só (back-end#246): é o que vai para `embedding_model` e é por
     # ele que `find_similar` filtra. Lista é recusada antes de tocar o banco.
     model = modelo_de_embedding()

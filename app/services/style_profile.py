@@ -14,6 +14,7 @@ from functools import lru_cache
 from app.constants.styles import STYLES
 from app.models.user_preference import UserPreference
 from app.services.ai import AIProviderError, get_ai_provider, modelo_de_embedding
+from app.services.ai.registro import definir_funcionalidade
 
 TIPO_ESTILO = "estilo"
 
@@ -49,6 +50,7 @@ def vetor_do_perfil(texto: str) -> tuple[list[float], str]:
     perfil muda o texto, e o texto novo gera outro vetor. Falha não fica em
     cache.
     """
+    definir_funcionalidade("recomendacao")
     modelo = modelo_de_embedding()
     return list(_vetor_em_cache(texto, modelo)), modelo
 
