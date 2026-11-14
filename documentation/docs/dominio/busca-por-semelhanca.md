@@ -68,6 +68,7 @@ Filtro que não casa com nenhuma peça devolve página vazia: aí é o filtro, e
 | Recomendações pelo perfil de estilo (`GET /api/users/me/recommendations`) | [#253](https://github.com/Vintex-Ages/back-end/issues/253) | feito, ver abaixo |
 | Busca por foto | [#255](https://github.com/Vintex-Ages/back-end/issues/255) | a fazer, usa paginação e filtros |
 | [Sugestão de preço](./sugestao-de-preco) | [#254](https://github.com/Vintex-Ages/back-end/issues/254) | feito, compara preços das parecidas, sem gerar vetor novo |
+| Peças que combinam com a peça aberta (`GET /api/products/{id}/combinations`) | [#328](https://github.com/Vintex-Ages/back-end/issues/328) | feito, ver abaixo |
 
 ## Recomendação pelo perfil de estilo
 
@@ -79,6 +80,17 @@ O "Garimpados para Você" da home ([#253](https://github.com/Vintex-Ages/back-en
 - **Nunca é erro, nunca vem vazia** enquanto houver catálogo (RN-38, RN-61). Vem o feed genérico, com `personalized: false`, em três casos: a pessoa não tem estilo no perfil; a IA falhou ao gerar o vetor do perfil; ou nenhuma peça tem vetor ainda (ambiente sem IA, como a staging).
 - **Peça publicada agora aparece** na recomendação sem rodar script, porque a publicação gera o vetor dela ([#245](https://github.com/Vintex-Ages/back-end/issues/245)).
 
+## Peças que combinam com a peça aberta
+
+A combinação da tela da peça ([#328](https://github.com/Vintex-Ages/back-end/issues/328), RN-63): `GET /api/products/{product_id}/combinations`, pública como o detalhe. A resposta é `{ pieces, match_type, total_amount }`, e cada peça traz `id`, `name`, `price`, `category`, `cover_image_url` e a loja (`store: { id, name }`).
+
+- **A mesma consulta, com a categoria invertida.** `find_similar` recebe `exclude_category` e `exclude_product_id`: volta o que é parecido no vetor e **diferente** na categoria, sem a própria peça. Uma calça combina com um sapato, não com outra calça. A categoria compara sem acento e sem caixa, e peça sem categoria não entra, porque não dá para dizer que é de outra.
+- **A origem só dá o vetor.** O 404 é só para peça inexistente: `reservado` e `vendido` respondem igual, porque a combinação também aparece depois da compra. O que volta é sempre `ativo`. Como a issue pede, a origem em qualquer status responde 200, inclusive `rascunho` e `despublicado`, que no [detalhe](./situacoes-da-peca) respondem 404; a resposta não mostra nada da origem.
+- **Lojas diferentes são permitidas**, e cada peça traz a sua, porque o comprador faz um pedido por loja.
+- **Até 4 peças** (`LIMITE_DE_COMBINACOES`), na ordem da semelhança (RN-62). `total_amount` é a soma dos preços delas.
+- **Sem vetor, `fallback`.** Origem sem vetor, ou nenhuma peça de outra categoria com vetor do mesmo modelo: volta o catálogo ativo de outras categorias, das mais recentes, com `match_type: "fallback"`, e não lista vazia (RN-61).
+- **Não chama a IA**: o vetor da origem já está gravado, então a rota não gasta a cota do dia.
+
 ## Testar localmente
 
-`cosine_distance` só existe no Postgres com pgvector: os testes (`tests/test_find_similar.py`, `tests/test_assistant_chat.py`) rodam com `TEST_POSTGRES_URL`. Com a IA configurada no `.env`, o chat no Swagger (`POST /api/ai/chat`) usa a consulta de verdade sobre o catálogo do seed depois do backfill.
+`cosine_distance` só existe no Postgres com pgvector: os testes (`tests/test_find_similar.py`, `tests/test_assistant_chat.py`, `tests/test_product_combinations.py`) rodam com `TEST_POSTGRES_URL`. Com a IA configurada no `.env`, o chat no Swagger (`POST /api/ai/chat`) usa a consulta de verdade sobre o catálogo do seed depois do backfill.
