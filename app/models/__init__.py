@@ -1,4 +1,5 @@
 from app.models.address import Address
+from app.models.ai_call_log import AICallLog
 from app.models.ai_chat_usage import AIChatUsage
 from app.models.cart import CartItem
 from app.models.favorite import Favorite
@@ -19,6 +20,7 @@ from app.models.user import User
 from app.models.user_preference import UserPreference
 
 __all__ = [
+    "AICallLog",
     "AIChatUsage",
     "Address",
     "CartItem",

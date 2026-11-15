@@ -32,6 +32,7 @@ from app.services.ai.base import (
     SearchStreamEvent,
 )
 from app.services.ai.media_urls import image_download_url
+from app.services.ai.registro import registrar_chamada
 from app.services.ai.search_interpretation import (
     INTERPRET_SEARCH_PROMPT,
     InterpretacaoDaPergunta,
@@ -341,8 +342,11 @@ class GoogleAIProvider(AIProvider):
                 time.sleep(espera)
 
             for indice, modelo in enumerate(modelos):
+                # Cada tentativa é uma linha no registro (back-end#263): a que
+                # deu 503 mostra o código, e a seguinte, o modelo que respondeu.
+                inicio = time.perf_counter()
                 try:
-                    return self._client.models.generate_content(
+                    resposta = self._client.models.generate_content(
                         model=modelo,
                         contents=[types.Content(parts=parts)],
                         config=types.GenerateContentConfig(
@@ -351,6 +355,9 @@ class GoogleAIProvider(AIProvider):
                         ),
                     )
                 except Exception as exc:  # SDK do Google não documenta uma exceção só
+                    registrar_chamada(
+                        operacao="gerar", modelo=modelo, inicio=inicio, erro=exc
+                    )
                     ultimo = exc
                     if not _e_indisponibilidade(exc):
                         raise AIProviderError(f"Falha ao {tarefa}: {exc}") from exc
@@ -361,6 +368,10 @@ class GoogleAIProvider(AIProvider):
                             modelo,
                             modelos[indice + 1],
                         )
+                    continue
+
+                registrar_chamada(operacao="gerar", modelo=modelo, inicio=inicio)
+                return resposta
 
         raise AIProviderError(f"Falha ao {tarefa}: {ultimo}")
 
@@ -375,6 +386,7 @@ class GoogleAIProvider(AIProvider):
         contents = [types.Content(parts=[types.Part(text=text)]) for text in texts]
         # Um nome de modelo só, de propósito — o bloco de comentário no topo
         # deste arquivo explica por que não há fallback aqui.
+        inicio = time.perf_counter()
         try:
             response = self._client.models.embed_content(
                 model=settings.GOOGLE_EMBEDDING_MODEL,
@@ -382,7 +394,16 @@ class GoogleAIProvider(AIProvider):
                 config=types.EmbedContentConfig(output_dimensionality=EMBEDDING_DIM),
             )
         except Exception as exc:  # SDK do Google não documenta uma exceção só
+            registrar_chamada(
+                operacao="vetor",
+                modelo=settings.GOOGLE_EMBEDDING_MODEL,
+                inicio=inicio,
+                erro=exc,
+            )
             raise AIProviderError(f"Falha ao gerar embedding: {exc}") from exc
+        registrar_chamada(
+            operacao="vetor", modelo=settings.GOOGLE_EMBEDDING_MODEL, inicio=inicio
+        )
 
         if response.embeddings is None or len(response.embeddings) != len(texts):
             raise AIProviderError(

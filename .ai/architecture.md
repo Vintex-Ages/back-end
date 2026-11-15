@@ -15,6 +15,11 @@
   diretamente. Sem fornecedor escolhido, o provider ativo é
   `UnavailableAIProvider`, que levanta `AIProviderUnavailableError` — quem
   chama degrada a funcionalidade, nunca deixa isso virar um 500.
+  Cada chamada ao provedor é registrada em `ai_call_logs` (back-end#263) por
+  `app/services/ai/registro.py`: só medida (funcionalidade, modelo, duração,
+  resultado), nunca o texto. O ponto de entrada de cada funcionalidade declara
+  `definir_funcionalidade(...)`; quem não declarar aparece como
+  `nao_informada`. O consumo do dia sai em `GET /api/admin/ai-usage`.
 - `app/main.py`: composição da aplicação (`create_app`) e middleware.
 
 Fluxo esperado: `Route/View → Controller → Repository → Model/Database`, usando schemas na fronteira HTTP. Rotas não devem conter queries; repositories não devem decidir respostas HTTP; models não devem acumular orquestração de casos de uso.
